@@ -12,5 +12,21 @@
     "plugins": [
       "expo-asset"
     ]
+    ,
+    "icon": "./assets/BuddyBoardicon.png",
+    "splash": {
+      "image": "./assets/buddyBoardSplash.png",
+      "resizeMode": "contain",
+      "backgroundColor": "#ffffff"
+    },
+    "android": {
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/BuddyBoardicon.png",
+        "backgroundColor": "#ffffff"
+      }
+    },
+    "web": {
+      "favicon": "./assets/BuddyBoardicon.png"
+    }
   }
 }

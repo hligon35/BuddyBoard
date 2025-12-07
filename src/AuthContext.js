@@ -65,8 +65,20 @@ export function AuthProvider({ children }) {
     Api.setAuthToken(null);
   }
 
+  // Dev helper: set role/user for testing and persist to AsyncStorage
+  async function setRole(role) {
+    if (!role) return;
+    const next = Object.assign({}, user || { id: 'dev', name: 'Developer', email: 'dev@example.com' }, { role });
+    try {
+      await AsyncStorage.setItem('auth_user', JSON.stringify(next));
+    } catch (e) {
+      // ignore
+    }
+    setUser(next);
+  }
+
   return (
-    <AuthContext.Provider value={{ token, user, loading, login, logout }}>
+    <AuthContext.Provider value={{ token, user, loading, login, logout, setRole }}>
       {children}
     </AuthContext.Provider>
   );

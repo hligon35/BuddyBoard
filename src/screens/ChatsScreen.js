@@ -83,6 +83,8 @@ function MessageRow({ item, user, navigation, archiveThread, deleteThread }) {
   );
 }
 
+import { ScreenWrapper, CenteredContainer } from '../components/ScreenWrapper';
+
 export default function ChatsScreen({ navigation }) {
   const { messages, fetchAndSync, resetMessagesToDemo, clearMessages, archiveThread, deleteThread, archivedThreads } = useData();
   const { user } = useAuth();
@@ -123,28 +125,31 @@ export default function ChatsScreen({ navigation }) {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#fff' }}>
-      <View style={{ padding: 12 }}>
-        <TouchableOpacity onPress={() => { resetMessagesToDemo(); fetchAndSync(); }} style={{ backgroundColor: '#2563eb', padding: 10, borderRadius: 8, alignItems: 'center', marginBottom: 8 }}>
-          <Text style={{ color: '#fff', fontWeight: '700' }}>Load demo messages</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => { clearMessages(); }} style={{ backgroundColor: '#ef4444', padding: 10, borderRadius: 8, alignItems: 'center' }}>
-          <Text style={{ color: '#fff', fontWeight: '700' }}>Clear messages</Text>
-        </TouchableOpacity>
-      </View>
-      <FlatList
-        data={unarchivedList}
-        keyExtractor={(i) => `${i.id}`}
-        renderItem={({ item }) => (
-          <MessageRow item={item} user={user} navigation={navigation} archiveThread={archiveThread} deleteThread={deleteThread} />
-        )}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-      />
-      {(!visibleList || visibleList.length === 0) && (
-        <View style={{ padding: 20, alignItems: 'center' }}>
-          <Text style={{ color: '#6b7280' }}>No conversations yet. Tap "Load demo messages" to populate example threads.</Text>
+    <ScreenWrapper>
+      <CenteredContainer>
+        <View style={{ padding: 12 }}>
+          <TouchableOpacity onPress={() => { resetMessagesToDemo(); fetchAndSync(); }} style={{ backgroundColor: '#2563eb', padding: 10, borderRadius: 8, alignItems: 'center', marginBottom: 8 }}>
+            <Text style={{ color: '#fff', fontWeight: '700' }}>Load demo messages</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => { clearMessages(); }} style={{ backgroundColor: '#ef4444', padding: 10, borderRadius: 8, alignItems: 'center' }}>
+            <Text style={{ color: '#fff', fontWeight: '700' }}>Clear messages</Text>
+          </TouchableOpacity>
         </View>
-      )}
-    </View>
+        <FlatList
+          style={{ width: '100%' }}
+          data={unarchivedList}
+          keyExtractor={(i) => `${i.id}`}
+          renderItem={({ item }) => (
+            <MessageRow item={item} user={user} navigation={navigation} archiveThread={archiveThread} deleteThread={deleteThread} />
+          )}
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        />
+        {(!visibleList || visibleList.length === 0) && (
+          <View style={{ padding: 20, alignItems: 'center' }}>
+            <Text style={{ color: '#6b7280' }}>No conversations yet. Tap "Load demo messages" to populate example threads.</Text>
+          </View>
+        )}
+      </CenteredContainer>
+    </ScreenWrapper>
   );
 }

@@ -6,28 +6,49 @@ import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
-import { AuthProvider } from './src/AuthContext';
+import { AuthProvider, useAuth } from './src/AuthContext';
 import { DataProvider } from './src/DataContext';
 import UrgentMemoOverlay from './src/components/UrgentMemoOverlay';
 import BottomNav from './src/components/BottomNav';
+import DevRoleSwitcher from './src/components/DevRoleSwitcher';
 // navigation ref used by the global bottom nav
 const navigationRef = createNavigationContainerRef();
 
-import CommunityWallScreen from './src/screens/CommunityWallScreen';
+import HomeScreen from './src/screens/HomeScreen';
 import ChatsScreen from './src/screens/ChatsScreen';
 import ChatThreadScreen from './src/screens/ChatThreadScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import HelpScreen from './src/screens/HelpScreen';
+import TherapistScheduleScreen from './src/screens/TherapistScheduleScreen';
+import AdminControlsScreen from './src/screens/AdminControlsScreen';
 import { HelpButton, LogoutButton } from './src/components/TopButtons';
 import { View, Text } from 'react-native';
 
 const RootStack = createNativeStackNavigator();
 
+const ScheduleStackNav = createNativeStackNavigator();
+function ScheduleStack() {
+  return (
+    <ScheduleStackNav.Navigator screenOptions={{ headerTitleAlign: 'center', headerLeft: () => <HelpButton />, headerRight: () => <LogoutButton /> }}>
+      <ScheduleStackNav.Screen name="ScheduleMain" component={TherapistScheduleScreen} options={{ title: 'Schedule' }} />
+    </ScheduleStackNav.Navigator>
+  );
+}
+
+const ControlsStackNav = createNativeStackNavigator();
+function ControlsStack() {
+  return (
+    <ControlsStackNav.Navigator screenOptions={{ headerTitleAlign: 'center', headerLeft: () => <HelpButton />, headerRight: () => <LogoutButton /> }}>
+      <ControlsStackNav.Screen name="ControlsMain" component={AdminControlsScreen} options={{ title: 'Controls' }} />
+    </ControlsStackNav.Navigator>
+  );
+}
+
 const CommunityStackNav = createNativeStackNavigator();
 function CommunityStack() {
   return (
     <CommunityStackNav.Navigator screenOptions={{ headerTitleAlign: 'center', headerLeft: () => <HelpButton />, headerRight: () => <LogoutButton /> }}>
-      <CommunityStackNav.Screen name="CommunityMain" component={CommunityWallScreen} options={{ title: 'Home' }} />
+      <CommunityStackNav.Screen name="CommunityMain" component={HomeScreen} options={{ title: 'Home' }} />
       <CommunityStackNav.Screen name="PostThread" component={require('./src/screens/PostThreadScreen').default} options={{ title: 'Post' }} />
     </CommunityStackNav.Navigator>
   );
@@ -62,13 +83,41 @@ function SettingsStack() {
   );
 }
 
+// MainRoutes chooses which top-level stacks to expose based on authenticated user role.
+function MainRoutes() {
+  const { user } = useAuth();
+  const role = (user && user.role) ? (user.role || '').toString().toLowerCase() : 'parent';
+
+  const screens = [];
+  screens.push({ name: 'Home', component: CommunityStack });
+  screens.push({ name: 'Chats', component: ChatsStack });
+
+  if (role === 'therapist') {
+    screens.push({ name: 'Schedule', component: ScheduleStack });
+  } else if (role === 'admin' || role === 'administrator') {
+    screens.push({ name: 'Controls', component: ControlsStack });
+  } else {
+    screens.push({ name: 'MyChild', component: MyChildStack });
+  }
+
+  screens.push({ name: 'Settings', component: SettingsStack });
+
+  return (
+    <RootStack.Navigator screenOptions={{ headerShown: false }} initialRouteName="Home">
+      {screens.map(s => (
+        <RootStack.Screen key={s.name} name={s.name} component={s.component} />
+      ))}
+    </RootStack.Navigator>
+  );
+}
+
 export default function App() {
   const [problem, setProblem] = useState(null);
   const [currentRoute, setCurrentRoute] = useState('Home');
 
   useEffect(() => {
     const missing = [];
-    if (!CommunityWallScreen) missing.push('CommunityWallScreen');
+    if (!HomeScreen) missing.push('HomeScreen');
     if (!ChatsScreen) missing.push('ChatsScreen');
     if (!ChatThreadScreen) missing.push('ChatThreadScreen');
     if (!SettingsScreen) missing.push('SettingsScreen');
@@ -78,7 +127,7 @@ export default function App() {
     if (missing.length) setProblem(missing);
     else setProblem(null);
     // log for Metro/console
-    console.log('App imports:', { CommunityWallScreen, ChatsScreen, ChatThreadScreen, SettingsScreen, AuthProvider, DataProvider, UrgentMemoOverlay });
+    console.log('App imports:', { HomeScreen, ChatsScreen, ChatThreadScreen, SettingsScreen, AuthProvider, DataProvider, UrgentMemoOverlay });
   }, []);
 
   if (problem && problem.length) {
@@ -98,36 +147,34 @@ export default function App() {
       <AuthProvider>
         <DataProvider>
           <NavigationContainer
-          ref={navigationRef}
-          onStateChange={() => {
-            try {
-              const r = navigationRef.getCurrentRoute();
-              if (r && r.name) {
-                // Map nested route names back to top-level stack keys so BottomNav highlights correctly
-                const map = {
-                  CommunityMain: 'Home',
-                  PostThread: 'Home',
-                  ChatsList: 'Chats',
-                  ChatThread: 'Chats',
-                  MyChildMain: 'MyChild',
-                  SettingsMain: 'Settings',
-                };
-                setCurrentRoute(map[r.name] || r.name);
+            ref={navigationRef}
+            onStateChange={() => {
+              try {
+                const r = navigationRef.getCurrentRoute();
+                if (r && r.name) {
+                  // Map nested route names back to top-level stack keys so BottomNav highlights correctly
+                  const map = {
+                    CommunityMain: 'Home',
+                    PostThread: 'Home',
+                    ChatsList: 'Chats',
+                    ChatThread: 'Chats',
+                    MyChildMain: 'MyChild',
+                    SettingsMain: 'Settings',
+                    ScheduleMain: 'Schedule',
+                    ControlsMain: 'Controls',
+                  };
+                  setCurrentRoute(map[r.name] || r.name);
+                }
+              } catch (e) {
+                // ignore
               }
-            } catch (e) {
-              // ignore
-            }
-          }}
-        >
-          {/* Use a root Stack that hosts per-screen stacks (keeps headers centered in nested stacks) */}
-          <RootStack.Navigator screenOptions={{ headerShown: false }} initialRouteName="Home">
-            <RootStack.Screen name="Home" component={CommunityStack} />
-            <RootStack.Screen name="Chats" component={ChatsStack} />
-            <RootStack.Screen name="MyChild" component={MyChildStack} />
-            <RootStack.Screen name="Settings" component={SettingsStack} />
-          </RootStack.Navigator>
+            }}
+          >
+            {/* Use a root Stack that hosts per-screen stacks (keeps headers centered in nested stacks) */}
+            <MainRoutes />
           </NavigationContainer>
           <BottomNav navigationRef={navigationRef} currentRoute={currentRoute} />
+          <DevRoleSwitcher />
           <UrgentMemoOverlay />
         </DataProvider>
       </AuthProvider>

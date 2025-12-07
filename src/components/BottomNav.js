@@ -3,8 +3,25 @@ import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Ionicons } from '@expo/vector-icons';
+import { useAuth } from '../AuthContext';
 
 export default function BottomNav({ navigationRef, currentRoute }) {
+  const { user } = useAuth();
+  const role = (user && user.role) ? (user.role || '').toString().toLowerCase() : 'parent';
+
+  // define tabs depending on role
+  let tabs = [
+    { key: 'Home', label: 'Home', icon: (active) => (<Ionicons name={active ? 'home' : 'home-outline'} size={22} color={active ? '#0066FF' : '#444'} />) },
+    { key: 'Chats', label: 'Chats', icon: (active) => (<MaterialIcons name={active ? 'chat' : 'chat-bubble-outline'} size={22} color={active ? '#0066FF' : '#444'} />) },
+  ];
+  if (role === 'therapist') {
+    tabs.push({ key: 'Schedule', label: 'Schedule', icon: (active) => (<Ionicons name={active ? 'calendar' : 'calendar-outline'} size={22} color={active ? '#0066FF' : '#444'} />) });
+  } else if (role === 'admin' || role === 'administrator') {
+    tabs.push({ key: 'Controls', label: 'Controls', icon: (active) => (<MaterialIcons name={'tune'} size={22} color={active ? '#0066FF' : '#444'} />) });
+  } else {
+    tabs.push({ key: 'MyChild', label: 'My Child', icon: (active) => (<MaterialCommunityIcons name={active ? 'account-child' : 'account-child-outline'} size={22} color={active ? '#0066FF' : '#444'} />) });
+  }
+  tabs.push({ key: 'Settings', label: 'Settings', icon: (active) => (<Ionicons name={active ? 'settings' : 'settings-outline'} size={22} color={active ? '#0066FF' : '#444'} />) });
   function go(name) {
     if (navigationRef && navigationRef.current && navigationRef.current.navigate) {
       navigationRef.current.navigate(name);
@@ -14,41 +31,12 @@ export default function BottomNav({ navigationRef, currentRoute }) {
   return (
     <View style={styles.container} pointerEvents="box-none">
       <View style={styles.inner}>
-        <TouchableOpacity style={styles.button} onPress={() => go('Home')}>
-          <Ionicons
-            name={currentRoute === 'Home' ? 'home' : 'home-outline'}
-            size={22}
-            color={currentRoute === 'Home' ? '#0066FF' : '#444'}
-          />
-          <Text style={[styles.label, currentRoute === 'Home' && styles.active]}>Home</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.button} onPress={() => go('Chats')}>
-          <MaterialIcons
-            name={currentRoute === 'Chats' ? 'chat' : 'chat-bubble-outline'}
-            size={22}
-            color={currentRoute === 'Chats' ? '#0066FF' : '#444'}
-          />
-          <Text style={[styles.label, currentRoute === 'Chats' && styles.active]}>Chats</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.button} onPress={() => go('MyChild')}>
-          <MaterialCommunityIcons
-            name={currentRoute === 'MyChild' ? 'account-child' : 'account-child-outline'}
-            size={22}
-            color={currentRoute === 'MyChild' ? '#0066FF' : '#444'}
-          />
-          <Text style={[styles.label, currentRoute === 'MyChild' && styles.active]}>My Child</Text>
-        </TouchableOpacity>
-
-        <TouchableOpacity style={styles.button} onPress={() => go('Settings')}>
-          <Ionicons
-            name={currentRoute === 'Settings' ? 'settings' : 'settings-outline'}
-            size={22}
-            color={currentRoute === 'Settings' ? '#0066FF' : '#444'}
-          />
-          <Text style={[styles.label, currentRoute === 'Settings' && styles.active]}>Settings</Text>
-        </TouchableOpacity>
+        {tabs.map(t => (
+          <TouchableOpacity key={t.key} style={styles.button} onPress={() => go(t.key)}>
+            {t.icon(currentRoute === t.key)}
+            <Text style={[styles.label, currentRoute === t.key && styles.active]}>{t.label}</Text>
+          </TouchableOpacity>
+        ))}
       </View>
     </View>
   );

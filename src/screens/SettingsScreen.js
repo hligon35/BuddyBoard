@@ -19,6 +19,7 @@ const PUSH_OTHER_KEY = 'settings_push_other_v1';
 
 export default function SettingsScreen() {
   const { user, logout } = useAuth();
+  const { setRole } = useAuth();
   const navigation = useNavigation();
   const [arrivalEnabled, setArrivalEnabled] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
@@ -128,7 +129,7 @@ export default function SettingsScreen() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#fff', alignItems: 'center', justifyContent: 'flex-start', padding: 16 }}>
+    <View style={{ flex: 1 }}>
       <ScrollView style={{ flex: 1, width: '100%' }} contentContainerStyle={{ alignItems: 'center', paddingBottom: 28 }} bounces={true} alwaysBounceVertical={true} showsVerticalScrollIndicator={false}>
         <View style={{ width: '100%', maxWidth: 720, borderRadius: 14, backgroundColor: '#fff', padding: 20, elevation: 3, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, marginTop: 8 }}>
         <TouchableOpacity onPress={() => Alert.alert('Edit Profile', 'Edit profile tapped')} style={{ position: 'absolute', right: 12, top: 12, padding: 6 }}>
@@ -249,6 +250,23 @@ export default function SettingsScreen() {
 
         </View>
         </View>
+        {/* Dev-only role switcher for local testing */}
+        {__DEV__ && (
+          <View style={{ width: '100%', maxWidth: 720, marginTop: 18 }}>
+            <Text style={{ fontSize: 14, fontWeight: '700', marginBottom: 8 }}>Developer: switch role</Text>
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+              <TouchableOpacity onPress={() => { setRole && setRole('parent'); Alert.alert('Role changed', 'Switched to parent (dev)'); }} style={{ flex: 1, marginRight: 6, backgroundColor: '#e5e7eb', padding: 10, borderRadius: 8, alignItems: 'center' }}>
+                <Text>Parent</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => { setRole && setRole('therapist'); Alert.alert('Role changed', 'Switched to therapist (dev)'); }} style={{ flex: 1, marginHorizontal: 6, backgroundColor: '#e5e7eb', padding: 10, borderRadius: 8, alignItems: 'center' }}>
+                <Text>Therapist</Text>
+              </TouchableOpacity>
+              <TouchableOpacity onPress={() => { setRole && setRole('admin'); Alert.alert('Role changed', 'Switched to admin (dev)'); }} style={{ flex: 1, marginLeft: 6, backgroundColor: '#e5e7eb', padding: 10, borderRadius: 8, alignItems: 'center' }}>
+                <Text>Admin</Text>
+              </TouchableOpacity>
+            </View>
+          </View>
+        )}
       </ScrollView>
     </View>
   );
