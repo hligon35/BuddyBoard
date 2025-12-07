@@ -21,6 +21,7 @@
     "expo-file-system": "^19.0.20",
     "expo-image-picker": "^17.0.9",
     "expo-secure-store": "^15.0.8",
+    "jimp": "^1.6.0",
     "nativewind": "^4.2.1",
     "react": "^19.1.0",
     "react-dom": "^19.1.0",
@@ -36,6 +37,7 @@
     "tailwindcss": "^4.1.17"
   },
   "devDependencies": {
-    "@babel/core": "^7.26.0"
+    "@babel/core": "^7.26.0",
+    "expo-module-scripts": "^5.0.8"
   }
 }

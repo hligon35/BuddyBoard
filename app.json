@@ -3,6 +3,7 @@
     "name": "BuddyBoard",
     "slug": "buddyboard-mobile",
     "version": "1.0.0",
+    "ios": { "buildNumber": "1.0.0", "bundleIdentifier": "com.azlabs.buddyboard" },
     "platforms": [
       "android",
       "ios",
@@ -11,8 +12,7 @@
     "orientation": "portrait",
     "plugins": [
       "expo-asset"
-    ]
-    ,
+    ],
     "icon": "./assets/BuddyBoardicon.png",
     "splash": {
       "image": "./assets/buddyBoardSplash.png",
@@ -25,8 +25,25 @@
         "backgroundColor": "#ffffff"
       }
     },
+    "ios": {
+      "bundleIdentifier": "com.azlabs.buddyboard",
+      "buildNumber": "1.0.0"
+    },
+    "android": {
+      "package": "com.azlabs.buddyboard",
+      "adaptiveIcon": {
+        "foregroundImage": "./assets/BuddyBoardicon.png",
+        "backgroundColor": "#ffffff"
+      }
+    },
     "web": {
       "favicon": "./assets/BuddyBoardicon.png"
-    }
+    },
+    "extra": {
+      "eas": {
+        "projectId": "38ed77a1-3892-42c8-b7cf-9cebe6d98545"
+      }
+    },
+    "owner": "hligon"
   }
 }
