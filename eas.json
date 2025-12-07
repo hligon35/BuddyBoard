@@ -1,14 +1,22 @@
-﻿{
+{
   "build": {
     "production": {
-      "workflow": "managed",
-      "ios": { "buildType": "app-store" },
-      "android": {}
+      "ios": {
+        "workflow": "managed",
+        "buildType": "app-store"
+      },
+      "android": {
+        "workflow": "managed"
+      }
     },
     "development": {
-      "workflow": "managed",
-      "ios": { "buildType": "development" },
-      "android": {}
+      "ios": {
+        "workflow": "managed",
+        "buildType": "development"
+      },
+      "android": {
+        "workflow": "managed"
+      }
     }
   },
   "submit": { "production": {} }
