@@ -1,3 +1,30 @@
+# BuddyBoard (Expo)
+
+This Expo React Native app reproduces the BuddyBoard web app UX with Home, Chats, Urgent Memos, media uploads, auth, and persistence.
+
+Setup
+
+```powershell
+cd BuddyBoard
+npm install
+npm start
+# Android emulator: npm run android
+# iOS (mac): npm run ios
+# Web: npm run web
+```
+
+Configuration
+
+- Edit `src/config.js` to change `BASE_URL`.
+- On Android emulator, if your backend runs on localhost, use `10.0.2.2` as the host.
+
+Notes
+
+- Auth uses token-based approach persisted in `AsyncStorage`.
+- DataContext persists posts and messages in `AsyncStorage` and performs optimistic updates.
+- Media uploads POST to `/api/media/upload`; S3 signing available via `/api/media/sign` in `src/Api.js`.
+- Link previews use `/api/link/preview?url=`.
+- Urgent memos are fetched on app start and acknowledged via `/api/urgent-memos/read`.
 # BuddyBoard (React Native scaffold)
 
 This folder contains a scaffolded React Native (Expo) version of the BuddyBoard web app. It's an approximate, hybrid-native shell with placeholder screens and navigation mirroring the web app structure. This scaffold is not installed — run the included `setup.sh` or `setup.ps1` scripts after moving the directory to your target machine to install dependencies and initialize the project.

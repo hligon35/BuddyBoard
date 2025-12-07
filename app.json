@@ -3,9 +3,14 @@
     "name": "BuddyBoard",
     "slug": "buddyboard-mobile",
     "version": "1.0.0",
-    "sdkVersion": "48.0.0",
-    "platforms": ["android", "ios", "web"],
+    "platforms": [
+      "android",
+      "ios",
+      "web"
+    ],
     "orientation": "portrait",
-    "entryPoint": "node_modules/expo/AppEntry.js"
+    "plugins": [
+      "expo-asset"
+    ]
   }
 }

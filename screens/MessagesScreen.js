@@ -1,27 +1,39 @@
-import React, { useContext } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, Button } from 'react-native';
-import { DataContext } from '../src/DataContext';
+import React, { useContext, useState } from 'react';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, Button, RefreshControl } from 'react-native';
+import { useData } from '../src/DataContext';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function MessagesScreen({ navigation }){
-  const { messages } = useContext(DataContext);
+  const { messages, fetchAndSync } = useData();
+  const [refreshing, setRefreshing] = useState(false);
+  const insets = useSafeAreaInsets();
+
+  async function onRefresh(){
+    try{ setRefreshing(true); await fetchAndSync(); }catch(e){} finally{ setRefreshing(false); }
+  }
 
   function openMessage(m){
     navigation.navigate('MessageDetail', { messageId: m.id });
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={[styles.container, { paddingBottom: insets.bottom + 80 }]}>
       <View style={styles.headerRow}>
         <Text style={styles.title}>Messages</Text>
         <Button title="Compose" onPress={() => navigation.navigate('ComposeMessage')} />
       </View>
-      <FlatList data={messages} keyExtractor={i => i.id} renderItem={({item}) => (
-        <TouchableOpacity style={styles.item} onPress={() => openMessage(item)}>
-          <Text style={[styles.itemTitle, item.read ? styles.read : null]}>{item.title}</Text>
-          <Text style={styles.itemMeta}>{item.sender} • {new Date(item.date).toLocaleString()}</Text>
-        </TouchableOpacity>
-      )} />
-    </View>
+      <FlatList
+        data={messages}
+        keyExtractor={i => i.id}
+        renderItem={({item}) => (
+          <TouchableOpacity style={styles.item} onPress={() => openMessage(item)}>
+            <Text style={[styles.itemTitle, item.read ? styles.read : null]}>{item.title}</Text>
+            <Text style={styles.itemMeta}>{item.sender} • {new Date(item.date).toLocaleString()}</Text>
+          </TouchableOpacity>
+        )}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      />
+    </SafeAreaView>
   );
 }
 

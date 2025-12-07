@@ -1,11 +1,18 @@
 import React, { useContext, useState } from 'react';
-import { View, Text, FlatList, TouchableOpacity, StyleSheet, Button, TextInput, Alert } from 'react-native';
-import { DataContext } from '../src/DataContext';
+import { View, Text, FlatList, TouchableOpacity, StyleSheet, Button, TextInput, Alert, RefreshControl } from 'react-native';
+import { DataContext, useData } from '../src/DataContext';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function UrgentMemosScreen(){
-  const { urgentMemos, createUrgentMemo, ackMemo } = useContext(DataContext);
+  const { urgentMemos, createUrgentMemo, ackMemo, fetchAndSync } = useData();
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
+  const [refreshing, setRefreshing] = useState(false);
+  const insets = useSafeAreaInsets();
+
+  async function onRefresh(){
+    try{ setRefreshing(true); await fetchAndSync(); }catch(e){} finally{ setRefreshing(false); }
+  }
 
   function sendMemo(){
     if (!title || !body) return Alert.alert('Validation', 'Please enter title and message');
@@ -14,16 +21,21 @@ export default function UrgentMemosScreen(){
   }
 
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={[styles.container, { paddingBottom: insets.bottom + 80 }]}>
       <Text style={styles.title}>Urgent Memos</Text>
-      <FlatList data={urgentMemos} keyExtractor={i => i.id} renderItem={({item}) => (
-        <View style={styles.memo}>
-          <Text style={styles.memoTitle}>{item.title} {item.ack ? '(Acknowledged)' : ''}</Text>
-          <Text style={styles.memoMeta}>{new Date(item.date).toLocaleString()}</Text>
-          <Text style={{ marginTop: 6 }}>{item.body}</Text>
-          {!item.ack && <Button title="Acknowledge" onPress={() => ackMemo(item.id)} />}
-        </View>
-      )} />
+      <FlatList
+        data={urgentMemos}
+        keyExtractor={i => i.id}
+        renderItem={({item}) => (
+          <View style={styles.memo}>
+            <Text style={styles.memoTitle}>{item.title} {item.ack ? '(Acknowledged)' : ''}</Text>
+            <Text style={styles.memoMeta}>{new Date(item.date).toLocaleString()}</Text>
+            <Text style={{ marginTop: 6 }}>{item.body}</Text>
+            {!item.ack && <Button title="Acknowledge" onPress={() => ackMemo(item.id)} />}
+          </View>
+        )}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+      />
 
       <View style={styles.composer}>
         <Text style={{fontWeight:'600'}}>Send Urgent Memo</Text>
@@ -31,7 +43,7 @@ export default function UrgentMemosScreen(){
         <TextInput style={[styles.input, {height:80}]} placeholder="Message" value={body} onChangeText={setBody} multiline />
         <Button title="Send Memo" onPress={sendMemo} />
       </View>
-    </View>
+    </SafeAreaView>
   );
 }
 

@@ -1,12 +1,14 @@
 import React from 'react';
 import { View, Text, StyleSheet } from 'react-native';
+import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
 
 export default function SettingsScreen(){
+  const insets = useSafeAreaInsets();
   return (
-    <View style={styles.container}>
+    <SafeAreaView style={[styles.container, { paddingBottom: insets.bottom + 80 }]}>
       <Text style={styles.title}>Settings</Text>
       <Text>Profile • Notifications • Security</Text>
-    </View>
+    </SafeAreaView>
   );
 }
 

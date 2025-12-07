@@ -1,4 +1,4 @@
-import React, { useState, useContext } from 'react';
+import React, { useState, useContext, useEffect } from 'react';
 import { View, Text, TextInput, Button, StyleSheet, Alert, ActivityIndicator } from 'react-native';
 import { AuthContext } from '../src/AuthContext';
 
@@ -17,6 +17,15 @@ export default function LoginScreen({ navigation }) {
       Alert.alert('Login failed', e.message || 'Please check credentials');
     }finally{ setBusy(false); }
   }
+
+  // If already authenticated (e.g. dev auto-login), redirect to Home
+  // This effect must be declared before any early returns to preserve
+  // the order of Hooks between renders.
+  useEffect(() => {
+    if (!auth.loading && auth.token) {
+      navigation.replace('Home');
+    }
+  }, [auth.loading, auth.token]);
 
   if (auth.loading) return (
     <View style={styles.container}><ActivityIndicator size="large" /></View>
