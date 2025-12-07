@@ -1,15 +1,20 @@
-import React, { useState, useMemo } from 'react';
-import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, Image, ActivityIndicator } from 'react-native';
+import React, { useState, useMemo, useRef } from 'react';
+import { View, Text, FlatList, TextInput, TouchableOpacity, StyleSheet, ActivityIndicator, Modal, TouchableWithoutFeedback, Image, Linking } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useRoute, useNavigation } from '@react-navigation/native';
 import { useAuth } from '../AuthContext';
 import { useData } from '../DataContext';
+import PostCard from '../components/PostCard';
 
 export default function PostThreadScreen() {
   const route = useRoute();
   const navigation = useNavigation();
   const { postId } = route.params || {};
   const { user } = useAuth();
-  const { posts, comment, replyToComment, reactToComment } = useData();
+  const { posts, comment, replyToComment, reactToComment, like, share, children, abaTherapists, bcaTherapists } = useData();
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [showUserModal, setShowUserModal] = useState(false);
+  const composerRef = useRef(null);
   const [text, setText] = useState('');
   const [sending, setSending] = useState(false);
   const [openReplyFor, setOpenReplyFor] = useState(null);
@@ -41,18 +46,30 @@ export default function PostThreadScreen() {
 
   return (
     <View style={{ flex: 1, backgroundColor: '#f3f4f6' }}>
-      <View style={styles.postCard}>
-        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <Image source={{ uri: post.author?.avatar || 'https://i.pravatar.cc/100' }} style={styles.avatar} />
-          <View style={{ flex: 1 }}>
-            <Text style={styles.author}>{post.author?.name || 'Anonymous'}</Text>
-            <Text style={styles.time}>{new Date(post.createdAt).toLocaleString()}</Text>
-          </View>
-        </View>
-        {post.title ? <Text style={styles.title}>{post.title}</Text> : null}
-        {post.body ? <Text style={styles.body}>{post.body}</Text> : null}
-        {post.image ? <Image source={{ uri: post.image }} style={styles.image} /> : null}
-      </View>
+      <PostCard
+        post={post}
+        onLike={() => { if (like) like(post.id); }}
+        onComment={() => { composerRef.current?.focus && composerRef.current.focus(); }}
+        onShare={() => { if (share) share(post.id); }}
+        onAvatarPress={async (author) => {
+          let full = author || {};
+          const tryFind = (list) => (list || []).find((u) => (u.id && full.id && u.id === full.id) || (u.name && full.name && u.name === full.name));
+          const found = tryFind(children) || tryFind(abaTherapists) || tryFind(bcaTherapists);
+          if (found) full = { ...found, ...full };
+          try {
+            const SHOW_EMAIL_KEY = 'settings_show_email_v1';
+            const SHOW_PHONE_KEY = 'settings_show_phone_v1';
+            if (full && user && full.id && user.id && full.id === user.id) {
+              const se = await AsyncStorage.getItem(SHOW_EMAIL_KEY);
+              const sp = await AsyncStorage.getItem(SHOW_PHONE_KEY);
+              if (se !== null) full.showEmail = (se === '1');
+              if (sp !== null) full.showPhone = (sp === '1');
+            }
+          } catch (e) {}
+          setSelectedUser(full);
+          setShowUserModal(true);
+        }}
+      />
 
       <FlatList
         data={post.comments || []}
@@ -132,23 +149,50 @@ export default function PostThreadScreen() {
       />
 
       <View style={styles.composer}>
-        <TextInput placeholder="Write a comment..." value={text} onChangeText={setText} style={styles.input} multiline />
+        <TextInput ref={composerRef} placeholder="Write a comment..." value={text} onChangeText={setText} style={styles.input} multiline />
         <TouchableOpacity style={styles.sendBtn} onPress={handleSend} disabled={sending || !text.trim()}>
           {sending ? <ActivityIndicator color="#fff" /> : <Text style={{ color: '#fff', fontWeight: '700' }}>Send</Text>}
         </TouchableOpacity>
       </View>
+      {showUserModal && selectedUser && (
+        <Modal transparent visible animationType="fade">
+          <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', alignItems: 'center' }}>
+            <TouchableWithoutFeedback onPress={() => setShowUserModal(false)}>
+              <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+            </TouchableWithoutFeedback>
+            <View style={{ width: '90%', backgroundColor: '#fff', padding: 14, borderRadius: 10, alignItems: 'center' }}>
+              <Image source={{ uri: selectedUser.avatar || `https://i.pravatar.cc/120?u=${selectedUser.email || selectedUser.name || selectedUser.id || 'anon'}` }} style={{ width: 120, height: 120, borderRadius: 60, marginBottom: 12 }} />
+              <Text style={{ fontWeight: '700', fontSize: 18, marginBottom: 6 }}>{selectedUser.name || 'Unknown'}</Text>
+              {selectedUser.email && selectedUser.showEmail !== false ? (
+                <Text style={{ color: '#374151', marginBottom: 4 }}>{selectedUser.email}</Text>
+              ) : null}
+              {selectedUser.phone && selectedUser.showPhone !== false ? (
+                <Text style={{ color: '#374151', marginBottom: 8 }}>{selectedUser.phone}</Text>
+              ) : null}
+              <View style={{ flexDirection: 'row', marginTop: 8 }}>
+                {selectedUser.phone && selectedUser.showPhone !== false ? (
+                  <TouchableOpacity onPress={() => Linking.openURL(`tel:${selectedUser.phone}`)} style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 8, backgroundColor: '#0066FF', marginRight: 8 }}>
+                    <Text style={{ color: '#fff' }}>Call</Text>
+                  </TouchableOpacity>
+                ) : null}
+                {selectedUser.email && selectedUser.showEmail !== false ? (
+                  <TouchableOpacity onPress={() => Linking.openURL(`mailto:${selectedUser.email}`)} style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 8, backgroundColor: '#10B981', marginRight: 8 }}>
+                    <Text style={{ color: '#fff' }}>Email</Text>
+                  </TouchableOpacity>
+                ) : null}
+                <TouchableOpacity onPress={() => setShowUserModal(false)} style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 8, backgroundColor: '#f3f4f6' }}>
+                  <Text>Close</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  postCard: { padding: 12, backgroundColor: '#fff', margin: 12, borderRadius: 8 },
-  avatar: { width: 44, height: 44, borderRadius: 22, marginRight: 10 },
-  author: { fontWeight: '700' },
-  time: { color: '#6b7280', fontSize: 12 },
-  title: { fontSize: 16, fontWeight: '700', marginTop: 8 },
-  body: { marginTop: 6, color: '#374151' },
-  image: { height: 180, marginTop: 8, borderRadius: 6 },
   commentRow: { padding: 12, borderBottomWidth: 1, borderBottomColor: '#e5e7eb', backgroundColor: '#fff' },
   commentAuthor: { fontWeight: '700', marginBottom: 4 },
   commentBody: { color: '#374151' },

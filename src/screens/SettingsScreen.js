@@ -5,6 +5,7 @@ import { BASE_URL } from '../config';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import devToolsFlag from '../utils/devToolsFlag';
 
 const ARRIVAL_KEY = 'settings_arrival_enabled_v1';
 const PUSH_KEY = 'settings_push_enabled_v1';
@@ -16,6 +17,8 @@ const PUSH_REPLIES_COMMENTS_KEY = 'settings_push_replies_comments_v1';
 const PUSH_MENTIONS_COMMENTS_KEY = 'settings_push_mentions_comments_v1';
 const PUSH_UPDATES_KEY = 'settings_push_updates_v1';
 const PUSH_OTHER_KEY = 'settings_push_other_v1';
+const SHOW_EMAIL_KEY = 'settings_show_email_v1';
+const SHOW_PHONE_KEY = 'settings_show_phone_v1';
 
 export default function SettingsScreen() {
   const { user, logout } = useAuth();
@@ -31,6 +34,8 @@ export default function SettingsScreen() {
   const [pushMentionsComments, setPushMentionsComments] = useState(true);
   const [pushUpdates, setPushUpdates] = useState(true);
   const [pushOther, setPushOther] = useState(false);
+  const [showEmail, setShowEmail] = useState(true);
+  const [showPhone, setShowPhone] = useState(true);
 
   // header buttons are provided globally by the navigator
 
@@ -61,12 +66,30 @@ export default function SettingsScreen() {
         if (pmc !== null) setPushMentionsComments(pmc === '1');
         if (pu !== null) setPushUpdates(pu === '1');
         if (po !== null) setPushOther(po === '1');
+        const se = await AsyncStorage.getItem(SHOW_EMAIL_KEY);
+        const sp = await AsyncStorage.getItem(SHOW_PHONE_KEY);
+        if (se !== null) setShowEmail(se === '1');
+        if (sp !== null) setShowPhone(sp === '1');
       } catch (e) {
         // ignore
       }
     };
     load();
     return () => { mounted = false; };
+  }, []);
+
+  const [devToolsVisible, setDevToolsVisible] = useState(true);
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const v = await devToolsFlag.get();
+        if (!mounted) return;
+        setDevToolsVisible(Boolean(v));
+      } catch (e) {}
+    })();
+    const unsub = devToolsFlag.addListener((v) => { if (mounted) setDevToolsVisible(Boolean(v)); });
+    return () => { mounted = false; try { unsub(); } catch (e) {} };
   }, []);
 
   useEffect(() => {
@@ -101,6 +124,14 @@ export default function SettingsScreen() {
   useEffect(() => {
     AsyncStorage.setItem(PUSH_OTHER_KEY, pushOther ? '1' : '0').catch(() => {});
   }, [pushOther]);
+
+  useEffect(() => {
+    AsyncStorage.setItem(SHOW_EMAIL_KEY, showEmail ? '1' : '0').catch(() => {});
+  }, [showEmail]);
+
+  useEffect(() => {
+    AsyncStorage.setItem(SHOW_PHONE_KEY, showPhone ? '1' : '0').catch(() => {});
+  }, [showPhone]);
 
   const toggleArrival = () => {
     const next = !arrivalEnabled;
@@ -248,10 +279,29 @@ export default function SettingsScreen() {
             <View style={{ height: 72 }} />
           </View>
 
+          {/* Privacy: show email / phone to others */}
+          <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: '#eef2f7', paddingTop: 12 }}>
+            <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8 }}>Profile Privacy</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <Text style={{ fontSize: 14 }}>Show Email in profile</Text>
+                <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>Allow others to see your email in the user info modal.</Text>
+              </View>
+              <Switch value={showEmail} onValueChange={setShowEmail} />
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <Text style={{ fontSize: 14 }}>Show Phone in profile</Text>
+                <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>Allow others to see your phone number in the user info modal.</Text>
+              </View>
+              <Switch value={showPhone} onValueChange={setShowPhone} />
+            </View>
+          </View>
+
         </View>
         </View>
         {/* Dev-only role switcher for local testing */}
-        {__DEV__ && (
+        {(__DEV__ && devToolsVisible) && (
           <View style={{ width: '100%', maxWidth: 720, marginTop: 18 }}>
             <Text style={{ fontSize: 14, fontWeight: '700', marginBottom: 8 }}>Developer: switch role</Text>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>

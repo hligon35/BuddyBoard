@@ -1,5 +1,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, Image, Alert, Platform, ToastAndroid, Animated, RefreshControl } from 'react-native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import devToolsFlag from '../utils/devToolsFlag';
 import { useData } from '../DataContext';
 import { useAuth } from '../AuthContext';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
@@ -89,6 +91,21 @@ export default function ChatsScreen({ navigation }) {
   const { messages, fetchAndSync, resetMessagesToDemo, clearMessages, archiveThread, deleteThread, archivedThreads } = useData();
   const { user } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
+  const [devToolsVisible, setDevToolsVisible] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const v = await AsyncStorage.getItem('dev_tools_visible_v1');
+        if (!mounted) return;
+        if (v === null) setDevToolsVisible(true);
+        else setDevToolsVisible(v === '1');
+      } catch (e) {}
+    })();
+    const unsub = devToolsFlag.addListener((v) => { if (mounted) setDevToolsVisible(Boolean(v)); });
+    return () => { mounted = false; try { unsub(); } catch (e) {} };
+  }, []);
 
   useEffect(() => { fetchAndSync(); }, []);
 
@@ -127,14 +144,16 @@ export default function ChatsScreen({ navigation }) {
   return (
     <ScreenWrapper>
       <CenteredContainer>
-        <View style={{ padding: 12 }}>
-          <TouchableOpacity onPress={() => { resetMessagesToDemo(); fetchAndSync(); }} style={{ backgroundColor: '#2563eb', padding: 10, borderRadius: 8, alignItems: 'center', marginBottom: 8 }}>
-            <Text style={{ color: '#fff', fontWeight: '700' }}>Load demo messages</Text>
-          </TouchableOpacity>
-          <TouchableOpacity onPress={() => { clearMessages(); }} style={{ backgroundColor: '#ef4444', padding: 10, borderRadius: 8, alignItems: 'center' }}>
-            <Text style={{ color: '#fff', fontWeight: '700' }}>Clear messages</Text>
-          </TouchableOpacity>
-        </View>
+        {(__DEV__ && devToolsVisible) ? (
+          <View style={{ padding: 12 }}>
+            <TouchableOpacity onPress={() => { resetMessagesToDemo(); fetchAndSync(); }} style={{ backgroundColor: '#2563eb', padding: 10, borderRadius: 8, alignItems: 'center', marginBottom: 8 }}>
+              <Text style={{ color: '#fff', fontWeight: '700' }}>Load demo messages</Text>
+            </TouchableOpacity>
+            <TouchableOpacity onPress={() => { clearMessages(); }} style={{ backgroundColor: '#ef4444', padding: 10, borderRadius: 8, alignItems: 'center' }}>
+              <Text style={{ color: '#fff', fontWeight: '700' }}>Clear messages</Text>
+            </TouchableOpacity>
+          </View>
+        ) : null}
         <FlatList
           style={{ width: '100%' }}
           data={unarchivedList}
@@ -146,7 +165,7 @@ export default function ChatsScreen({ navigation }) {
         />
         {(!visibleList || visibleList.length === 0) && (
           <View style={{ padding: 20, alignItems: 'center' }}>
-            <Text style={{ color: '#6b7280' }}>No conversations yet. Tap "Load demo messages" to populate example threads.</Text>
+            <Text style={{ color: '#6b7280' }}>No conversations yet.</Text>
           </View>
         )}
       </CenteredContainer>

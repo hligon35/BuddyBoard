@@ -1,5 +1,6 @@
-import React, { useState } from 'react';
-import { View, TouchableOpacity, Text, Alert, StyleSheet } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, TouchableOpacity, Text, Alert, StyleSheet, Switch } from 'react-native';
+import devToolsFlag from '../utils/devToolsFlag';
 import { useAuth } from '../AuthContext';
 import { MaterialIcons } from '@expo/vector-icons';
 
@@ -7,6 +8,26 @@ export default function DevRoleSwitcher() {
   if (!__DEV__) return null;
   const { setRole, user } = useAuth();
   const [open, setOpen] = useState(false);
+  const [devTools, setDevTools] = useState(true);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const v = await devToolsFlag.get();
+        if (!mounted) return;
+        setDevTools(Boolean(v));
+      } catch (e) {}
+    })();
+    const unsub = devToolsFlag.addListener((v) => { if (mounted) setDevTools(Boolean(v)); });
+    return () => { mounted = false; unsub(); };
+  }, []);
+
+  const setDevToolsPersisted = async (val) => {
+    try {
+      await devToolsFlag.set(val);
+    } catch (e) {}
+  };
 
   const changeRole = (r) => {
     if (!setRole) return;
@@ -34,6 +55,11 @@ export default function DevRoleSwitcher() {
           <TouchableOpacity onPress={() => changeRole('admin')} style={styles.menuBtn}>
             <Text>Admin</Text>
           </TouchableOpacity>
+          <View style={{ height: 1, backgroundColor: '#f3f4f6', marginVertical: 6 }} />
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 6 }}>
+            <Text style={{ marginRight: 8 }}>Show Dev Tools</Text>
+            <Switch value={devTools} onValueChange={setDevToolsPersisted} />
+          </View>
         </View>
       )}
 

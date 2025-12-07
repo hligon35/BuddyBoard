@@ -1,84 +1,17 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, TextInput, Button, FlatList, Image, TouchableOpacity, ActivityIndicator, StyleSheet, Modal, Alert, TouchableWithoutFeedback, Linking, Platform, Share, RefreshControl } from 'react-native';
 import { ScreenWrapper, CenteredContainer } from '../components/ScreenWrapper';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../AuthContext';
 import { useNavigation } from '@react-navigation/native';
 import { useData } from '../DataContext';
 import * as Api from '../Api';
-
-function detectFirstUrl(text) {
-  const re = /(https?:\/\/[^\s]+)/i;
-  const m = text && text.match(re);
-  return m ? m[0] : null;
-}
-
-function timeAgo(iso) {
-  if (!iso) return '';
-  const diff = Date.now() - new Date(iso).getTime();
-  const mins = Math.floor(diff / 60000);
-  if (mins < 60) return `${mins}m`;
-  const hrs = Math.floor(mins / 60);
-  if (hrs < 24) return `${hrs}h`;
-  const days = Math.floor(hrs / 24);
-  return `${days}d`;
-}
-
-import { MaterialCommunityIcons } from '@expo/vector-icons';
+import PostCard from '../components/PostCard';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Ionicons } from '@expo/vector-icons';
 
-function PostCard({ post, onLike, onComment, onShare }) {
-  const [preview, setPreview] = useState(null);
-
-  useEffect(() => {
-    const url = detectFirstUrl(post.body || '');
-    let mounted = true;
-    if (url) {
-      Api.getLinkPreview(url).then((d) => { if (mounted) setPreview(d); }).catch(() => {});
-    }
-    return () => { mounted = false; };
-  }, [post.body]);
-
-  return (
-    <View style={styles.card}>
-      <View style={styles.header}>
-        <Image source={{ uri: post.author?.avatar || 'https://i.pravatar.cc/100' }} style={styles.avatar} />
-        <View style={{ flex: 1 }}>
-          <Text style={styles.author}>{post.author?.name || 'Anonymous'}</Text>
-          <Text style={styles.time}>{timeAgo(post.createdAt)}</Text>
-        </View>
-      </View>
-
-      {post.title ? <Text style={styles.title}>{post.title}</Text> : null}
-      {post.body ? <Text style={styles.body}>{post.body}</Text> : null}
-
-      {post.image ? <Image source={{ uri: post.image }} style={styles.image} resizeMode="cover" /> : null}
-
-      {preview ? (
-        <View style={styles.preview}>
-          <Text style={styles.previewTitle}>{preview.title}</Text>
-          <Text style={styles.previewDesc}>{preview.description}</Text>
-        </View>
-      ) : null}
-
-      <View style={styles.actions}>
-        <TouchableOpacity onPress={() => onLike(post)} style={styles.actionBtn}>
-          <MaterialCommunityIcons name="thumb-up-outline" size={18} color="#444" />
-          <Text style={styles.actionText}> {post.likes || 0}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => onComment(post)} style={styles.actionBtn}>
-          <MaterialIcons name="comment" size={18} color="#444" />
-          <Text style={styles.actionText}> {(post.comments || []).length}</Text>
-        </TouchableOpacity>
-        <TouchableOpacity onPress={() => onShare && onShare(post)} style={styles.actionBtn}>
-          <Ionicons name="share-social-outline" size={18} color="#444" />
-          <Text style={styles.actionText}> {post.shares || 0}</Text>
-        </TouchableOpacity>
-      </View>
-    </View>
-  );
-}
+// PostCard is now a shared component in ../components/PostCard
 
 const styles = StyleSheet.create({
   card: { padding: 12, borderBottomWidth: 1, borderBottomColor: '#e5e7eb', backgroundColor: '#fff' },
@@ -95,15 +28,45 @@ const styles = StyleSheet.create({
   actions: { flexDirection: 'row', marginTop: 10, justifyContent: 'space-around' },
   actionBtn: { flexDirection: 'row', alignItems: 'center' },
   actionText: { color: '#374151', marginLeft: 4 },
-  inputTile: { flexDirection: 'row', padding: 12, backgroundColor: '#fff', margin: 12, borderRadius: 10, alignItems: 'flex-start' },
-  inputAvatar: { width: 48, height: 48, borderRadius: 24, marginRight: 12 },
-  inputTileCompact: { flexDirection: 'row', padding: 8, backgroundColor: '#fff', margin: 10, borderRadius: 8, alignItems: 'center', justifyContent: 'space-between' },
-  inputAvatarCompact: { width: 40, height: 40, borderRadius: 20 },
+  inputTile: { flexDirection: 'row', padding: 10, backgroundColor: '#fff', margin: 12, borderRadius: 10, alignItems: 'flex-start' },
+  inputAvatar: { width: 50, height: 50, borderRadius: 25, marginRight: 12 },
+  inputTileCompact: { flexDirection: 'row', padding: 8, backgroundColor: '#fff', margin: 6, borderRadius: 8, alignItems: 'center', justifyContent: 'space-between' },
+  inputAvatarCompact: { width: 50, height: 50, borderRadius: 25 },
   inputFieldsCompact: { flex: 1 },
   inputTextCompact: { borderWidth: 1, borderColor: '#e6e7ea', borderRadius: 8, padding: 6, backgroundColor: '#fff', color: '#111', minHeight: 44 },
   postRowCompact: { flexDirection: 'row', alignItems: 'center', marginTop: 8 },
-  pickButtonCompact: { padding: 6, marginRight: 8 },
-  postButtonCompact: { backgroundColor: '#0066FF', paddingVertical: 6, paddingHorizontal: 12, borderRadius: 8 },
+  // square button for attach and post to match visually
+  pickButtonCompact: {
+    width: 40,
+    height: 40,
+    marginRight: 6,
+    borderWidth: 1,
+    borderColor: '#d1d5db',
+    borderRadius: 8,
+    backgroundColor: 'transparent',
+    alignItems: 'center',
+    justifyContent: 'center',
+    // subtle shadow / push look
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.08,
+    shadowRadius: 1.5,
+    elevation: 2,
+  },
+  postButtonCompact: {
+    width: 40,
+    height: 40,
+    borderRadius: 8,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#0066FF',
+    // subtle shadow / push look
+    shadowColor: '#000',
+    shadowOffset: { width: 0, height: 1 },
+    shadowOpacity: 0.12,
+    shadowRadius: 2,
+    elevation: 3,
+  },
   postButtonLabelCompact: { color: '#fff', fontWeight: '700' },
   previewImageCompact: { height: 80, width: 120, marginLeft: 6, borderRadius: 6 },
   leftColumn: { width: 72, alignItems: 'center', marginRight: 10, justifyContent: 'center' },
@@ -112,7 +75,7 @@ const styles = StyleSheet.create({
   iconBox: { width: 36, height: 36, borderRadius: 8, borderWidth: 1, borderColor: '#e6e7ea', alignItems: 'center', justifyContent: 'center', marginHorizontal: 4, backgroundColor: '#fff' },
   iconBoxPrimary: { width: 36, height: 36, borderRadius: 8, alignItems: 'center', justifyContent: 'center', marginHorizontal: 4, backgroundColor: '#0066FF' },
   iconButton: { padding: 8, alignItems: 'center', justifyContent: 'center' },
-  inputFlex: { flex: 1, marginHorizontal: 8 },
+  inputFlex: { flex: 1, marginHorizontal: 6 },
   modalOverlay: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', alignItems: 'center' },
   modalContent: { width: '90%', backgroundColor: '#fff', padding: 14, borderRadius: 10 },
   modalInput: { borderWidth: 1, borderColor: '#e6e7ea', borderRadius: 8, padding: 8, marginTop: 6 },
@@ -123,7 +86,9 @@ const styles = StyleSheet.create({
 export default function HomeScreen() {
   const { user } = useAuth();
   const navigation = useNavigation();
-  const { posts, createPost, like, comment, share, recordShare, fetchAndSync } = useData();
+  const { posts, createPost, like, comment, share, recordShare, fetchAndSync, children, abaTherapists, bcaTherapists } = useData();
+  const [selectedUser, setSelectedUser] = useState(null);
+  const [showUserModal, setShowUserModal] = useState(false);
   const [title, setTitle] = useState('');
   const [body, setBody] = useState('');
   const [image, setImage] = useState(null);
@@ -245,44 +210,111 @@ export default function HomeScreen() {
         keyExtractor={(i) => i.id}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         renderItem={({ item }) => (
-          <PostCard post={item} onLike={() => like(item.id)} onComment={() => navigation.navigate('PostThread', { postId: item.id })} onShare={() => openShareModal(item)} />
+          <PostCard
+            post={item}
+            onLike={() => like(item.id)}
+            onComment={() => navigation.navigate('PostThread', { postId: item.id })}
+            onShare={() => openShareModal(item)}
+            onAvatarPress={async (author) => {
+              // attempt to enrich author with known records (children/therapists)
+              let full = author || {};
+              const tryFind = (list) => (list || []).find((u) => (u.id && full.id && u.id === full.id) || (u.name && full.name && u.name === full.name));
+              const found = tryFind(children) || tryFind(abaTherapists) || tryFind(bcaTherapists);
+              if (found) full = { ...found, ...full };
+              // If the tapped user is the current user, respect local privacy settings persisted in AsyncStorage
+              try {
+                const SHOW_EMAIL_KEY = 'settings_show_email_v1';
+                const SHOW_PHONE_KEY = 'settings_show_phone_v1';
+                if (full && user && full.id && user.id && full.id === user.id) {
+                  const se = await AsyncStorage.getItem(SHOW_EMAIL_KEY);
+                  const sp = await AsyncStorage.getItem(SHOW_PHONE_KEY);
+                  if (se !== null) full.showEmail = (se === '1');
+                  if (sp !== null) full.showPhone = (sp === '1');
+                }
+              } catch (e) {
+                // ignore
+              }
+              setSelectedUser(full);
+              setShowUserModal(true);
+            }}
+          />
         )}
         ListHeaderComponent={() => (
           <>
             <View style={styles.inputTileCompact}>
               <Image source={{ uri: user?.avatar || `https://i.pravatar.cc/80?u=${user?.email || 'anon'}` }} style={styles.inputAvatarCompact} />
-              <View style={styles.inputFieldsCompact}>
-                <TextInput placeholder="Share something with the community..." value={body} onChangeText={setBody} style={styles.inputTextCompact} multiline />
-                <View style={styles.postRowCompact}>
-                  <TouchableOpacity style={styles.pickButtonCompact} onPress={onAttachPress}>
-                    <Ionicons name="image-outline" size={20} color="#444" />
-                  </TouchableOpacity>
-                  <View style={{ flex: 1 }} />
-                  <TouchableOpacity style={styles.postButtonCompact} onPress={handlePost}>
-                    <Text style={styles.postButtonLabelCompact}>Post</Text>
-                  </TouchableOpacity>
-                </View>
-              </View>
+
+              <TextInput
+                placeholder="Share something with the community..."
+                value={body}
+                onChangeText={setBody}
+                style={[styles.inputTextCompact, { flex: 1, marginHorizontal: 6 }]}
+                multiline
+              />
+
+              <TouchableOpacity style={styles.pickButtonCompact} onPress={onAttachPress} accessibilityLabel="Attach">
+                <MaterialIcons name="attach-file" size={20} color="#444" />
+              </TouchableOpacity>
+
+              <TouchableOpacity style={styles.postButtonCompact} onPress={handlePost} accessibilityLabel="Post">
+                <Ionicons name="send" size={18} color="#fff" />
+              </TouchableOpacity>
             </View>
 
             {showLinkModal && (
               <Modal transparent visible animationType="fade">
-                <TouchableWithoutFeedback onPress={() => setShowLinkModal(false)}>
-                  <View style={styles.modalOverlay}>
-                    <View style={styles.modalContent}>
-                      <Text style={{ fontWeight: '700', marginBottom: 8 }}>Attach</Text>
-                      <TextInput placeholder="Paste a link" value={linkInput} onChangeText={setLinkInput} style={styles.modalInput} />
-                      <View style={{ flexDirection: 'row', marginTop: 12 }}>
-                        <TouchableOpacity style={styles.modalBtn} onPress={() => { setLinkMode(true); setShowLinkModal(false); }}>
-                          <Text>Use Link</Text>
-                        </TouchableOpacity>
-                        <TouchableOpacity style={styles.modalBtn} onPress={() => { pickImage(); }}>
-                          <Text>Pick Photo</Text>
-                        </TouchableOpacity>
-                      </View>
+                <View style={styles.modalOverlay}>
+                  <TouchableWithoutFeedback onPress={() => setShowLinkModal(false)}>
+                    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+                  </TouchableWithoutFeedback>
+                  <View style={styles.modalContent}>
+                    <Text style={{ fontWeight: '700', marginBottom: 8 }}>Attach</Text>
+                    <TextInput placeholder="Paste a link" value={linkInput} onChangeText={setLinkInput} style={styles.modalInput} />
+                    <View style={{ flexDirection: 'row', marginTop: 12 }}>
+                      <TouchableOpacity style={styles.modalBtn} onPress={() => { setLinkMode(true); setShowLinkModal(false); }}>
+                        <Text>Use Link</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity style={styles.modalBtn} onPress={() => { pickImage(); }}>
+                        <Text>Pick Photo</Text>
+                      </TouchableOpacity>
                     </View>
                   </View>
-                </TouchableWithoutFeedback>
+                </View>
+              </Modal>
+            )}
+            {/* User info modal shown when tapping a post avatar */}
+            {showUserModal && selectedUser && (
+              <Modal transparent visible animationType="fade">
+                <View style={styles.modalOverlay}>
+                  <TouchableWithoutFeedback onPress={() => setShowUserModal(false)}>
+                    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+                  </TouchableWithoutFeedback>
+                  <View style={[styles.modalContent, { alignItems: 'center' }]}>
+                    <Image source={{ uri: selectedUser.avatar || `https://i.pravatar.cc/120?u=${selectedUser.email || selectedUser.name || selectedUser.id || 'anon'}` }} style={{ width: 120, height: 120, borderRadius: 60, marginBottom: 12 }} />
+                    <Text style={{ fontWeight: '700', fontSize: 18, marginBottom: 6 }}>{selectedUser.name || 'Unknown'}</Text>
+                    {selectedUser.email && selectedUser.showEmail !== false ? (
+                      <Text style={{ color: '#374151', marginBottom: 4 }}>{selectedUser.email}</Text>
+                    ) : null}
+                    {selectedUser.phone && selectedUser.showPhone !== false ? (
+                      <Text style={{ color: '#374151', marginBottom: 8 }}>{selectedUser.phone}</Text>
+                    ) : null}
+                    <View style={{ flexDirection: 'row', marginTop: 8 }}>
+                      {selectedUser.phone && selectedUser.showPhone !== false ? (
+                        <TouchableOpacity onPress={() => Linking.openURL(`tel:${selectedUser.phone}`)} style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 8, backgroundColor: '#0066FF', marginRight: 8 }}>
+                          <Text style={{ color: '#fff' }}>Call</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                      {selectedUser.email && selectedUser.showEmail !== false ? (
+                        <TouchableOpacity onPress={() => Linking.openURL(`mailto:${selectedUser.email}`)} style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 8, backgroundColor: '#10B981', marginRight: 8 }}>
+                          <Text style={{ color: '#fff' }}>Email</Text>
+                        </TouchableOpacity>
+                      ) : null}
+                      <TouchableOpacity onPress={() => setShowUserModal(false)} style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 8, backgroundColor: '#f3f4f6' }}>
+                        <Text>Close</Text>
+                      </TouchableOpacity>
+                    </View>
+                  </View>
+                </View>
               </Modal>
             )}
           </>
