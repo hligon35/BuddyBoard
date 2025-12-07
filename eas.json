@@ -1,18 +1,5 @@
 {
   "build": {
-    "production": {
-      "workflow": "managed",
-      "ios": {
-        "buildType": "app-store"
-      },
-      "android": {}
-    },
-    "development": {
-      "workflow": "managed",
-      "ios": {
-        "buildType": "development"
-      },
-      "android": {}
     {
       "build": {
         "production": {
@@ -34,4 +21,4 @@
         "production": {}
       }
     }
-      },
+        },
