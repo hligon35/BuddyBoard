@@ -11,6 +11,7 @@ import { DataProvider } from './src/DataContext';
 import UrgentMemoOverlay from './src/components/UrgentMemoOverlay';
 import BottomNav from './src/components/BottomNav';
 import DevRoleSwitcher from './src/components/DevRoleSwitcher';
+import ErrorBoundary from './src/components/ErrorBoundary';
 // navigation ref used by the global bottom nav
 const navigationRef = createNavigationContainerRef();
 
@@ -142,6 +143,7 @@ export default function App() {
 
   return (
     <GestureHandlerRootView style={{ flex: 1 }}>
+      <ErrorBoundary>
       <StatusBar barStyle="dark-content" translucent={false} />
       <SafeAreaProvider>
       <AuthProvider>
@@ -179,6 +181,7 @@ export default function App() {
         </DataProvider>
       </AuthProvider>
       </SafeAreaProvider>
+      </ErrorBoundary>
     </GestureHandlerRootView>
   );
 }
