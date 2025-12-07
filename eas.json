@@ -1,4 +1,4 @@
-{
+﻿{
   "build": {
     "production": {
       "workflow": "managed",
@@ -13,4 +13,3 @@
   },
   "submit": { "production": {} }
 }
-    }
