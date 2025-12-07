@@ -13,34 +13,25 @@
         "buildType": "development"
       },
       "android": {}
-    }
-  },
-  "submit": {
-    "production": {}
-  }
-}
-{
-  "build": {
-    "production": {
-      "ios": {
-        "workflow": "managed",
-        "buildType": "app-store"
+    {
+      "build": {
+        "production": {
+          "workflow": "managed",
+          "ios": {
+            "buildType": "app-store"
+          },
+          "android": {}
+        },
+        "development": {
+          "workflow": "managed",
+          "ios": {
+            "buildType": "development"
+          },
+          "android": {}
+        }
       },
-      "android": {
-        "workflow": "managed"
-      }
-    },
-    "development": {
-      "ios": {
-        "workflow": "managed",
-        "buildType": "development"
-      },
-      "android": {
-        "workflow": "managed"
+      "submit": {
+        "production": {}
       }
     }
-  },
-  "submit": {
-    "production": {}
-  }
-}
+      },
