@@ -1,13 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { Modal, View, Text, Button, ScrollView, TouchableOpacity, StyleSheet } from 'react-native';
+import { Modal, View, Text, Button, ScrollView, TouchableOpacity, StyleSheet, TouchableWithoutFeedback } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../AuthContext';
 import * as Api from '../Api';
+import devToolsFlag from '../utils/devToolsFlag';
 
 export default function UrgentMemoOverlay() {
   const { user } = useAuth();
   const [memos, setMemos] = useState([]);
   const [visible, setVisible] = useState(false);
+  const [devToolsVisible, setDevToolsVisible] = useState(true);
 
   useEffect(() => {
     (async () => {
@@ -16,8 +18,8 @@ export default function UrgentMemoOverlay() {
         const data = await Api.getUrgentMemos();
         let list = Array.isArray(data) ? data : (data?.memos || []);
         if (!Array.isArray(list)) list = [];
-        // Dev helper: if no memos returned in development, show a demo memo so the overlay is visible for testing
-        if (__DEV__ && (!Array.isArray(list) || list.length === 0)) {
+        // Dev helper: if no memos returned in development and dev tools enabled, show a demo memo so overlay is visible for testing
+        if (__DEV__ && devToolsVisible && (!Array.isArray(list) || list.length === 0)) {
           list = [
             { id: 'demo-1', title: 'Demo Urgent Memo', body: 'This is a demo urgent memo for development. Verify modal layout and acknowledgement.', date: new Date().toLocaleString() },
           ];
@@ -41,7 +43,7 @@ export default function UrgentMemoOverlay() {
         const unseen = list.filter((m) => { try { return !seen.includes(m?.id); } catch (e) { return true; } });
         if (unseen.length) setVisible(true);
         // If there were no unseen items but we're in dev and we injected a demo memo, ensure modal shows
-        if (__DEV__ && Array.isArray(list) && list.length && !visible) {
+        if (__DEV__ && devToolsVisible && Array.isArray(list) && list.length && !visible) {
           const seenKey = `urgentSeen_${user.id}`;
           // if seen list doesn't include our demo id, show it
           try {
@@ -56,6 +58,17 @@ export default function UrgentMemoOverlay() {
         console.warn('urgent memos fetch failed', e.message);
       }
     })();
+    const unsub = devToolsFlag.addListener((v) => {
+      setDevToolsVisible(Boolean(v));
+      if (__DEV__ && !v) setVisible(false);
+    });
+    (async () => {
+      try {
+        const v = await devToolsFlag.get();
+        setDevToolsVisible(Boolean(v));
+      } catch (e) {}
+    })();
+    return () => { try { unsub(); } catch (e) {} };
   }, [user]);
 
   async function handleContinue() {
@@ -77,6 +90,9 @@ export default function UrgentMemoOverlay() {
     <>
       <Modal visible={visible} animationType="slide" transparent>
         <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.5)', justifyContent: 'center' }}>
+          <TouchableWithoutFeedback onPress={() => setVisible(false)}>
+            <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+          </TouchableWithoutFeedback>
           <View style={{ margin: 20, backgroundColor: 'white', borderRadius: 8, padding: 16, maxHeight: '80%' }}>
             <Text style={{ fontSize: 18, fontWeight: '600' }}>Urgent Memos</Text>
             <ScrollView style={{ marginTop: 12 }}>
@@ -96,7 +112,7 @@ export default function UrgentMemoOverlay() {
       </Modal>
 
       {/* Dev-only: floating debug button to open urgent memo modal */}
-      {__DEV__ && (
+      {__DEV__ && devToolsVisible && (
         <TouchableOpacity style={styles.debugBtn} onPress={() => setVisible(true)} accessibilityLabel="Open urgent memo (dev)">
           <Text style={styles.debugBtnText}>Urgent</Text>
         </TouchableOpacity>

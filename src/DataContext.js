@@ -199,6 +199,7 @@ export function DataProvider({ children: reactChildren }) {
   const [posts, setPosts] = useState([]);
   const [messages, setMessages] = useState([]);
   const [urgentMemos, setUrgentMemos] = useState([]);
+  const [timeChangeProposals, setTimeChangeProposals] = useState([]);
   const [archivedThreads, setArchivedThreads] = useState([]);
   const [children, setChildren] = useState([]);
 
@@ -279,6 +280,10 @@ export function DataProvider({ children: reactChildren }) {
     try {
       const memos = await Api.getUrgentMemos();
       setUrgentMemos(Array.isArray(memos) ? memos : (memos?.memos || []));
+    } catch (e) { console.warn('getUrgentMemos failed', e.message); }
+    try {
+      const proposals = await Api.getTimeChangeProposals();
+      setTimeChangeProposals(Array.isArray(proposals) ? proposals : (proposals?.proposals || []));
     } catch (e) { console.warn('getUrgentMemos failed', e.message); }
   }
 
@@ -414,6 +419,36 @@ export function DataProvider({ children: reactChildren }) {
     }
   }
 
+  async function proposeTimeChange(childId, type, proposedISO, note) {
+    try {
+      const payload = { childId, type, proposedISO, note, proposerId: user?.id };
+      const created = await Api.proposeTimeChange(payload);
+      // server should return the created proposal; append locally
+      setTimeChangeProposals((s) => [created, ...s]);
+      return created;
+    } catch (e) {
+      console.warn('proposeTimeChange failed', e?.message || e);
+      return null;
+    }
+  }
+
+  async function respondToProposal(proposalId, action) {
+    try {
+      const res = await Api.respondTimeChange(proposalId, action);
+      // server should return updated proposal and possibly updated child
+      // remove or update local proposals
+      setTimeChangeProposals((s) => (s || []).filter((p) => p.id !== proposalId));
+      // if server returned updated child, merge it
+      if (res && res.updatedChild && res.updatedChild.id) {
+        setChildren((prev) => (prev || []).map((c) => (c.id === res.updatedChild.id ? { ...c, ...res.updatedChild } : c)));
+      }
+      return res;
+    } catch (e) {
+      console.warn('respondToProposal failed', e?.message || e);
+      return null;
+    }
+  }
+
   async function sendMessage(payload) {
     // Attach sender info from auth (if available) so UI shows names immediately
     const sender = user ? { id: user.id, name: user.name, email: user.email } : undefined;
@@ -505,7 +540,36 @@ export function DataProvider({ children: reactChildren }) {
   }
 
   return (
-    <DataContext.Provider value={{ posts, messages, urgentMemos, children, setChildren, abaTherapists, bcaTherapists, resetChildrenToDemo, resetMessagesToDemo, clearMessages, archiveThread, unarchiveThread, deleteThread, archivedThreads, createPost, like, comment, replyToComment, reactToComment, share, recordShare, sendMessage, fetchAndSync, markUrgentRead }}>
+    <DataContext.Provider value={{
+      posts,
+      messages,
+      urgentMemos,
+      children,
+      setChildren,
+      abaTherapists,
+      bcaTherapists,
+      resetChildrenToDemo,
+      resetMessagesToDemo,
+      clearMessages,
+      archiveThread,
+      unarchiveThread,
+      deleteThread,
+      archivedThreads,
+      createPost,
+      like,
+      comment,
+      replyToComment,
+      reactToComment,
+      share,
+      recordShare,
+      sendMessage,
+      fetchAndSync,
+      markUrgentRead,
+      // time change proposals
+      timeChangeProposals,
+      proposeTimeChange,
+      respondToProposal,
+    }}>
       {reactChildren}
     </DataContext.Provider>
   );

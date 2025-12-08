@@ -98,6 +98,30 @@ export async function sendMessage(payload) {
   return res.data;
 }
 
+export async function pingArrival(payload) {
+  // payload: { lat, lng, userId, role, childId?, eventId?, when? }
+  const res = await client.post('/api/arrival/ping', payload);
+  return res.data;
+}
+
+// Time change proposals: parents propose pickup/dropoff changes, admins accept/reject
+export async function proposeTimeChange(payload) {
+  // payload: { childId, type: 'pickup'|'dropoff', proposedISO, note, proposerId }
+  const res = await client.post('/api/children/propose-time-change', payload);
+  return res.data;
+}
+
+export async function getTimeChangeProposals() {
+  const res = await client.get('/api/children/time-change-proposals');
+  return res.data;
+}
+
+export async function respondTimeChange(proposalId, action) {
+  // action: 'accept'|'reject'
+  const res = await client.post('/api/children/respond-time-change', { proposalId, action });
+  return res.data;
+}
+
 export async function sharePost(postId) {
   const res = await client.post('/api/board/share', { postId });
   return res.data;

@@ -24,7 +24,7 @@ export default function TherapistScheduleScreen() {
   return (
     <View style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>Therapist Schedule</Text>
+        <Text style={styles.title}>My Pod</Text>
         <Text style={styles.paragraph}>Assigned children ({assignedChildren.length})</Text>
 
         {(assignedChildren || []).map(c => (
