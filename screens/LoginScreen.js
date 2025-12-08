@@ -1,12 +1,12 @@
 import React, { useState, useContext, useEffect } from 'react';
 import { View, Text, TextInput, Button, StyleSheet, Alert, ActivityIndicator } from 'react-native';
-import { AuthContext } from '../src/AuthContext';
+import { useAuth } from '../src/AuthContext';
 
 export default function LoginScreen({ navigation }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
-  const auth = useContext(AuthContext);
+  const auth = useAuth();
 
   async function doLogin(){
     setBusy(true);

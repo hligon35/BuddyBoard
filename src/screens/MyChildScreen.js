@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, Image, StyleSheet, ScrollView, TouchableOpacity, Linking } from 'react-native';
+import { View, Text, Image, StyleSheet, ScrollView, TouchableOpacity, Linking, Modal, TouchableWithoutFeedback, Alert } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useData } from '../DataContext';
+import { useAuth } from '../AuthContext';
 
 export default function MyChildScreen() {
   const { children, resetChildrenToDemo } = useData();
@@ -15,6 +16,40 @@ export default function MyChildScreen() {
     if (childList.length > 1) setSelectedIndex(1);
   }, [childList.length]);
   const child = childList[selectedIndex];
+
+  const { timeChangeProposals, proposeTimeChange, respondToProposal } = useData();
+  const { user } = useAuth();
+  const [showProposeModal, setShowProposeModal] = useState(false);
+  const [proposeType, setProposeType] = useState('pickup');
+
+  function formatISO(iso) {
+    try {
+      if (!iso) return '—';
+      const d = new Date(iso);
+      return d.toLocaleString();
+    } catch (e) { return iso; }
+  }
+
+  const childProposals = (timeChangeProposals || []).filter((p) => p.childId === child.id);
+  const [proposePreset, setProposePreset] = useState('10m_later');
+
+  async function submitProposal(offsetMillis) {
+    try {
+      const base = new Date(child.pickupTimeISO || child.dropoffTimeISO || Date.now());
+      const proposed = new Date(base.getTime() + offsetMillis).toISOString();
+      const note = `${proposeType} change via app`; 
+      const created = await proposeTimeChange(child.id, proposeType, proposed, note);
+      if (created) {
+        Alert.alert('Proposal sent');
+        setShowProposeModal(false);
+      } else {
+        Alert.alert('Failed', 'Could not send proposal');
+      }
+    } catch (e) {
+      console.warn('submitProposal failed', e?.message || e);
+      Alert.alert('Failed', 'Could not send proposal');
+    }
+  }
 
   function shortName(name, maxLen = 18) {
     if (!name || typeof name !== 'string') return '';
@@ -60,6 +95,72 @@ export default function MyChildScreen() {
           <Text style={styles.name}>{shortName(child.name, 20)}</Text>
           <Text style={styles.meta}>{child.age} • {child.room}</Text>
         </View>
+      </View>
+
+      {/* Propose modal */}
+      {showProposeModal && (
+        <Modal transparent visible animationType="fade">
+          <TouchableWithoutFeedback onPress={() => setShowProposeModal(false)}>
+            <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', alignItems: 'center' }}>
+              <TouchableWithoutFeedback>
+                <View style={{ width: '90%', backgroundColor: '#fff', padding: 12, borderRadius: 8 }}>
+                  <Text style={{ fontWeight: '700', marginBottom: 8 }}>Propose {proposeType === 'pickup' ? 'Pickup' : 'Drop-off'} Time</Text>
+                  <Text style={{ marginBottom: 8 }}>Choose a quick offset from the currently scheduled time.</Text>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 8 }}>
+                    <TouchableOpacity onPress={() => submitProposal(10 * 60 * 1000)} style={{ padding: 8, backgroundColor: '#e5e7eb', borderRadius: 8 }}><Text>+10m</Text></TouchableOpacity>
+                    <TouchableOpacity onPress={() => submitProposal(30 * 60 * 1000)} style={{ padding: 8, backgroundColor: '#e5e7eb', borderRadius: 8 }}><Text>+30m</Text></TouchableOpacity>
+                    <TouchableOpacity onPress={() => submitProposal(60 * 60 * 1000)} style={{ padding: 8, backgroundColor: '#e5e7eb', borderRadius: 8 }}><Text>+1h</Text></TouchableOpacity>
+                    <TouchableOpacity onPress={() => submitProposal(-15 * 60 * 1000)} style={{ padding: 8, backgroundColor: '#e5e7eb', borderRadius: 8 }}><Text>-15m</Text></TouchableOpacity>
+                  </View>
+                  <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+                    <TouchableOpacity onPress={() => setShowProposeModal(false)} style={{ marginLeft: 8, padding: 8 }}><Text>Cancel</Text></TouchableOpacity>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+      )}
+
+      <View style={[styles.section, { marginTop: 12 }]}>
+        <Text style={styles.sectionTitle}>Schedule</Text>
+        <Text style={styles.sectionText}>Drop-off: {formatISO(child.dropoffTimeISO)}</Text>
+        <Text style={styles.sectionText}>Pick-up: {formatISO(child.pickupTimeISO)}</Text>
+        <View style={{ flexDirection: 'row', marginTop: 8 }}>
+          <TouchableOpacity onPress={() => { setProposeType('pickup'); setShowProposeModal(true); }} style={{ marginRight: 8, padding: 10, backgroundColor: '#2563eb', borderRadius: 8 }}>
+            <Text style={{ color: '#fff' }}>Propose Pickup Change</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => { setProposeType('dropoff'); setShowProposeModal(true); }} style={{ padding: 10, backgroundColor: '#f59e0b', borderRadius: 8 }}>
+            <Text style={{ color: '#fff' }}>Propose Drop-off Change</Text>
+          </TouchableOpacity>
+        </View>
+      </View>
+
+      {/* Proposals list */}
+      <View style={styles.section}>
+        <Text style={styles.sectionTitle}>Pending Proposals</Text>
+        {childProposals.length ? childProposals.map((p) => (
+          <View key={p.id} style={{ paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
+            <Text style={{ fontWeight: '700' }}>{p.type === 'pickup' ? 'Pickup' : 'Drop-off'} change</Text>
+            <Text style={{ color: '#374151' }}>Proposed: {formatISO(p.proposedISO)}</Text>
+            <Text style={{ color: '#6b7280', fontSize: 12 }}>{p.note || ''}</Text>
+            <Text style={{ fontSize: 12, color: '#6b7280' }}>By: {p.proposerName || p.proposerId}</Text>
+            {user && (user.role === 'admin' || user.role === 'administrator') ? (
+              <View style={{ flexDirection: 'row', marginTop: 8 }}>
+                <TouchableOpacity onPress={async () => { const res = await respondToProposal(p.id, 'accept'); if (res) Alert.alert('Accepted'); }} style={{ marginRight: 8, padding: 8, backgroundColor: '#10B981', borderRadius: 8 }}>
+                  <Text style={{ color: '#fff' }}>Accept</Text>
+                </TouchableOpacity>
+                <TouchableOpacity onPress={async () => { const res = await respondToProposal(p.id, 'reject'); if (res) Alert.alert('Rejected'); }} style={{ padding: 8, backgroundColor: '#ef4444', borderRadius: 8 }}>
+                  <Text style={{ color: '#fff' }}>Reject</Text>
+                </TouchableOpacity>
+              </View>
+            ) : (
+              <Text style={{ marginTop: 8, color: '#6b7280' }}>Waiting for admin response</Text>
+            )}
+          </View>
+        )) : (
+          <Text style={styles.sectionText}>No pending proposals.</Text>
+        )}
       </View>
 
       {/* BCA therapist tile (always render; show placeholder when not assigned) */}

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, TouchableOpacity, Text, Alert, StyleSheet, Switch } from 'react-native';
+import { View, TouchableOpacity, Text, Alert, StyleSheet, Switch, Modal } from 'react-native';
 import devToolsFlag from '../utils/devToolsFlag';
 import { useAuth } from '../AuthContext';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -9,6 +9,7 @@ export default function DevRoleSwitcher() {
   const { setRole, user } = useAuth();
   const [open, setOpen] = useState(false);
   const [devTools, setDevTools] = useState(true);
+  const [showLoginModal, setShowLoginModal] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -60,8 +61,18 @@ export default function DevRoleSwitcher() {
             <Text style={{ marginRight: 8 }}>Show Dev Tools</Text>
             <Switch value={devTools} onValueChange={setDevToolsPersisted} />
           </View>
+
+          <TouchableOpacity onPress={() => setShowLoginModal(true)} style={styles.menuBtn}>
+            <Text>Open Login Screen</Text>
+          </TouchableOpacity>
         </View>
       )}
+
+      <Modal visible={showLoginModal} animationType="slide" onRequestClose={() => setShowLoginModal(false)}>
+        {/* Render the existing LoginScreen in a modal for dev testing. Provide a fake navigation.replace that closes the modal. */}
+        {/** Import lazily to avoid bundling issues in production */}
+        <DevLoginWrapper onClose={() => setShowLoginModal(false)} />
+      </Modal>
 
       <TouchableOpacity style={styles.fab} onPress={() => setOpen(!open)} accessibilityLabel="Developer role switcher">
         <MaterialIcons name="developer-mode" size={20} color="#fff" />
@@ -119,3 +130,34 @@ const styles = StyleSheet.create({
     fontSize: 12,
   },
 });
+
+function DevLoginWrapper({ onClose }) {
+  // Lazy require to avoid loading login screen in production bundles
+  let LoginScreen = null;
+  try {
+    const mod = require('../../screens/LoginScreen');
+    LoginScreen = (mod && mod.default) ? mod.default : mod;
+  } catch (e) { return null; }
+
+  // Guard: ensure the required module is a valid component before attempting to render
+  if (!LoginScreen || (typeof LoginScreen !== 'function' && typeof LoginScreen !== 'object')) {
+    return (
+      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+        <Text>Login screen unavailable</Text>
+      </View>
+    );
+  }
+
+  const fakeNav = {
+    replace: (/* routeName */) => {
+      // Close the modal instead of navigating
+      try { onClose && onClose(); } catch (e) {}
+    }
+  };
+
+  return (
+    <View style={{ flex: 1 }}>
+      <LoginScreen navigation={fakeNav} />
+    </View>
+  );
+}

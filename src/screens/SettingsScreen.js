@@ -19,6 +19,7 @@ const PUSH_UPDATES_KEY = 'settings_push_updates_v1';
 const PUSH_OTHER_KEY = 'settings_push_other_v1';
 const SHOW_EMAIL_KEY = 'settings_show_email_v1';
 const SHOW_PHONE_KEY = 'settings_show_phone_v1';
+const BUSINESS_ADDR_KEY = 'business_address_v1';
 
 export default function SettingsScreen() {
   const { user, logout } = useAuth();
@@ -70,6 +71,10 @@ export default function SettingsScreen() {
         const sp = await AsyncStorage.getItem(SHOW_PHONE_KEY);
         if (se !== null) setShowEmail(se === '1');
         if (sp !== null) setShowPhone(sp === '1');
+        const bRaw = await AsyncStorage.getItem(BUSINESS_ADDR_KEY);
+        if (bRaw) {
+          try { const parsed = JSON.parse(bRaw); if (parsed && parsed.address) setBusinessAddress(parsed.address); } catch (e) {}
+        }
       } catch (e) {
         // ignore
       }
@@ -77,6 +82,30 @@ export default function SettingsScreen() {
     load();
     return () => { mounted = false; };
   }, []);
+
+  const [businessAddress, setBusinessAddress] = useState('');
+
+  async function saveBusinessAddress(obj) {
+    try {
+      await AsyncStorage.setItem(BUSINESS_ADDR_KEY, JSON.stringify(obj));
+      setBusinessAddress(obj.address || '');
+    } catch (e) {}
+  }
+
+  async function pickBusinessLocation() {
+    try {
+      const Location = require('expo-location');
+      const perm = await Location.requestForegroundPermissionsAsync();
+      if (!perm.granted) { Alert.alert('Location required', 'Please grant location permission to set business address.'); return; }
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
+      const addr = `${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`;
+      await saveBusinessAddress({ address: addr, lat: pos.coords.latitude, lng: pos.coords.longitude });
+      Alert.alert('Saved', 'Business location saved.');
+    } catch (e) {
+      console.warn('pickBusinessLocation failed', e?.message || e);
+      Alert.alert('Location failed', 'Could not get current location.');
+    }
+  }
 
   const [devToolsVisible, setDevToolsVisible] = useState(true);
   useEffect(() => {
@@ -297,6 +326,20 @@ export default function SettingsScreen() {
               <Switch value={showPhone} onValueChange={setShowPhone} />
             </View>
           </View>
+
+          {/* Admin: business address (used for arrival detection geofence) */}
+          {user && (user.role === 'admin' || user.role === 'administrator') ? (
+            <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: '#eef2f7', paddingTop: 12 }}>
+              <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8 }}>Business Address</Text>
+              <Text style={{ fontSize: 14, color: '#6b7280', marginBottom: 8 }}>Set the center's address used to detect nearby arrivals (lat,lng).</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <Text style={{ flex: 1 }}>{businessAddress || 'Not set'}</Text>
+                <TouchableOpacity onPress={pickBusinessLocation} style={{ marginLeft: 8, padding: 8, backgroundColor: '#2563eb', borderRadius: 8 }}>
+                  <Text style={{ color: '#fff' }}>Use current location</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          ) : null}
 
         </View>
         </View>

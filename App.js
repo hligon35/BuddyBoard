@@ -12,6 +12,7 @@ import UrgentMemoOverlay from './src/components/UrgentMemoOverlay';
 import BottomNav from './src/components/BottomNav';
 import DevRoleSwitcher from './src/components/DevRoleSwitcher';
 import ErrorBoundary from './src/components/ErrorBoundary';
+import ArrivalDetector from './src/components/ArrivalDetector';
 // navigation ref used by the global bottom nav
 const navigationRef = createNavigationContainerRef();
 
@@ -178,6 +179,7 @@ export default function App() {
           <BottomNav navigationRef={navigationRef} currentRoute={currentRoute} />
           <DevRoleSwitcher />
           <UrgentMemoOverlay />
+          <ArrivalDetector />
         </DataProvider>
       </AuthProvider>
       </SafeAreaProvider>
