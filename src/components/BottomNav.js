@@ -1,13 +1,18 @@
-import React from 'react';
-import { View, Text, TouchableOpacity, StyleSheet } from 'react-native';
+import React, { useEffect, useRef } from 'react';
+import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../AuthContext';
+import { useData } from '../DataContext';
 
 export default function BottomNav({ navigationRef, currentRoute }) {
   const { user } = useAuth();
+  const { urgentMemos = [] } = useData();
   const role = (user && user.role) ? (user.role || '').toString().toLowerCase() : 'parent';
+
+  // For parents, show any pending urgent alerts they created on the MyChild tab
+  const parentPendingCount = (user && role === 'parent') ? (urgentMemos || []).filter((m) => (m.proposerId === user.id) && (!m.status || m.status === 'pending')).length : 0;
 
   // define tabs depending on role
   let tabs = [
@@ -17,9 +22,9 @@ export default function BottomNav({ navigationRef, currentRoute }) {
   if (role === 'therapist') {
     tabs.push({ key: 'Schedule', label: 'Schedule', icon: (active) => (<Ionicons name={active ? 'calendar' : 'calendar-outline'} size={22} color={active ? '#0066FF' : '#444'} />) });
   } else if (role === 'admin' || role === 'administrator') {
-    tabs.push({ key: 'Controls', label: 'Controls', icon: (active) => (<MaterialIcons name={'tune'} size={22} color={active ? '#0066FF' : '#444'} />) });
+  tabs.push({ key: 'Controls', label: 'Controls', icon: (active) => (<MaterialIcons name={'tune'} size={22} color={active ? '#0066FF' : '#444'} />), count: (urgentMemos || []).filter((m) => !m.status || m.status === 'pending').length });
   } else {
-    tabs.push({ key: 'MyChild', label: 'My Child', icon: (active) => (<MaterialCommunityIcons name={active ? 'account-child' : 'account-child-outline'} size={22} color={active ? '#0066FF' : '#444'} />) });
+    tabs.push({ key: 'MyChild', label: 'My Child', icon: (active) => (<MaterialCommunityIcons name={active ? 'account-child' : 'account-child-outline'} size={22} color={active ? '#0066FF' : '#444'} />), count: parentPendingCount });
   }
   tabs.push({ key: 'Settings', label: 'Settings', icon: (active) => (<Ionicons name={active ? 'settings' : 'settings-outline'} size={22} color={active ? '#0066FF' : '#444'} />) });
   function go(name) {
@@ -28,6 +33,25 @@ export default function BottomNav({ navigationRef, currentRoute }) {
     }
   }
 
+  // animation for badges
+  const scale = useRef(new Animated.Value(1)).current;
+
+  useEffect(() => {
+    const hasAny = tabs && tabs.some((t) => t.count && t.count > 0);
+    if (hasAny) {
+      const pulse = Animated.loop(
+        Animated.sequence([
+          Animated.timing(scale, { toValue: 1.08, duration: 600, useNativeDriver: true }),
+          Animated.timing(scale, { toValue: 1.0, duration: 600, useNativeDriver: true }),
+        ])
+      );
+      pulse.start();
+      return () => pulse.stop();
+    }
+    // reset scale when no alerts
+    scale.setValue(1);
+  }, [tabs, scale]);
+
   return (
     <View style={styles.container} pointerEvents="box-none">
       <View style={styles.inner}>
@@ -35,6 +59,11 @@ export default function BottomNav({ navigationRef, currentRoute }) {
           <TouchableOpacity key={t.key} style={styles.button} onPress={() => go(t.key)}>
             {t.icon(currentRoute === t.key)}
             <Text style={[styles.label, currentRoute === t.key && styles.active]}>{t.label}</Text>
+            {t.count > 0 ? (
+              <Animated.View style={[styles.badge, { transform: [{ scale }] }]}>
+                <Text style={styles.badgeText}>{t.count}</Text>
+              </Animated.View>
+            ) : null}
           </TouchableOpacity>
         ))}
       </View>
@@ -75,4 +104,6 @@ const styles = StyleSheet.create({
     color: '#0066FF',
     fontWeight: '700',
   },
+  badge: { position: 'absolute', top: 6, right: 22, minWidth: 20, height: 20, borderRadius: 10, backgroundColor: '#ef4444', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
+  badgeText: { color: '#fff', fontWeight: '700', fontSize: 11 },
 });

@@ -23,15 +23,29 @@ import SettingsScreen from './src/screens/SettingsScreen';
 import HelpScreen from './src/screens/HelpScreen';
 import TherapistScheduleScreen from './src/screens/TherapistScheduleScreen';
 import AdminControlsScreen from './src/screens/AdminControlsScreen';
+import StudentDirectoryScreen from './src/screens/StudentDirectoryScreen';
+import FacultyDirectoryScreen from './src/screens/FacultyDirectoryScreen';
+import ParentDirectoryScreen from './src/screens/ParentDirectoryScreen';
+import ParentDetailScreen from './src/screens/ParentDetailScreen';
+import ChildDetailScreen from './src/screens/ChildDetailScreen';
+import FacultyDetailScreen from './src/screens/FacultyDetailScreen';
+import ManagePermissionsScreen from './src/screens/ManagePermissionsScreen';
+import PrivacyDefaultsScreen from './src/screens/PrivacyDefaultsScreen';
+import ManageUsersScreen from './src/screens/ManageUsersScreen';
+import ModeratePostsScreen from './src/screens/ModeratePostsScreen';
+import AdminAlertsScreen from './src/screens/AdminAlertsScreen';
+import SystemSettingsScreen from './src/screens/SystemSettingsScreen';
+import ExportDataScreen from './src/screens/ExportDataScreen';
 import { HelpButton, LogoutButton } from './src/components/TopButtons';
 import { View, Text } from 'react-native';
+import LogoTitle from './src/components/LogoTitle';
 
 const RootStack = createNativeStackNavigator();
 
 const ScheduleStackNav = createNativeStackNavigator();
 function ScheduleStack() {
   return (
-    <ScheduleStackNav.Navigator screenOptions={{ headerTitleAlign: 'center', headerLeft: () => <HelpButton />, headerRight: () => <LogoutButton /> }}>
+    <ScheduleStackNav.Navigator screenOptions={{ headerTitleAlign: 'center', headerTitle: () => <LogoTitle />, headerLeft: () => <HelpButton />, headerRight: () => <LogoutButton /> }}>
       <ScheduleStackNav.Screen name="ScheduleMain" component={TherapistScheduleScreen} options={{ title: 'Schedule' }} />
     </ScheduleStackNav.Navigator>
   );
@@ -40,8 +54,21 @@ function ScheduleStack() {
 const ControlsStackNav = createNativeStackNavigator();
 function ControlsStack() {
   return (
-    <ControlsStackNav.Navigator screenOptions={{ headerTitleAlign: 'center', headerLeft: () => <HelpButton />, headerRight: () => <LogoutButton /> }}>
-      <ControlsStackNav.Screen name="ControlsMain" component={AdminControlsScreen} options={{ title: 'Controls' }} />
+    <ControlsStackNav.Navigator screenOptions={{ headerTitleAlign: 'center', headerTitle: () => <LogoTitle />, headerLeft: () => <HelpButton />, headerRight: () => <LogoutButton /> }}>
+      <ControlsStackNav.Screen name="ControlsMain" component={AdminControlsScreen} options={{ title: 'App Controls' }} />
+      <ControlsStackNav.Screen name="StudentDirectory" component={StudentDirectoryScreen} options={{ title: 'Student Directory' }} />
+      <ControlsStackNav.Screen name="FacultyDirectory" component={FacultyDirectoryScreen} options={{ title: 'Faculty Directory' }} />
+      <ControlsStackNav.Screen name="ParentDirectory" component={ParentDirectoryScreen} options={{ title: 'Parent Directory' }} />
+      <ControlsStackNav.Screen name="ParentDetail" component={ParentDetailScreen} options={{ title: 'Parent' }} />
+      <ControlsStackNav.Screen name="ChildDetail" component={ChildDetailScreen} options={{ title: 'Student' }} />
+      <ControlsStackNav.Screen name="FacultyDetail" component={FacultyDetailScreen} options={{ title: 'Faculty' }} />
+      <ControlsStackNav.Screen name="ManagePermissions" component={ManagePermissionsScreen} options={{ title: 'Manage Permissions' }} />
+      <ControlsStackNav.Screen name="PrivacyDefaults" component={PrivacyDefaultsScreen} options={{ title: 'Profile Settings' }} />
+      <ControlsStackNav.Screen name="ManageUsers" component={ManageUsersScreen} options={{ title: 'Manage Users' }} />
+      <ControlsStackNav.Screen name="ModeratePosts" component={ModeratePostsScreen} options={{ title: 'Moderate Posts' }} />
+      <ControlsStackNav.Screen name="AdminAlerts" component={AdminAlertsScreen} options={{ title: 'Alerts' }} />
+      <ControlsStackNav.Screen name="SystemSettings" component={SystemSettingsScreen} options={{ title: 'Profile Settings' }} />
+      <ControlsStackNav.Screen name="ExportData" component={ExportDataScreen} options={{ title: 'Export Data' }} />
     </ControlsStackNav.Navigator>
   );
 }
@@ -49,7 +76,7 @@ function ControlsStack() {
 const CommunityStackNav = createNativeStackNavigator();
 function CommunityStack() {
   return (
-    <CommunityStackNav.Navigator screenOptions={{ headerTitleAlign: 'center', headerLeft: () => <HelpButton />, headerRight: () => <LogoutButton /> }}>
+    <CommunityStackNav.Navigator screenOptions={{ headerTitleAlign: 'center', headerTitle: () => <LogoTitle />, headerLeft: () => <HelpButton />, headerRight: () => <LogoutButton /> }}>
       <CommunityStackNav.Screen name="CommunityMain" component={HomeScreen} options={{ title: 'Home' }} />
       <CommunityStackNav.Screen name="PostThread" component={require('./src/screens/PostThreadScreen').default} options={{ title: 'Post' }} />
     </CommunityStackNav.Navigator>
@@ -59,7 +86,7 @@ function CommunityStack() {
 const MyChildStackNav = createNativeStackNavigator();
 function MyChildStack() {
   return (
-    <MyChildStackNav.Navigator screenOptions={{ headerTitleAlign: 'center', headerLeft: () => <HelpButton />, headerRight: () => <LogoutButton /> }}>
+    <MyChildStackNav.Navigator screenOptions={{ headerTitleAlign: 'center', headerTitle: () => <LogoTitle />, headerLeft: () => <HelpButton />, headerRight: () => <LogoutButton /> }}>
       <MyChildStackNav.Screen name="MyChildMain" component={require('./src/screens/MyChildScreen').default} options={{ title: 'My Child' }} />
     </MyChildStackNav.Navigator>
   );
@@ -68,7 +95,7 @@ function MyChildStack() {
 const ChatsStackNav = createNativeStackNavigator();
 function ChatsStack() {
   return (
-    <ChatsStackNav.Navigator screenOptions={{ headerTitleAlign: 'center', headerLeft: () => <HelpButton />, headerRight: () => <LogoutButton /> }}>
+    <ChatsStackNav.Navigator screenOptions={{ headerTitleAlign: 'center', headerTitle: () => <LogoTitle />, headerLeft: () => <HelpButton />, headerRight: () => <LogoutButton /> }}>
       <ChatsStackNav.Screen name="ChatsList" component={ChatsScreen} options={{ title: 'Chats' }} />
       <ChatsStackNav.Screen name="ChatThread" component={ChatThreadScreen} options={{ title: 'Thread' }} />
     </ChatsStackNav.Navigator>
@@ -78,8 +105,8 @@ function ChatsStack() {
 const SettingsStackNav = createNativeStackNavigator();
 function SettingsStack() {
   return (
-    <SettingsStackNav.Navigator screenOptions={{ headerTitleAlign: 'center', headerLeft: () => <HelpButton />, headerRight: () => <LogoutButton /> }}>
-      <SettingsStackNav.Screen name="SettingsMain" component={SettingsScreen} options={{ title: 'Settings' }} />
+    <SettingsStackNav.Navigator screenOptions={{ headerTitleAlign: 'center', headerTitle: () => <LogoTitle />, headerLeft: () => <HelpButton />, headerRight: () => <LogoutButton /> }}>
+      <SettingsStackNav.Screen name="SettingsMain" component={SettingsScreen} options={{ title: 'Profile Settings' }} />
       <SettingsStackNav.Screen name="Help" component={HelpScreen} options={{ title: 'Help' }} />
     </SettingsStackNav.Navigator>
   );

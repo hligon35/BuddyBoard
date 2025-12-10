@@ -142,7 +142,7 @@ export default function ChatsScreen({ navigation }) {
   }
 
   return (
-    <ScreenWrapper>
+    <ScreenWrapper bannerShowBack={false}>
       <CenteredContainer>
         {(__DEV__ && devToolsVisible) ? (
           <View style={{ padding: 12 }}>

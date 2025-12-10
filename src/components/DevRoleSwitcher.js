@@ -1,7 +1,9 @@
 import React, { useState, useEffect } from 'react';
 import { View, TouchableOpacity, Text, Alert, StyleSheet, Switch, Modal } from 'react-native';
 import devToolsFlag from '../utils/devToolsFlag';
+import devDirectoryFlag from '../utils/devDirectoryFlag';
 import { useAuth } from '../AuthContext';
+import { useData } from '../DataContext';
 import { MaterialIcons } from '@expo/vector-icons';
 
 export default function DevRoleSwitcher() {
@@ -10,6 +12,7 @@ export default function DevRoleSwitcher() {
   const [open, setOpen] = useState(false);
   const [devTools, setDevTools] = useState(true);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showDirectory, setShowDirectory] = useState(false);
 
   useEffect(() => {
     let mounted = true;
@@ -24,9 +27,28 @@ export default function DevRoleSwitcher() {
     return () => { mounted = false; unsub(); };
   }, []);
 
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const v = await devDirectoryFlag.get();
+        if (!mounted) return;
+        setShowDirectory(Boolean(v));
+      } catch (e) {}
+    })();
+    const unsub = devDirectoryFlag.addListener((v) => { if (mounted) setShowDirectory(Boolean(v)); });
+    return () => { mounted = false; unsub(); };
+  }, []);
+
   const setDevToolsPersisted = async (val) => {
     try {
       await devToolsFlag.set(val);
+    } catch (e) {}
+  };
+
+  const setShowDirectoryPersisted = async (val) => {
+    try {
+      await devDirectoryFlag.set(val);
     } catch (e) {}
   };
 
@@ -36,6 +58,28 @@ export default function DevRoleSwitcher() {
     setOpen(false);
     Alert.alert('Role changed', `Switched to ${r}`);
   };
+
+  const { urgentMemos, respondToUrgentMemo, fetchAndSync } = useData();
+
+  async function simulateResponse(action) {
+    try {
+      const pending = (urgentMemos || []).find((m) => !m.status || m.status === 'pending');
+      if (!pending) {
+        Alert.alert('No pending alerts');
+        return;
+      }
+      const ok = await respondToUrgentMemo(pending.id, action);
+      if (ok) {
+        Alert.alert('Simulated', `${action}ed alert for ${pending.childId}`);
+        try { await fetchAndSync(); } catch (e) {}
+      } else {
+        Alert.alert('Failed', 'Could not simulate response');
+      }
+    } catch (e) {
+      console.warn('simulateResponse failed', e?.message || e);
+      Alert.alert('Error', 'Simulation failed');
+    }
+  }
 
   return (
     <View pointerEvents="box-none" style={styles.container}>
@@ -61,9 +105,20 @@ export default function DevRoleSwitcher() {
             <Text style={{ marginRight: 8 }}>Show Dev Tools</Text>
             <Switch value={devTools} onValueChange={setDevToolsPersisted} />
           </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 6, marginTop:6 }}>
+            <Text style={{ marginRight: 8 }}>Show Directory (seed)</Text>
+            <Switch value={showDirectory} onValueChange={setShowDirectoryPersisted} />
+          </View>
 
           <TouchableOpacity onPress={() => setShowLoginModal(true)} style={styles.menuBtn}>
             <Text>Open Login Screen</Text>
+          </TouchableOpacity>
+          <View style={{ height: 1, backgroundColor: '#f3f4f6', marginVertical: 6 }} />
+          <TouchableOpacity onPress={() => simulateResponse('accepted')} style={styles.menuBtn}>
+            <Text>Simulate Accept Oldest Alert</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => simulateResponse('denied')} style={styles.menuBtn}>
+            <Text>Simulate Deny Oldest Alert</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -135,7 +190,7 @@ function DevLoginWrapper({ onClose }) {
   // Lazy require to avoid loading login screen in production bundles
   let LoginScreen = null;
   try {
-    const mod = require('../../screens/LoginScreen');
+    const mod = require('../screens/LoginScreen');
     LoginScreen = (mod && mod.default) ? mod.default : mod;
   } catch (e) { return null; }
 

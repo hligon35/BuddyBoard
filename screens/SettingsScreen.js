@@ -7,7 +7,8 @@ export default function SettingsScreen(){
   return (
     <SafeAreaView style={[styles.container, { paddingBottom: insets.bottom + 80 }]}>
       <Text style={styles.title}>Settings</Text>
-      <Text>Profile • Notifications • Security</Text>
+      <Text>Notifications • Profile • Security</Text>
+      <View style={{ height: 72, marginTop: 12 }} />
     </SafeAreaView>
   );
 }

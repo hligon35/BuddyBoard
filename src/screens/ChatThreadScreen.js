@@ -3,6 +3,7 @@ import { View, Text, FlatList, TextInput, Button, RefreshControl } from 'react-n
 // removed SafeAreaView usage to avoid shifting content down
 import { useData } from '../DataContext';
 import { useAuth } from '../AuthContext';
+import { ScreenWrapper } from '../components/ScreenWrapper';
 
 export default function ChatThreadScreen({ route }) {
   const { threadId } = route.params || {};
@@ -47,7 +48,7 @@ export default function ChatThreadScreen({ route }) {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#fff' }}>
+    <ScreenWrapper style={{ flex: 1, backgroundColor: '#fff' }}>
       <FlatList
         data={threadMessages}
         keyExtractor={(i) => i.id}
@@ -81,6 +82,6 @@ export default function ChatThreadScreen({ route }) {
         <TextInput value={text} onChangeText={setText} placeholder="Message" style={{ flex: 1, padding: 8, borderWidth: 1, borderColor: '#ddd', marginRight: 8 }} />
         <Button title="Send" onPress={handleSend} />
       </View>
-    </View>
+    </ScreenWrapper>
   );
 }

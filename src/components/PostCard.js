@@ -75,21 +75,13 @@ export default function PostCard({ post, onLike, onComment, onShare, onAvatarPre
           <MaterialIcons name="comment" size={18} color="#444" />
           <Text style={pcStyles.actionText}> {(post.comments || []).length}</Text>
         </Pressable>
-        <Pressable
-          onPress={() => onShare && onShare(post)}
-          android_ripple={{ color: '#e6eef6' }}
-          style={({ pressed }) => [pcStyles.actionBtn, pressed && pcStyles.actionBtnPressed]}
-        >
-          <Ionicons name="share-social-outline" size={18} color="#444" />
-          <Text style={pcStyles.actionText}> {post.shares || 0}</Text>
-        </Pressable>
       </View>
     </View>
   );
 }
 
 const pcStyles = StyleSheet.create({
-  card: { padding: 12, borderBottomWidth: 1, borderBottomColor: '#e5e7eb', backgroundColor: '#fff' },
+  card: { marginTop: 12, padding: 12, borderBottomWidth: 1, borderBottomColor: '#e5e7eb', backgroundColor: '#fff' },
   header: { flexDirection: 'row', alignItems: 'center', marginBottom: 8 },
   avatar: { width: 50, height: 50, borderRadius: 25, marginRight: 10 },
   author: { fontWeight: '700' },
@@ -100,7 +92,7 @@ const pcStyles = StyleSheet.create({
   preview: { padding: 8, borderWidth: 1, borderColor: '#e6e7ea', backgroundColor: '#f8fafc', marginTop: 8 },
   previewTitle: { fontWeight: '700' },
   previewDesc: { fontSize: 12, color: '#6b7280' },
-  actions: { flexDirection: 'row', marginTop: 10, justifyContent: 'space-around' },
+  actions: { flexDirection: 'row', marginTop: 10, justifyContent: 'space-evenly' },
   actionBtn: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, backgroundColor: '#fff', marginHorizontal: 6, shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.06, shadowRadius: 1.5, elevation: 2 },
   actionText: { color: '#374151', marginLeft: 4 },
   actionBtnPressed: {

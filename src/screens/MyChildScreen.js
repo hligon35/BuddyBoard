@@ -1,26 +1,32 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, Image, StyleSheet, ScrollView, TouchableOpacity, Linking, Modal, TouchableWithoutFeedback, Alert } from 'react-native';
+import { View, Text, Image, StyleSheet, ScrollView, TouchableOpacity, Linking, Modal, TouchableWithoutFeedback, Alert, Platform } from 'react-native';
+import DateTimePicker from '@react-native-community/datetimepicker';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useData } from '../DataContext';
 import { useAuth } from '../AuthContext';
+import { ScreenWrapper } from '../components/ScreenWrapper';
 
 export default function MyChildScreen() {
-  const { children, resetChildrenToDemo } = useData();
-  const childList = (Array.isArray(children) && children.length) ? children : [{ name: 'Sam L.', age: '4 yrs', room: 'Sunflowers', avatar: 'https://picsum.photos/seed/child1/200/200', carePlan: '', notes: '' }];
+  const { children, resetChildrenToDemo, urgentMemos, sendTimeUpdateAlert } = useData();
+  // Only use real children from context; do not auto-seed a demo child here — the demo loader button remains.
+  const childList = (Array.isArray(children) && children.length) ? children : [];
   const [selectedIndex, setSelectedIndex] = useState(0);
   useEffect(() => {
     if (selectedIndex >= childList.length) setSelectedIndex(0);
   }, [childList.length]);
   // If there are multiple children, default to showing the second child now
   useEffect(() => {
-    if (childList.length > 1) setSelectedIndex(1);
+    if (childList.length > 1 && selectedIndex === 0) setSelectedIndex(1);
   }, [childList.length]);
-  const child = childList[selectedIndex];
+  const child = childList[selectedIndex] || { id: 'no-child', name: 'No children added', age: '', room: '', avatar: 'https://i.pravatar.cc/120?u=empty', carePlan: '', notes: '' };
 
   const { timeChangeProposals, proposeTimeChange, respondToProposal } = useData();
   const { user } = useAuth();
   const [showProposeModal, setShowProposeModal] = useState(false);
   const [proposeType, setProposeType] = useState('pickup');
+  const [useExactDate, setUseExactDate] = useState(false);
+  const [exactDate, setExactDate] = useState(new Date());
+  const [showPicker, setShowPicker] = useState(false);
 
   function formatISO(iso) {
     try {
@@ -32,11 +38,19 @@ export default function MyChildScreen() {
 
   const childProposals = (timeChangeProposals || []).filter((p) => p.childId === child.id);
   const [proposePreset, setProposePreset] = useState('10m_later');
+  const [showTimeAlertModal, setShowTimeAlertModal] = useState(false);
+  const [timeAlertType, setTimeAlertType] = useState('pickup');
+  const [timeAlertDate, setTimeAlertDate] = useState(new Date());
 
   async function submitProposal(offsetMillis) {
     try {
-      const base = new Date(child.pickupTimeISO || child.dropoffTimeISO || Date.now());
-      const proposed = new Date(base.getTime() + offsetMillis).toISOString();
+      let proposedISO;
+      if (useExactDate) {
+        proposedISO = new Date(exactDate).toISOString();
+      } else {
+        const base = new Date(child.pickupTimeISO || child.dropoffTimeISO || Date.now());
+        proposedISO = new Date(base.getTime() + offsetMillis).toISOString();
+      }
       const note = `${proposeType} change via app`; 
       const created = await proposeTimeChange(child.id, proposeType, proposed, note);
       if (created) {
@@ -74,19 +88,21 @@ export default function MyChildScreen() {
   };
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#f3f4f6' }}>
+    <ScreenWrapper bannerShowBack={false} style={{ flex: 1, backgroundColor: '#f3f4f6' }}>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12 }}>
-      {/* Child selector */}
-      <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }}>
-        {childList.map((c, i) => (
-          <TouchableOpacity key={c.id || i} onPress={() => setSelectedIndex(i)} style={[styles.selectorItem, selectedIndex === i && styles.selectorActive]}>
-            <Image source={{ uri: c.avatar }} style={styles.selectorAvatar} />
-            <Text style={styles.selectorName}>{shortName(c.name, 12)}</Text>
-          </TouchableOpacity>
-        ))}
-      </ScrollView>
-      <TouchableOpacity onPress={() => { resetChildrenToDemo(); setSelectedIndex(1); }} style={styles.demoButton}>
-        <Text style={{ color: '#fff', fontWeight: '700' }}>Load demo children</Text>
+      {/* Child selector - only show if user has multiple children */}
+      {childList.length > 1 ? (
+        <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 12 }} pagingEnabled={false}>
+          {childList.map((c, i) => (
+            <TouchableOpacity key={c.id || i} onPress={() => setSelectedIndex(i)} style={[styles.selectorItem, selectedIndex === i && styles.selectorActive]}>
+              <Image source={{ uri: c.avatar }} style={styles.selectorAvatar} />
+              <Text style={styles.selectorName}>{shortName(c.name, 12)}</Text>
+            </TouchableOpacity>
+          ))}
+        </ScrollView>
+      ) : null}
+      <TouchableOpacity onPress={() => { resetChildrenToDemo(); setSelectedIndex(0); }} style={styles.demoButton}>
+        <Text style={{ color: '#fff', fontWeight: '700' }}>Clear children (use dev seed to populate)</Text>
       </TouchableOpacity>
       
       <View style={styles.card}>
@@ -112,6 +128,30 @@ export default function MyChildScreen() {
                     <TouchableOpacity onPress={() => submitProposal(60 * 60 * 1000)} style={{ padding: 8, backgroundColor: '#e5e7eb', borderRadius: 8 }}><Text>+1h</Text></TouchableOpacity>
                     <TouchableOpacity onPress={() => submitProposal(-15 * 60 * 1000)} style={{ padding: 8, backgroundColor: '#e5e7eb', borderRadius: 8 }}><Text>-15m</Text></TouchableOpacity>
                   </View>
+                    <View style={{ marginBottom: 8 }}>
+                      <TouchableOpacity onPress={() => { setUseExactDate(!useExactDate); if (Platform.OS === 'android' && !showPicker && !useExactDate) setShowPicker(true); }} style={{ padding: 8, backgroundColor: useExactDate ? '#c7f9cc' : '#e5e7eb', borderRadius: 8 }}>
+                        <Text>{useExactDate ? 'Using exact date/time' : 'Choose exact date/time'}</Text>
+                      </TouchableOpacity>
+                      {useExactDate && (
+                        <View style={{ marginTop: 8 }}>
+                          <Text style={{ marginBottom: 6 }}>Selected: {new Date(exactDate).toLocaleString()}</Text>
+                          {showPicker && (
+                            <DateTimePicker
+                              value={exactDate}
+                              mode="datetime"
+                              display={Platform.OS === 'android' ? 'default' : 'inline'}
+                              onChange={(e, d) => {
+                                if (d) setExactDate(d);
+                                if (Platform.OS === 'android') setShowPicker(false);
+                              }}
+                            />
+                          )}
+                          {!showPicker && Platform.OS === 'ios' ? (
+                            <DateTimePicker value={exactDate} mode="datetime" display="inline" onChange={(e, d) => d && setExactDate(d)} />
+                          ) : null}
+                        </View>
+                      )}
+                    </View>
                   <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
                     <TouchableOpacity onPress={() => setShowProposeModal(false)} style={{ marginLeft: 8, padding: 8 }}><Text>Cancel</Text></TouchableOpacity>
                   </View>
@@ -122,19 +162,84 @@ export default function MyChildScreen() {
         </Modal>
       )}
 
-      <View style={[styles.section, { marginTop: 12 }]}>
+      <View style={[styles.section, { marginTop: 12 }]}> 
         <Text style={styles.sectionTitle}>Schedule</Text>
-        <Text style={styles.sectionText}>Drop-off: {formatISO(child.dropoffTimeISO)}</Text>
-        <Text style={styles.sectionText}>Pick-up: {formatISO(child.pickupTimeISO)}</Text>
-        <View style={{ flexDirection: 'row', marginTop: 8 }}>
-          <TouchableOpacity onPress={() => { setProposeType('pickup'); setShowProposeModal(true); }} style={{ marginRight: 8, padding: 10, backgroundColor: '#2563eb', borderRadius: 8 }}>
-            <Text style={{ color: '#fff' }}>Propose Pickup Change</Text>
+        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
+          {/* Drop-off container */}
+          <TouchableOpacity onPress={() => { setTimeAlertType('dropoff'); setTimeAlertDate(new Date(child.dropoffTimeISO || Date.now())); setShowTimeAlertModal(true); }} style={styles.scheduleTile}>
+            <Text style={styles.scheduleLabel}>Drop-off</Text>
+            <View style={styles.scheduleDivider} />
+            <Text style={styles.scheduleTime}>{formatISO(child.dropoffTimeISO)}</Text>
+            {/* status indicator */}
+            {(() => {
+              const memo = (urgentMemos || []).find((m) => m.childId === child.id && m.type === 'time_update' && m.updateType === 'dropoff');
+              if (!memo) return null;
+              const color = memo.status === 'accepted' ? '#10B981' : memo.status === 'denied' ? '#ef4444' : '#F59E0B';
+              return <View style={[styles.statusDot, { backgroundColor: color }]} />;
+            })()}
+            {(() => {
+              const memo = (urgentMemos || []).find((m) => m.childId === child.id && m.type === 'time_update' && m.updateType === 'dropoff');
+              if (memo && memo.status === 'denied') {
+                return <Text style={styles.callBanner}>Please call</Text>;
+              }
+              return null;
+            })()}
           </TouchableOpacity>
-          <TouchableOpacity onPress={() => { setProposeType('dropoff'); setShowProposeModal(true); }} style={{ padding: 10, backgroundColor: '#f59e0b', borderRadius: 8 }}>
-            <Text style={{ color: '#fff' }}>Propose Drop-off Change</Text>
+
+          {/* Pick-up container */}
+          <TouchableOpacity onPress={() => { setTimeAlertType('pickup'); setTimeAlertDate(new Date(child.pickupTimeISO || Date.now())); setShowTimeAlertModal(true); }} style={styles.scheduleTile}>
+            <Text style={styles.scheduleLabel}>Pick-up</Text>
+            <View style={styles.scheduleDivider} />
+            <Text style={styles.scheduleTime}>{formatISO(child.pickupTimeISO)}</Text>
+            {(() => {
+              const memo = (urgentMemos || []).find((m) => m.childId === child.id && m.type === 'time_update' && m.updateType === 'pickup');
+              if (!memo) return null;
+              const color = memo.status === 'accepted' ? '#10B981' : memo.status === 'denied' ? '#ef4444' : '#F59E0B';
+              return <View style={[styles.statusDot, { backgroundColor: color }]} />;
+            })()}
+            {(() => {
+              const memo = (urgentMemos || []).find((m) => m.childId === child.id && m.type === 'time_update' && m.updateType === 'pickup');
+              if (memo && memo.status === 'denied') {
+                return <Text style={styles.callBanner}>Please call</Text>;
+              }
+              return null;
+            })()}
           </TouchableOpacity>
         </View>
       </View>
+
+      {/* Time alert modal */}
+      {showTimeAlertModal && (
+        <Modal transparent visible animationType="fade">
+          <TouchableWithoutFeedback onPress={() => setShowTimeAlertModal(false)}>
+            <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', justifyContent: 'center', alignItems: 'center' }}>
+              <TouchableWithoutFeedback>
+                <View style={{ width: '90%', backgroundColor: '#fff', padding: 12, borderRadius: 8 }}>
+                  <Text style={{ fontWeight: '700', marginBottom: 8 }}>Send {timeAlertType === 'pickup' ? 'Pickup' : 'Drop-off'} Time Update</Text>
+                  <Text style={{ marginBottom: 8 }}>Select the updated time to send as an urgent alert to admin.</Text>
+                  <View style={{ marginBottom: 8 }}>
+                    <Text style={{ marginBottom: 6 }}>Selected: {new Date(timeAlertDate).toLocaleString()}</Text>
+                    <DateTimePicker value={timeAlertDate} mode="datetime" display={Platform.OS === 'android' ? 'default' : 'inline'} onChange={(e, d) => d && setTimeAlertDate(d)} />
+                  </View>
+                  <View style={{ flexDirection: 'row', justifyContent: 'flex-end' }}>
+                    <TouchableOpacity onPress={() => setShowTimeAlertModal(false)} style={{ marginRight: 8, padding: 8 }}><Text>Cancel</Text></TouchableOpacity>
+                    <TouchableOpacity onPress={async () => {
+                      try {
+                        await sendTimeUpdateAlert(child.id, timeAlertType, new Date(timeAlertDate).toISOString(), `Requested by ${user?.name || 'Parent'}`);
+                        Alert.alert('Sent', 'Your time update has been sent as an urgent alert to administration.');
+                        setShowTimeAlertModal(false);
+                      } catch (e) {
+                        console.warn('sendTimeUpdateAlert failed', e?.message || e);
+                        Alert.alert('Failed', 'Could not send alert.');
+                      }
+                    }} style={{ padding: 8, backgroundColor: '#2563eb', borderRadius: 8 }}><Text style={{ color: '#fff' }}>Send</Text></TouchableOpacity>
+                  </View>
+                </View>
+              </TouchableWithoutFeedback>
+            </View>
+          </TouchableWithoutFeedback>
+        </Modal>
+      )}
 
       {/* Proposals list */}
       <View style={styles.section}>
@@ -263,7 +368,7 @@ export default function MyChildScreen() {
         <Text style={styles.sectionText}>{child.notes || 'No notes available.'}</Text>
       </View>
       </ScrollView>
-    </View>
+    </ScreenWrapper>
   );
 }
 
@@ -275,6 +380,12 @@ const styles = StyleSheet.create({
   section: { marginTop: 12, backgroundColor: '#fff', padding: 12, borderRadius: 8 },
   sectionTitle: { fontWeight: '700', marginBottom: 6 },
   sectionText: { color: '#374151' },
+  scheduleTile: { flex: 1, backgroundColor: '#fff', padding: 12, marginHorizontal: 6, borderRadius: 8, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  scheduleLabel: { fontWeight: '700', marginBottom: 6 },
+  scheduleDivider: { height: 1, width: '60%', backgroundColor: '#e6e7ea', marginVertical: 6 },
+  scheduleTime: { color: '#374151', textAlign: 'center' },
+  statusDot: { width: 12, height: 12, borderRadius: 6, position: 'absolute', top: 8, right: 8 },
+  callBanner: { marginTop: 8, color: '#b91c1c', fontWeight: '700' },
   row: { flexDirection: 'row', marginTop: 12 },
   therapistBlock: { flex: 1, backgroundColor: '#fff', padding: 10, borderRadius: 8 },
   therapistTitle: { fontWeight: '700', marginBottom: 8 },

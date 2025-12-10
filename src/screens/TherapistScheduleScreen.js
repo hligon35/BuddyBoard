@@ -1,7 +1,9 @@
 import React, { useMemo } from 'react';
 import { View, Text, ScrollView, StyleSheet } from 'react-native';
+import { ScreenWrapper } from '../components/ScreenWrapper';
 import { useData } from '../DataContext';
 import { useAuth } from '../AuthContext';
+// header provided by ScreenWrapper
 
 export default function TherapistScheduleScreen() {
   const { children } = useData();
@@ -22,9 +24,8 @@ export default function TherapistScheduleScreen() {
   }, [assignedChildren]);
 
   return (
-    <View style={styles.container}>
+    <ScreenWrapper bannerShowBack={false} style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.title}>My Pod</Text>
         <Text style={styles.paragraph}>Assigned children ({assignedChildren.length})</Text>
 
         {(assignedChildren || []).map(c => (
@@ -44,7 +45,7 @@ export default function TherapistScheduleScreen() {
 
         <View style={{ height: 32 }} />
       </ScrollView>
-    </View>
+    </ScreenWrapper>
   );
 }
 

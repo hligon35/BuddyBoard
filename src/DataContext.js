@@ -3,6 +3,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Api from './Api';
 import { Share } from 'react-native';
 import { useAuth } from './AuthContext';
+import devDirectoryFlag from './utils/devDirectoryFlag';
+import { seededParents as fileParents, seededTherapists as fileTherapists, seededChildrenWithParents as fileChildren } from './seed/directorySeed_v2';
 
 const DataContext = createContext(null);
 
@@ -16,183 +18,78 @@ const MEMOS_KEY = 'bbs_memos_v1';
 const ARCHIVED_KEY = 'bbs_archived_threads_v1';
 const CHILDREN_KEY = 'bbs_children_v1';
 
-// Demo posts for local development / demo mode
+// Demo posts for local development — authored by seeded therapists and parents only
 const now = Date.now();
 const demoPosts = [
   {
     id: 'demo-1',
-    author: { id: 'u1', name: 'Director Bennett', avatar: 'https://i.pravatar.cc/100?img=65' },
-    title: 'Picture Day for Little Sprouts',
-    body: 'Picture day is this Tuesday — please send your child in their favorite outfit and arrive 5 minutes early.',
-    image: 'https://picsum.photos/seed/preschool1/800/450',
-    likes: 18,
-    comments: [{ id: 'c1', author: { name: 'Ms. Lopez' }, body: 'Will siblings be photographed together?' }],
-    shares: 2,
-    createdAt: new Date(now - 1000 * 60 * 60 * 2).toISOString(), // 2 hours ago
-  },
-  {
-    id: 'demo-2',
-    author: { id: 'u2', name: 'Ms. Green (Lead Teacher)', avatar: 'https://i.pravatar.cc/100?img=22' },
-    title: 'Parent-Teacher Playdate',
-    body: 'Join us Friday for an informal playdate — bring a snack to share and enjoy circle time with your child.',
-    image: 'https://picsum.photos/seed/preschool2/800/450',
-    likes: 72,
-    comments: [{ id: 'c2', author: { name: 'A. Carter' }, body: 'Can we bring younger siblings too?' }],
-    shares: 9,
-    createdAt: new Date(now - 1000 * 60 * 60 * 24 * 4).toISOString(), // 4 days ago
-  },
-  {
-    id: 'demo-3',
-    author: { id: 'u3', name: 'Ms. Patel (Assistant)', avatar: 'https://i.pravatar.cc/100?img=28' },
-    title: 'Free Storytime',
-    body: 'Weekly storytime in the reading corner every Wednesday at 10:00 AM. All families welcome!',
+    author: fileTherapists && fileTherapists[0] ? { id: fileTherapists[0].id, name: fileTherapists[0].name, avatar: fileTherapists[0].avatar } : null,
+    title: 'Communication Board Intro',
+    body: 'We introduced a communication board today — please review the attached tips for home use.',
+    image: 'https://picsum.photos/seed/commboard/800/450',
     likes: 12,
     comments: [],
     shares: 1,
-    createdAt: new Date(now - 1000 * 60 * 30).toISOString(), // 30 minutes ago
+    createdAt: new Date(now - 1000 * 60 * 60 * 2).toISOString(),
   },
   {
-    id: 'demo-4',
-    author: { id: 'u4', name: 'Art Teacher Maya', avatar: 'https://i.pravatar.cc/100?img=18' },
-    title: 'Craft Fair Submissions',
-    body: 'We are collecting artwork for the preschool craft fair — bring pieces to the classroom by Monday.',
-    image: 'https://picsum.photos/seed/preschool3/800/450',
-    likes: 31,
-    comments: [{ id: 'c3', author: { name: 'Lena M.' }, body: 'Do you accept painted rocks?' }],
-    shares: 4,
-    createdAt: new Date(now - 1000 * 60 * 60 * 6).toISOString(), // 6 hours ago
-  },
-  {
-    id: 'demo-5',
-    author: { id: 'u5', name: 'Nurse Allison', avatar: 'https://i.pravatar.cc/100?img=30' },
-    title: 'Health Reminder',
-    body: 'Reminder to update your child’s immunization records. Please stop by the office if you need assistance.',
-    likes: 14,
-    comments: [],
-    shares: 1,
-    createdAt: new Date(now - 1000 * 60 * 60 * 24).toISOString(), // 1 day ago
-  },
-  {
-    id: 'demo-6',
-    author: { id: 'u6', name: 'Music Teacher Sam', avatar: 'https://i.pravatar.cc/100?img=3' },
-    title: 'Sing-Along Photos',
-    body: 'Check out our sing-along photos from music class — smiling faces all around!',
-    image: 'https://picsum.photos/seed/preschool4/800/450',
-    likes: 41,
-    comments: [{ id: 'c4', author: { name: 'Maya' }, body: 'The kids had so much fun.' }],
-    shares: 5,
-    createdAt: new Date(now - 1000 * 60 * 60 * 48).toISOString(), // 2 days ago
-  },
-  {
-    id: 'demo-7',
-    author: { id: 'u7', name: 'Nutrition Services', avatar: 'https://i.pravatar.cc/100?img=25' },
-    title: 'Snack Menu Update',
-    body: 'This week’s snack menu includes fresh fruit and whole-grain crackers. Let us know about allergies.',
-    image: 'https://picsum.photos/seed/preschool5/800/450',
-    likes: 27,
+    id: 'demo-2',
+    author: fileParents && fileParents[0] ? { id: fileParents[0].id, name: `${fileParents[0].firstName} ${fileParents[0].lastName}`, avatar: fileParents[0].avatar } : null,
+    title: 'Playdate Friday',
+    body: 'Would anyone like to join a playdate at the park this Friday?',
+    image: 'https://picsum.photos/seed/playdate/800/450',
+    likes: 30,
     comments: [],
     shares: 3,
-    createdAt: new Date(now - 1000 * 60 * 15).toISOString(), // 15 minutes ago
+    createdAt: new Date(now - 1000 * 60 * 60 * 24).toISOString(),
   },
   {
-    id: 'demo-8',
-    author: { id: 'u8', name: 'Library Corner', avatar: 'https://i.pravatar.cc/100?img=7' },
-    title: 'New Board Books',
-    body: 'New board books arrived — stop by the library corner to check them out with your little one.',
-    likes: 9,
+    id: 'demo-3',
+    author: fileTherapists && fileTherapists[2] ? { id: fileTherapists[2].id, name: fileTherapists[2].name, avatar: fileTherapists[2].avatar } : null,
+    title: 'Weekly Progress Update',
+    body: 'Great progress this week on independent dressing — keep up the great work at home!',
+    likes: 8,
     comments: [],
     shares: 0,
-    createdAt: new Date(now - 1000 * 60 * 60 * 3).toISOString(), // 3 hours ago
-  },
-  {
-    id: 'demo-9',
-    author: { id: 'u9', name: 'Parent Volunteers', avatar: 'https://i.pravatar.cc/100?img=45' },
-    title: 'Volunteer Sign-ups',
-    body: 'We are signing up parents to help with outdoor play supervision this month — please sign up if available.',
-    image: 'https://picsum.photos/seed/preschool6/800/450',
-    likes: 36,
-    comments: [{ id: 'c5', author: { name: 'Aaron' }, body: 'I can help on Thursdays.' }],
-    shares: 6,
-    createdAt: new Date(now - 1000 * 60 * 60 * 24 * 7).toISOString(), // 7 days ago
-  },
-  {
-    id: 'demo-10',
-    author: { id: 'u10', name: 'School Board', avatar: 'https://i.pravatar.cc/100?img=52' },
-    title: 'Morning Drop-off Poll',
-    body: 'Quick poll for parents: Would you prefer a 15-minute staggered drop-off to reduce congestion?',
-    likes: 21,
-    comments: [],
-    shares: 2,
-    createdAt: new Date(now - 1000 * 60 * 60 * 10).toISOString(), // 10 hours ago
+    createdAt: new Date(now - 1000 * 60 * 30).toISOString(),
   },
 ];
 
-// Demo chat messages (parents <> ABA therapists / administration)
+// Demo chat messages (parents <> therapists)
 const demoMessages = [
-  // Thread A: User <-> Parent (you <-> Olivia)
-  { id: 'm-up-1', threadId: 't-user-parent', body: 'Hey Olivia — just checking how Sam did today.', createdAt: new Date(now - 1000 * 60 * 60 * 6).toISOString(), sender: { id: 'you', name: 'You (Parent)' }, to: [{ id: 'parent-1', name: 'Olivia (Parent)' }] },
-  { id: 'm-up-2', threadId: 't-user-parent', body: 'He was great — lots of progress on dressing!', createdAt: new Date(now - 1000 * 60 * 60 * 5).toISOString(), sender: { id: 'parent-1', name: 'Olivia (Parent)' }, to: [{ id: 'you', name: 'You (Parent)' }] },
-
-  // Thread B: User <-> Therapist AM (you <-> Therapist Maya)
-  { id: 'm-utam-1', threadId: 't-user-therapist-am', body: 'Morning Maya — can we try the new communication board tomorrow?', createdAt: new Date(now - 1000 * 60 * 60 * 20).toISOString(), sender: { id: 'you', name: 'You (Parent)' }, to: [{ id: 'ther-1', name: 'Therapist Maya' }] },
-  { id: 'm-utam-2', threadId: 't-user-therapist-am', body: 'Sounds good — I will introduce it during circle time.', createdAt: new Date(now - 1000 * 60 * 60 * 19).toISOString(), sender: { id: 'ther-1', name: 'Therapist Maya' }, to: [{ id: 'you', name: 'You (Parent)' }] },
-
-  // Thread C: Parent <-> Therapist PM (Liam <-> Therapist Sam)
-  // Thread C: User <-> Therapist PM (you <-> Therapist Sam)
-  { id: 'm-utpm-1', threadId: 't-user-therapist-pm', body: 'Hi Sam — can we move Emma\'s speech session to later?', createdAt: new Date(now - 1000 * 60 * 60 * 10).toISOString(), sender: { id: 'you', name: 'You (Parent)' }, to: [{ id: 'ther-2', name: 'Therapist Sam' }] },
-  { id: 'm-utpm-2', threadId: 't-user-therapist-pm', body: 'Yes — 3:30 PM works for me.', createdAt: new Date(now - 1000 * 60 * 60 * 9).toISOString(), sender: { id: 'ther-2', name: 'Therapist Sam' }, to: [{ id: 'you', name: 'You (Parent)' }] },
-
-  // Thread D: User <-> Admin (you <-> Office Admin)
-  { id: 'm-ua-1', threadId: 't-user-admin', body: 'Hello — could you confirm the pickup time for today?', createdAt: new Date(now - 1000 * 60 * 60 * 2).toISOString(), sender: { id: 'you', name: 'You (Parent)' }, to: [{ id: 'admin-1', name: 'Office Admin' }] },
-  { id: 'm-ua-2', threadId: 't-user-admin', body: 'Pickup is at 5:00 PM as scheduled.', createdAt: new Date(now - 1000 * 60 * 60 * 1.5).toISOString(), sender: { id: 'admin-1', name: 'Office Admin' }, to: [{ id: 'you', name: 'You (Parent)' }] },
+  { id: 'm-1', threadId: 't-1', body: 'Hi — just checking how the session went today.', createdAt: new Date(now - 1000 * 60 * 60 * 6).toISOString(), sender: { id: 'you', name: 'You' }, to: [fileParents && fileParents[0] ? { id: fileParents[0].id, name: `${fileParents[0].firstName} ${fileParents[0].lastName}` } : null] },
+  { id: 'm-2', threadId: 't-2', body: 'We made great progress on communication goals.', createdAt: new Date(now - 1000 * 60 * 60 * 5).toISOString(), sender: fileTherapists && fileTherapists[0] ? { id: fileTherapists[0].id, name: fileTherapists[0].name } : null, to: [{ id: 'you', name: 'You' }] },
+  { id: 'm-3', threadId: 't-3', body: 'Can we move the speech session to 3:30 PM?', createdAt: new Date(now - 1000 * 60 * 60 * 10).toISOString(), sender: { id: 'you', name: 'You' }, to: [fileTherapists && fileTherapists[1] ? { id: fileTherapists[1].id, name: fileTherapists[1].name } : null] },
 ];
 
-const demoChildren = [
-  {
-    id: 'child-1',
-    name: 'Sam L.',
-    age: '4 yrs',
-    room: 'Sunflowers',
-    avatar: 'https://picsum.photos/seed/child1/200/200',
-    carePlan: 'Goals: fine motor, communication prompts, independent dressing.',
-    notes: 'No allergies recorded. Bring an extra set of clothes for messy play.',
-    // upcoming now represents agreed parent <-> administration ABA meeting(s)
-    upcoming: [
-      { id: 'u1', title: 'Parent–Administration ABA Meeting', when: 'Wednesday, Dec 10 — 5:00 PM', organizer: { name: 'Office Admin', phone: '555-0100', email: 'office@school.org' }, type: 'parent-aba' },
-    ],
-    amTherapist: { id: 'ther-1', name: 'Therapist Maya', role: 'ABA Therapist', phone: '555-0101', email: 'maya@school.org', avatar: 'https://i.pravatar.cc/80?img=32' },
-    pmTherapist: { id: 'ther-2', name: 'Therapist Sam', role: 'Speech Therapist', phone: '555-0102', email: 'sam@school.org', avatar: 'https://i.pravatar.cc/80?img=47' },
-    bcaTherapist: { id: 'bca-1', name: 'Therapist Jordan', role: 'BCA Therapist', phone: '555-0110', email: 'jordan@school.org', avatar: 'https://i.pravatar.cc/80?img=12' },
-  },
-  {
-    id: 'child-2',
-    name: 'Ava R.',
-    age: '5 yrs',
-    room: 'Daisies',
-    avatar: 'https://picsum.photos/seed/child2/200/200',
-    carePlan: 'Goals: social engagement, fine motor play, language prompts.',
-    notes: 'Peanut allergy noted. Please provide allergy-safe snacks.',
-    upcoming: [
-      { id: 'u3', title: 'Parent–Administration ABA Meeting', when: 'Friday, Dec 12 — 3:30 PM', organizer: { name: 'Office Admin', phone: '555-0100', email: 'office@school.org' }, type: 'parent-aba' },
-    ],
-    amTherapist: { id: 'ther-3', name: 'Therapist Alex', role: 'ABA Therapist', phone: '555-0103', email: 'alex@school.org', avatar: 'https://i.pravatar.cc/80?img=14' },
-    pmTherapist: { id: 'ther-4', name: 'Therapist Priya', role: 'Speech Therapist', phone: '555-0104', email: 'priya@school.org', avatar: 'https://i.pravatar.cc/80?img=21' },
-    bcaTherapist: { id: 'bca-2', name: 'Therapist Ben', role: 'BCA Therapist', phone: '555-0111', email: 'ben@school.org', avatar: 'https://i.pravatar.cc/80?img=16' },
-  },
-];
+// Helper: attach therapist objects (ABA/BCBA) to children based on assigned ABA ids
+function attachTherapistsToChildren(childrenArr, therapistsArr) {
+  const byId = (therapistsArr || []).reduce((acc, t) => { acc[t.id] = t; return acc; }, {});
+  return (childrenArr || []).map((c) => {
+    const assigned = c.assignedABA || c.assigned_ABA || c.assigned || [];
+    const primaryId = Array.isArray(assigned) && assigned.length ? assigned[0] : null;
+    const aba = primaryId ? byId[primaryId] : null;
+    let amTherapist = null;
+    let pmTherapist = null;
+    if (c.session === 'AM') amTherapist = aba;
+    else if (c.session === 'PM') pmTherapist = aba;
+    else { amTherapist = aba; pmTherapist = aba; }
+    let bcaTherapist = null;
+    if (aba && aba.supervisedBy) bcaTherapist = byId[aba.supervisedBy] || null;
+    return { ...c, bcaTherapist, amTherapist, pmTherapist };
+  });
+}
 
-// Therapist pools (for reference or assignment UI)
-const abaTherapists = [
-  { id: 'ther-1', name: 'Therapist Maya', role: 'ABA Therapist', phone: '555-0101', email: 'maya@school.org', avatar: 'https://i.pravatar.cc/80?img=32' },
-  { id: 'ther-3', name: 'Therapist Alex', role: 'ABA Therapist', phone: '555-0103', email: 'alex@school.org', avatar: 'https://i.pravatar.cc/80?img=14' },
-  { id: 'ther-5', name: 'Therapist Jordan', role: 'ABA Therapist', phone: '555-0105', email: 'jordan.aba@school.org', avatar: 'https://i.pravatar.cc/80?img=5' },
-  { id: 'ther-6', name: 'Therapist Taylor', role: 'ABA Therapist', phone: '555-0106', email: 'taylor@school.org', avatar: 'https://i.pravatar.cc/80?img=6' },
-];
+// Note: removed legacy demo children and therapist pools so the
+// directory is driven only by the dev seed toggle (seeded data)
+// or persisted AsyncStorage values. When the dev seed is off and
+// no persisted data exists, children/therapists will be empty arrays.
 
-const bcaTherapists = [
-  { id: 'bca-1', name: 'Therapist Jordan', role: 'BCA Therapist', phone: '555-0110', email: 'jordan@school.org', avatar: 'https://i.pravatar.cc/80?img=12' },
-  { id: 'bca-2', name: 'Therapist Ben', role: 'BCA Therapist', phone: '555-0111', email: 'ben@school.org', avatar: 'https://i.pravatar.cc/80?img=16' },
-];
+// Seeded directory: 16 students (3-5yo), with 4 siblings (same family), parents and therapists
+const PARENTS_KEY = 'bbs_parents_v1';
+const THERAPISTS_KEY = 'bbs_therapists_v1';
+
+// Directory seed data is provided from `src/seed/directorySeed.js` (imported above)
 
 export function DataProvider({ children: reactChildren }) {
   const { user } = useAuth();
@@ -202,44 +99,66 @@ export function DataProvider({ children: reactChildren }) {
   const [timeChangeProposals, setTimeChangeProposals] = useState([]);
   const [archivedThreads, setArchivedThreads] = useState([]);
   const [children, setChildren] = useState([]);
+  const [parents, setParents] = useState([]);
+  const [therapists, setTherapists] = useState([]);
 
   // Hydrate from storage then attempt remote sync
   useEffect(() => {
     let mounted = true;
     (async () => {
       try {
-        const [pRaw, mRaw, uRaw] = await Promise.all([
+        const [postsRaw, mRaw, uRaw, cRaw, pRaw, tRaw, aRaw] = await Promise.all([
           AsyncStorage.getItem(POSTS_KEY),
           AsyncStorage.getItem(MESSAGES_KEY),
           AsyncStorage.getItem(MEMOS_KEY),
+          AsyncStorage.getItem(CHILDREN_KEY),
+          AsyncStorage.getItem(PARENTS_KEY),
+          AsyncStorage.getItem(THERAPISTS_KEY),
+          AsyncStorage.getItem(ARCHIVED_KEY),
         ]);
         if (!mounted) return;
-        if (pRaw) {
+
+        // Posts
+        if (postsRaw) {
           try {
-            const parsed = JSON.parse(pRaw);
+            const parsed = JSON.parse(postsRaw);
             if (Array.isArray(parsed) && parsed.length) setPosts(parsed);
             else setPosts(demoPosts);
           } catch (e) {
             setPosts(demoPosts);
           }
         } else {
-          // seed demo posts when none exist locally (useful for demo/dev)
           setPosts(demoPosts);
         }
+
+        // Messages and memos
         if (mRaw) setMessages(JSON.parse(mRaw));
         else setMessages(demoMessages);
-        if (uRaw) setUrgentMemos(JSON.parse(uRaw));
-        // hydrate children
-        const cRaw = await AsyncStorage.getItem(CHILDREN_KEY);
-        if (cRaw) {
-          try { const parsed = JSON.parse(cRaw); if (Array.isArray(parsed)) setChildren(parsed); else setChildren(demoChildren); } catch (e) { setChildren(demoChildren); }
-        } else {
-          setChildren(demoChildren);
+        if (uRaw) setUrgentMemos(uRaw ? JSON.parse(uRaw) : []);
+
+        // Parents & Therapists (set first so children can attach references)
+        let parsedParents = [];
+        if (pRaw) {
+          try { const parsed = JSON.parse(pRaw); if (Array.isArray(parsed)) parsedParents = parsed; } catch (e) { parsedParents = []; }
         }
-        // hydrate archived thread ids
-        const aRaw = await AsyncStorage.getItem(ARCHIVED_KEY);
+        let parsedTherapists = [];
+        if (tRaw) {
+          try { const parsed = JSON.parse(tRaw); if (Array.isArray(parsed)) parsedTherapists = parsed; } catch (e) { parsedTherapists = []; }
+        }
+        setParents(parsedParents);
+        setTherapists(parsedTherapists);
+
+        // Children — attach therapist objects where possible
+        let parsedChildren = [];
+        if (cRaw) {
+          try { const parsed = JSON.parse(cRaw); if (Array.isArray(parsed)) parsedChildren = parsed; } catch (e) { parsedChildren = []; }
+        }
+        const mapped = attachTherapistsToChildren(parsedChildren, parsedTherapists);
+        setChildren(mapped);
+
+        // Archived threads
         if (aRaw) {
-          try { const parsed = JSON.parse(aRaw); if (Array.isArray(parsed)) setArchivedThreads(parsed); }
+          try { const parsed = JSON.parse(aRaw); if (Array.isArray(parsed)) setArchivedThreads(parsed); else setArchivedThreads([]); }
           catch (e) { setArchivedThreads([]); }
         } else {
           setArchivedThreads([]);
@@ -256,6 +175,12 @@ export function DataProvider({ children: reactChildren }) {
     AsyncStorage.setItem(POSTS_KEY, JSON.stringify(posts)).catch(() => {});
   }, [posts]);
   useEffect(() => {
+    AsyncStorage.setItem(PARENTS_KEY, JSON.stringify(parents)).catch(() => {});
+  }, [parents]);
+  useEffect(() => {
+    AsyncStorage.setItem(THERAPISTS_KEY, JSON.stringify(therapists)).catch(() => {});
+  }, [therapists]);
+  useEffect(() => {
     AsyncStorage.setItem(MESSAGES_KEY, JSON.stringify(messages)).catch(() => {});
   }, [messages]);
   useEffect(() => {
@@ -267,6 +192,48 @@ export function DataProvider({ children: reactChildren }) {
   useEffect(() => {
     AsyncStorage.setItem(MEMOS_KEY, JSON.stringify(urgentMemos)).catch(() => {});
   }, [urgentMemos]);
+
+  // Listen for dev directory toggle: seed or revert directory data
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const v = await devDirectoryFlag.get();
+        if (!mounted) return;
+        if (v) {
+          // set therapists and parents first
+          setTherapists(fileTherapists);
+          setParents(fileParents);
+          const mapped = attachTherapistsToChildren(fileChildren, fileTherapists);
+          setChildren(mapped);
+          AsyncStorage.setItem(THERAPISTS_KEY, JSON.stringify(fileTherapists)).catch(() => {});
+          AsyncStorage.setItem(PARENTS_KEY, JSON.stringify(fileParents)).catch(() => {});
+          AsyncStorage.setItem(CHILDREN_KEY, JSON.stringify(mapped)).catch(() => {});
+        }
+      } catch (e) {}
+    })();
+    const unsub = devDirectoryFlag.addListener((val) => {
+      if (!mounted) return;
+      if (val) {
+        setTherapists(fileTherapists);
+        setParents(fileParents);
+        const mapped = attachTherapistsToChildren(fileChildren, fileTherapists);
+        setChildren(mapped);
+        AsyncStorage.setItem(THERAPISTS_KEY, JSON.stringify(fileTherapists)).catch(() => {});
+        AsyncStorage.setItem(PARENTS_KEY, JSON.stringify(fileParents)).catch(() => {});
+        AsyncStorage.setItem(CHILDREN_KEY, JSON.stringify(mapped)).catch(() => {});
+      } else {
+        // clear directory when dev seed is turned off (do not fall back to legacy demo pools)
+        setChildren([]);
+        setParents([]);
+        setTherapists([]);
+        AsyncStorage.setItem(CHILDREN_KEY, JSON.stringify([])).catch(() => {});
+        AsyncStorage.removeItem(PARENTS_KEY).catch(() => {});
+        AsyncStorage.setItem(THERAPISTS_KEY, JSON.stringify([])).catch(() => {});
+      }
+    });
+    return () => { mounted = false; unsub(); };
+  }, []);
 
   async function fetchAndSync() {
     try {
@@ -408,6 +375,16 @@ export function DataProvider({ children: reactChildren }) {
     }
   }
 
+  function deletePost(postId) {
+    try {
+      setPosts((s) => (s || []).filter((p) => p.id !== postId));
+      // persist immediately
+      AsyncStorage.setItem(POSTS_KEY, JSON.stringify((posts || []).filter((p) => p.id !== postId))).catch(() => {});
+    } catch (e) {
+      console.warn('deletePost failed', e?.message || e);
+    }
+  }
+
   async function recordShare(postId, { notifyServer = true } = {}) {
     // Only increment and optionally notify the server without invoking native share UI
     setPosts((s) => s.map((x) => (x.id === postId ? { ...x, shares: (x.shares || 0) + 1 } : x)));
@@ -508,10 +485,64 @@ export function DataProvider({ children: reactChildren }) {
     }
   }
 
+  // Send a time-update urgent alert to admin (dropoff/pickup)
+  async function sendTimeUpdateAlert(childId, updateType, proposedISO, note) {
+    try {
+      const temp = {
+        id: `urgent-${Date.now()}`,
+        type: 'time_update',
+        updateType, // 'pickup' or 'dropoff'
+        childId,
+        proposerId: user?.id,
+        proposedISO,
+        note: note || '',
+        status: 'pending', // pending -> waiting for admin
+        createdAt: new Date().toISOString(),
+      };
+      setUrgentMemos((s) => [temp, ...(s || [])]);
+      // Attempt server send; if server returns canonical memo, replace temp
+      if (Api.sendUrgentMemo) {
+        try {
+          const created = await Api.sendUrgentMemo(temp);
+          if (created && created.id) {
+            setUrgentMemos((s) => (s || []).map((m) => (m.id === temp.id ? created : m)));
+            return created;
+          }
+        } catch (e) {
+          console.warn('sendUrgentMemo API failed', e?.message || e);
+        }
+      }
+      return temp;
+    } catch (e) {
+      console.warn('sendTimeUpdateAlert failed', e?.message || e);
+      return null;
+    }
+  }
+
+  // Update urgent memo status locally and attempt server notify
+  async function respondToUrgentMemo(memoId, action) {
+    try {
+      // action: 'accepted' | 'denied' | 'opened'
+      setUrgentMemos((s) => (s || []).map((m) => (m.id === memoId ? { ...m, status: action, respondedAt: new Date().toISOString() } : m)));
+      if (Api.respondUrgentMemo) {
+        try {
+          await Api.respondUrgentMemo(memoId, action);
+        } catch (e) {
+          console.warn('respondUrgentMemo API failed', e?.message || e);
+        }
+      }
+      return true;
+    } catch (e) {
+      console.warn('respondToUrgentMemo failed', e?.message || e);
+      return false;
+    }
+  }
+
   function resetChildrenToDemo() {
     try {
-      setChildren(demoChildren);
-      AsyncStorage.setItem(CHILDREN_KEY, JSON.stringify(demoChildren)).catch(() => {});
+      // Legacy demo children removed — clearing children instead
+      setChildren([]);
+      AsyncStorage.setItem(CHILDREN_KEY, JSON.stringify([])).catch(() => {});
     } catch (e) {
       console.warn('resetChildrenToDemo failed', e?.message || e);
     }
@@ -544,10 +575,15 @@ export function DataProvider({ children: reactChildren }) {
       posts,
       messages,
       urgentMemos,
+      sendTimeUpdateAlert,
+      respondToUrgentMemo,
       children,
+      parents,
+      therapists,
       setChildren,
-      abaTherapists,
-      bcaTherapists,
+      setParents,
+      setTherapists,
+      // legacy therapist pools removed; use `therapists` only
       resetChildrenToDemo,
       resetMessagesToDemo,
       clearMessages,
@@ -569,6 +605,7 @@ export function DataProvider({ children: reactChildren }) {
       timeChangeProposals,
       proposeTimeChange,
       respondToProposal,
+      deletePost,
     }}>
       {reactChildren}
     </DataContext.Provider>

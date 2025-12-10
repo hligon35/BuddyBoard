@@ -1,11 +1,13 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { View, Text, TextInput, Button, FlatList, Image, TouchableOpacity, ActivityIndicator, StyleSheet, Modal, Alert, TouchableWithoutFeedback, Linking, Platform, Share, RefreshControl } from 'react-native';
 import { ScreenWrapper, CenteredContainer } from '../components/ScreenWrapper';
+import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../AuthContext';
 import { useNavigation } from '@react-navigation/native';
 import { useData } from '../DataContext';
+import { pravatarUriFor } from '../utils/idVisibility';
 import * as Api from '../Api';
 import PostCard from '../components/PostCard';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -30,7 +32,7 @@ const styles = StyleSheet.create({
   actionText: { color: '#374151', marginLeft: 4 },
   inputTile: { flexDirection: 'row', padding: 10, backgroundColor: '#fff', margin: 12, borderRadius: 10, alignItems: 'flex-start' },
   inputAvatar: { width: 50, height: 50, borderRadius: 25, marginRight: 12 },
-  inputTileCompact: { flexDirection: 'row', padding: 8, backgroundColor: '#fff', margin: 6, borderRadius: 8, alignItems: 'center', justifyContent: 'space-between' },
+  inputTileCompact: { flexDirection: 'row', padding: 8, backgroundColor: '#fff', marginHorizontal: 0, marginTop: 6, marginBottom: 12, borderRadius: 8, alignItems: 'center', justifyContent: 'space-between' },
   inputAvatarCompact: { width: 50, height: 50, borderRadius: 25 },
   inputFieldsCompact: { flex: 1 },
   inputTextCompact: { borderWidth: 1, borderColor: '#e6e7ea', borderRadius: 8, padding: 6, backgroundColor: '#fff', color: '#111', minHeight: 44 },
@@ -86,7 +88,7 @@ const styles = StyleSheet.create({
 export default function HomeScreen() {
   const { user } = useAuth();
   const navigation = useNavigation();
-  const { posts, createPost, like, comment, share, recordShare, fetchAndSync, children, abaTherapists, bcaTherapists } = useData();
+  const { posts, createPost, like, comment, share, recordShare, fetchAndSync, children, therapists } = useData();
   const [selectedUser, setSelectedUser] = useState(null);
   const [showUserModal, setShowUserModal] = useState(false);
   const [title, setTitle] = useState('');
@@ -99,6 +101,11 @@ export default function HomeScreen() {
   const [shareModalVisible, setShareModalVisible] = useState(false);
   const [shareTargetPost, setShareTargetPost] = useState(null);
   const [refreshing, setRefreshing] = useState(false);
+  const insets = useSafeAreaInsets();
+  const [bannerHeight, setBannerHeight] = useState(0);
+  const [showStickyInput, setShowStickyInput] = useState(false);
+  const NATIVE_HEADER_HEIGHT = -55; // approximate native stack header height
+  const scrollY = useRef(0);
 
   useEffect(() => { fetchAndSync(); }, []);
 
@@ -203,12 +210,23 @@ export default function HomeScreen() {
   }
 
   return (
-    <ScreenWrapper>
+    <ScreenWrapper bannerShowBack={false} hideBanner={true}>
       <CenteredContainer>
       <FlatList
         data={posts.slice().reverse()}
         keyExtractor={(i) => i.id}
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        onScroll={(e) => {
+          const y = e.nativeEvent.contentOffset.y || 0;
+          scrollY.current = y;
+          // show sticky input once the banner (index 0 header) has scrolled off
+          if (bannerHeight && y > (bannerHeight - 4)) {
+            if (!showStickyInput) setShowStickyInput(true);
+          } else {
+            if (showStickyInput) setShowStickyInput(false);
+          }
+        }}
+        scrollEventThrottle={16}
         renderItem={({ item }) => (
           <PostCard
             post={item}
@@ -219,7 +237,7 @@ export default function HomeScreen() {
               // attempt to enrich author with known records (children/therapists)
               let full = author || {};
               const tryFind = (list) => (list || []).find((u) => (u.id && full.id && u.id === full.id) || (u.name && full.name && u.name === full.name));
-              const found = tryFind(children) || tryFind(abaTherapists) || tryFind(bcaTherapists);
+              const found = tryFind(children) || tryFind(therapists);
               if (found) full = { ...found, ...full };
               // If the tapped user is the current user, respect local privacy settings persisted in AsyncStorage
               try {
@@ -239,11 +257,38 @@ export default function HomeScreen() {
             }}
           />
         )}
-        ListHeaderComponent={() => (
-          <>
-            <View style={styles.inputTileCompact}>
-              <Image source={{ uri: user?.avatar || `https://i.pravatar.cc/80?u=${user?.email || 'anon'}` }} style={styles.inputAvatarCompact} />
+        ListHeaderComponent={() => ([
+          <View key="banner" onLayout={(e) => setBannerHeight(e.nativeEvent.layout.height)} style={{ width: '100%', paddingVertical: 12, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#eee', backgroundColor: '#fff', alignItems: 'center' }}>
+            <Text style={{ fontSize: 18, fontWeight: '700' }}>Community</Text>
+          </View>,
 
+          <View key="inputTile" style={styles.inputTileCompact}>
+            <Image source={{ uri: (user?.avatar && !String(user.avatar).includes('pravatar.cc')) ? user.avatar : pravatarUriFor(user, 80) }} style={styles.inputAvatarCompact} />
+
+            <TextInput
+              placeholder="Share something with the community..."
+              value={body}
+              onChangeText={setBody}
+              style={[styles.inputTextCompact, { flex: 1, marginHorizontal: 6 }]}
+              multiline
+            />
+
+            <TouchableOpacity style={styles.pickButtonCompact} onPress={onAttachPress} accessibilityLabel="Attach">
+              <MaterialIcons name="attach-file" size={20} color="#444" />
+            </TouchableOpacity>
+
+            <TouchableOpacity style={styles.postButtonCompact} onPress={handlePost} accessibilityLabel="Post">
+              <Ionicons name="send" size={18} color="#fff" />
+            </TouchableOpacity>
+          </View>
+        ])}
+      />
+      {/* sticky input clone positioned at top when banner scrolls away */}
+      {showStickyInput ? (
+        <View style={{ position: 'absolute', left: 0, right: 0, top: insets.top + NATIVE_HEADER_HEIGHT, zIndex: 50, alignItems: 'center' }} pointerEvents="box-none">
+          <View style={{ width: '100%', maxWidth: 720, paddingHorizontal: 0 }} pointerEvents="box-none">
+            <View style={[styles.inputTileCompact, { marginHorizontal: 0 }]}> 
+              <Image source={{ uri: (user?.avatar && !String(user.avatar).includes('pravatar.cc')) ? user.avatar : pravatarUriFor(user, 80) }} style={styles.inputAvatarCompact} />
               <TextInput
                 placeholder="Share something with the community..."
                 value={body}
@@ -251,75 +296,73 @@ export default function HomeScreen() {
                 style={[styles.inputTextCompact, { flex: 1, marginHorizontal: 6 }]}
                 multiline
               />
-
               <TouchableOpacity style={styles.pickButtonCompact} onPress={onAttachPress} accessibilityLabel="Attach">
                 <MaterialIcons name="attach-file" size={20} color="#444" />
               </TouchableOpacity>
-
               <TouchableOpacity style={styles.postButtonCompact} onPress={handlePost} accessibilityLabel="Post">
                 <Ionicons name="send" size={18} color="#fff" />
               </TouchableOpacity>
             </View>
-
-            {showLinkModal && (
-              <Modal transparent visible animationType="fade">
-                <View style={styles.modalOverlay}>
-                  <TouchableWithoutFeedback onPress={() => setShowLinkModal(false)}>
-                    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
-                  </TouchableWithoutFeedback>
-                  <View style={styles.modalContent}>
-                    <Text style={{ fontWeight: '700', marginBottom: 8 }}>Attach</Text>
-                    <TextInput placeholder="Paste a link" value={linkInput} onChangeText={setLinkInput} style={styles.modalInput} />
-                    <View style={{ flexDirection: 'row', marginTop: 12 }}>
-                      <TouchableOpacity style={styles.modalBtn} onPress={() => { setLinkMode(true); setShowLinkModal(false); }}>
-                        <Text>Use Link</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity style={styles.modalBtn} onPress={() => { pickImage(); }}>
-                        <Text>Pick Photo</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </View>
-              </Modal>
-            )}
-            {/* User info modal shown when tapping a post avatar */}
-            {showUserModal && selectedUser && (
-              <Modal transparent visible animationType="fade">
-                <View style={styles.modalOverlay}>
-                  <TouchableWithoutFeedback onPress={() => setShowUserModal(false)}>
-                    <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
-                  </TouchableWithoutFeedback>
-                  <View style={[styles.modalContent, { alignItems: 'center' }]}>
-                    <Image source={{ uri: selectedUser.avatar || `https://i.pravatar.cc/120?u=${selectedUser.email || selectedUser.name || selectedUser.id || 'anon'}` }} style={{ width: 120, height: 120, borderRadius: 60, marginBottom: 12 }} />
-                    <Text style={{ fontWeight: '700', fontSize: 18, marginBottom: 6 }}>{selectedUser.name || 'Unknown'}</Text>
-                    {selectedUser.email && selectedUser.showEmail !== false ? (
-                      <Text style={{ color: '#374151', marginBottom: 4 }}>{selectedUser.email}</Text>
-                    ) : null}
-                    {selectedUser.phone && selectedUser.showPhone !== false ? (
-                      <Text style={{ color: '#374151', marginBottom: 8 }}>{selectedUser.phone}</Text>
-                    ) : null}
-                    <View style={{ flexDirection: 'row', marginTop: 8 }}>
-                      {selectedUser.phone && selectedUser.showPhone !== false ? (
-                        <TouchableOpacity onPress={() => Linking.openURL(`tel:${selectedUser.phone}`)} style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 8, backgroundColor: '#0066FF', marginRight: 8 }}>
-                          <Text style={{ color: '#fff' }}>Call</Text>
-                        </TouchableOpacity>
-                      ) : null}
-                      {selectedUser.email && selectedUser.showEmail !== false ? (
-                        <TouchableOpacity onPress={() => Linking.openURL(`mailto:${selectedUser.email}`)} style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 8, backgroundColor: '#10B981', marginRight: 8 }}>
-                          <Text style={{ color: '#fff' }}>Email</Text>
-                        </TouchableOpacity>
-                      ) : null}
-                      <TouchableOpacity onPress={() => setShowUserModal(false)} style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 8, backgroundColor: '#f3f4f6' }}>
-                        <Text>Close</Text>
-                      </TouchableOpacity>
-                    </View>
-                  </View>
-                </View>
-              </Modal>
-            )}
-          </>
-        )}
-      />
+          </View>
+        </View>
+      ) : null}
+      {/* Modals moved outside the header so they don't become sticky */}
+      {showLinkModal && (
+        <Modal transparent visible animationType="fade">
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback onPress={() => setShowLinkModal(false)}>
+              <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+            </TouchableWithoutFeedback>
+            <View style={styles.modalContent}>
+              <Text style={{ fontWeight: '700', marginBottom: 8 }}>Attach</Text>
+              <TextInput placeholder="Paste a link" value={linkInput} onChangeText={setLinkInput} style={styles.modalInput} />
+              <View style={{ flexDirection: 'row', marginTop: 12 }}>
+                <TouchableOpacity style={styles.modalBtn} onPress={() => { setLinkMode(true); setShowLinkModal(false); }}>
+                  <Text>Use Link</Text>
+                </TouchableOpacity>
+                <TouchableOpacity style={styles.modalBtn} onPress={() => { pickImage(); }}>
+                  <Text>Pick Photo</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
+      {/* User info modal shown when tapping a post avatar */}
+      {showUserModal && selectedUser && (
+        <Modal transparent visible animationType="fade">
+          <View style={styles.modalOverlay}>
+            <TouchableWithoutFeedback onPress={() => setShowUserModal(false)}>
+              <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
+            </TouchableWithoutFeedback>
+            <View style={[styles.modalContent, { alignItems: 'center' }]}>
+              <Image source={{ uri: (selectedUser?.avatar && !String(selectedUser.avatar).includes('pravatar.cc')) ? selectedUser.avatar : pravatarUriFor(selectedUser, 120) }} style={{ width: 120, height: 120, borderRadius: 60, marginBottom: 12 }} />
+              <Text style={{ fontWeight: '700', fontSize: 18, marginBottom: 6 }}>{selectedUser.name || 'Unknown'}</Text>
+              {selectedUser.email && selectedUser.showEmail !== false ? (
+                <Text style={{ color: '#374151', marginBottom: 4 }}>{selectedUser.email}</Text>
+              ) : null}
+              {selectedUser.phone && selectedUser.showPhone !== false ? (
+                <Text style={{ color: '#374151', marginBottom: 8 }}>{selectedUser.phone}</Text>
+              ) : null}
+              <View style={{ flexDirection: 'row', marginTop: 8 }}>
+                {selectedUser.phone && selectedUser.showPhone !== false ? (
+                  <TouchableOpacity onPress={() => Linking.openURL(`tel:${selectedUser.phone}`)} style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 8, backgroundColor: '#0066FF', marginRight: 8 }}>
+                    <Text style={{ color: '#fff' }}>Call</Text>
+                  </TouchableOpacity>
+                ) : null}
+                {selectedUser.email && selectedUser.showEmail !== false ? (
+                  <TouchableOpacity onPress={() => Linking.openURL(`mailto:${selectedUser.email}`)} style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 8, backgroundColor: '#10B981', marginRight: 8 }}>
+                    <Text style={{ color: '#fff' }}>Email</Text>
+                  </TouchableOpacity>
+                ) : null}
+                <TouchableOpacity onPress={() => setShowUserModal(false)} style={{ paddingVertical: 8, paddingHorizontal: 14, borderRadius: 8, backgroundColor: '#f3f4f6' }}>
+                  <Text>Close</Text>
+                </TouchableOpacity>
+              </View>
+            </View>
+          </View>
+        </Modal>
+      )}
       </CenteredContainer>
     </ScreenWrapper>
   );

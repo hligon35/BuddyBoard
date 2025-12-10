@@ -1,12 +1,13 @@
 import React from 'react';
 import { View, Text, ScrollView, StyleSheet, Linking, TouchableOpacity } from 'react-native';
+import { ScreenWrapper } from '../components/ScreenWrapper';
 import { MaterialIcons } from '@expo/vector-icons';
+// header provided by ScreenWrapper
 
 export default function HelpScreen() {
   return (
-    <View style={styles.container}>
+    <ScreenWrapper style={styles.container}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
-        <Text style={styles.title}>Help for Parents</Text>
 
         <Text style={styles.sectionTitle}>Arrival Detection</Text>
         <Text style={styles.paragraph}>
@@ -44,7 +45,7 @@ export default function HelpScreen() {
 
         <View style={{ height: 28 }} />
       </ScrollView>
-    </View>
+    </ScreenWrapper>
   );
 }
 
