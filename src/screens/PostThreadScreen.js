@@ -5,13 +5,15 @@ import { useRoute, useNavigation } from '@react-navigation/native';
 import { useAuth } from '../AuthContext';
 import { useData } from '../DataContext';
 import PostCard from '../components/PostCard';
+import { ScreenWrapper } from '../components/ScreenWrapper';
+import { pravatarUriFor } from '../utils/idVisibility';
 
 export default function PostThreadScreen() {
   const route = useRoute();
   const navigation = useNavigation();
   const { postId } = route.params || {};
   const { user } = useAuth();
-  const { posts, comment, replyToComment, reactToComment, like, share, children, abaTherapists, bcaTherapists } = useData();
+  const { posts, comment, replyToComment, reactToComment, like, share, children, therapists } = useData();
   const [selectedUser, setSelectedUser] = useState(null);
   const [showUserModal, setShowUserModal] = useState(false);
   const composerRef = useRef(null);
@@ -45,7 +47,7 @@ export default function PostThreadScreen() {
   }
 
   return (
-    <View style={{ flex: 1, backgroundColor: '#f3f4f6' }}>
+    <ScreenWrapper style={{ flex: 1, backgroundColor: '#f3f4f6' }}>
       <PostCard
         post={post}
         onLike={() => { if (like) like(post.id); }}
@@ -54,7 +56,7 @@ export default function PostThreadScreen() {
         onAvatarPress={async (author) => {
           let full = author || {};
           const tryFind = (list) => (list || []).find((u) => (u.id && full.id && u.id === full.id) || (u.name && full.name && u.name === full.name));
-          const found = tryFind(children) || tryFind(abaTherapists) || tryFind(bcaTherapists);
+          const found = tryFind(children) || tryFind(therapists);
           if (found) full = { ...found, ...full };
           try {
             const SHOW_EMAIL_KEY = 'settings_show_email_v1';
@@ -161,7 +163,7 @@ export default function PostThreadScreen() {
               <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }} />
             </TouchableWithoutFeedback>
             <View style={{ width: '90%', backgroundColor: '#fff', padding: 14, borderRadius: 10, alignItems: 'center' }}>
-              <Image source={{ uri: selectedUser.avatar || `https://i.pravatar.cc/120?u=${selectedUser.email || selectedUser.name || selectedUser.id || 'anon'}` }} style={{ width: 120, height: 120, borderRadius: 60, marginBottom: 12 }} />
+                <Image source={{ uri: (selectedUser?.avatar && !String(selectedUser.avatar).includes('pravatar.cc')) ? selectedUser.avatar : pravatarUriFor(selectedUser, 120) }} style={{ width: 120, height: 120, borderRadius: 60, marginBottom: 12 }} />
               <Text style={{ fontWeight: '700', fontSize: 18, marginBottom: 6 }}>{selectedUser.name || 'Unknown'}</Text>
               {selectedUser.email && selectedUser.showEmail !== false ? (
                 <Text style={{ color: '#374151', marginBottom: 4 }}>{selectedUser.email}</Text>
@@ -188,7 +190,7 @@ export default function PostThreadScreen() {
           </View>
         </Modal>
       )}
-    </View>
+    </ScreenWrapper>
   );
 }
 

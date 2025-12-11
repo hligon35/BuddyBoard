@@ -13,8 +13,8 @@ async function generate() {
     const textW = Jimp.measureText(font, text);
     const textH = Jimp.measureTextHeight(font, text, 1024);
     icon.print(font, (1024 - textW) / 2, (1024 - textH) / 2, text);
-    await icon.writeAsync(path.join(outDir, 'BuddyBoardicon.png'));
-    console.log('Wrote', path.join(outDir, 'BuddyBoardicon.png'));
+    await icon.writeAsync(path.join(outDir, 'icon.png'));
+    console.log('Wrote', path.join(outDir, 'icon.png'));
 
     // create splash 1242x2436 (portrait)
     const splashW = 1242;
@@ -32,8 +32,8 @@ async function generate() {
     const y = Math.floor((splashH - 800) / 3);
     splash.composite(logo, x, y);
 
-    await splash.writeAsync(path.join(outDir, 'buddyBoardSplash.png'));
-    console.log('Wrote', path.join(outDir, 'buddyBoardSplash.png'));
+    await splash.writeAsync(path.join(outDir, 'splash-icon.png'));
+    console.log('Wrote', path.join(outDir, 'splash-icon.png'));
 
     console.log('Asset generation complete.');
   } catch (e) {

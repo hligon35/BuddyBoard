@@ -1,7 +1,10 @@
 import React, { useState, useEffect } from 'react';
 import { View, TouchableOpacity, Text, Alert, StyleSheet, Switch, Modal } from 'react-native';
 import devToolsFlag from '../utils/devToolsFlag';
+import devDirectoryFlag from '../utils/devDirectoryFlag';
+import devWallFlag from '../utils/devWallFlag';
 import { useAuth } from '../AuthContext';
+import { useData } from '../DataContext';
 import { MaterialIcons } from '@expo/vector-icons';
 
 export default function DevRoleSwitcher() {
@@ -10,6 +13,8 @@ export default function DevRoleSwitcher() {
   const [open, setOpen] = useState(false);
   const [devTools, setDevTools] = useState(true);
   const [showLoginModal, setShowLoginModal] = useState(false);
+  const [showDirectory, setShowDirectory] = useState(false);
+  const [showWall, setShowWall] = useState(true);
 
   useEffect(() => {
     let mounted = true;
@@ -24,9 +29,47 @@ export default function DevRoleSwitcher() {
     return () => { mounted = false; unsub(); };
   }, []);
 
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const v = await devDirectoryFlag.get();
+        if (!mounted) return;
+        setShowDirectory(Boolean(v));
+      } catch (e) {}
+    })();
+    const unsub = devDirectoryFlag.addListener((v) => { if (mounted) setShowDirectory(Boolean(v)); });
+    return () => { mounted = false; unsub(); };
+  }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const v = await devWallFlag.get();
+        if (!mounted) return;
+        setShowWall(Boolean(v));
+      } catch (e) {}
+    })();
+    const unsub = devWallFlag.addListener((v) => { if (mounted) setShowWall(Boolean(v)); });
+    return () => { mounted = false; unsub(); };
+  }, []);
+
   const setDevToolsPersisted = async (val) => {
     try {
       await devToolsFlag.set(val);
+    } catch (e) {}
+  };
+
+  const setShowDirectoryPersisted = async (val) => {
+    try {
+      await devDirectoryFlag.set(val);
+    } catch (e) {}
+  };
+
+  const setShowWallPersisted = async (val) => {
+    try {
+      await devWallFlag.set(val);
     } catch (e) {}
   };
 
@@ -36,6 +79,46 @@ export default function DevRoleSwitcher() {
     setOpen(false);
     Alert.alert('Role changed', `Switched to ${r}`);
   };
+
+  const { urgentMemos, fetchAndSync, resetMessagesToDemo, clearMessages, resetChildrenToDemo, parents, children, sendTimeUpdateAlert, sendAdminMemo } = useData();
+
+  async function seedAdminAlertA() {
+    try {
+      const child = (children || [])[0];
+      if (!child) return Alert.alert('No child available to seed');
+      await sendTimeUpdateAlert(child.id, 'pickup', new Date(Date.now() + 1000 * 60 * 60).toISOString(), 'Seeded pickup alert A');
+      Alert.alert('Seeded', 'Admin alert A created');
+    } catch (e) { console.warn('seedAdminAlertA failed', e); Alert.alert('Error', 'Failed to seed admin alert A'); }
+  }
+
+  async function seedAdminAlertB() {
+    try {
+      const child = (children || [])[1] || (children || [])[0];
+      if (!child) return Alert.alert('No child available to seed');
+      await sendTimeUpdateAlert(child.id, 'dropoff', new Date(Date.now() + 1000 * 60 * 30).toISOString(), 'Seeded dropoff alert B');
+      Alert.alert('Seeded', 'Admin alert B created');
+    } catch (e) { console.warn('seedAdminAlertB failed', e); Alert.alert('Error', 'Failed to seed admin alert B'); }
+  }
+
+  async function seedParentAlertA() {
+    try {
+      const parent = (parents || [])[0];
+      if (!parent) return Alert.alert('No parent available to seed');
+      const name = parent.name || `${parent.firstName || ''} ${parent.lastName || ''}`.trim();
+      await sendAdminMemo({ recipients: [{ id: parent.id, name: name || 'Parent' }], subject: 'Parent Alert A', body: 'This is a seeded admin memo for parent A.' });
+      Alert.alert('Seeded', 'Parent alert A created');
+    } catch (e) { console.warn('seedParentAlertA failed', e); Alert.alert('Error', 'Failed to seed parent alert A'); }
+  }
+
+  async function seedParentAlertB() {
+    try {
+      const parent = (parents || [])[1] || (parents || [])[0];
+      if (!parent) return Alert.alert('No parent available to seed');
+      const name = parent.name || `${parent.firstName || ''} ${parent.lastName || ''}`.trim();
+      await sendAdminMemo({ recipients: [{ id: parent.id, name: name || 'Parent' }], subject: 'Parent Alert B', body: 'This is a seeded admin memo for parent B.' });
+      Alert.alert('Seeded', 'Parent alert B created');
+    } catch (e) { console.warn('seedParentAlertB failed', e); Alert.alert('Error', 'Failed to seed parent alert B'); }
+  }
 
   return (
     <View pointerEvents="box-none" style={styles.container}>
@@ -61,9 +144,48 @@ export default function DevRoleSwitcher() {
             <Text style={{ marginRight: 8 }}>Show Dev Tools</Text>
             <Switch value={devTools} onValueChange={setDevToolsPersisted} />
           </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 6, marginTop:6 }}>
+            <Text style={{ marginRight: 8 }}>Show Directory (seed)</Text>
+            <Switch value={showDirectory} onValueChange={setShowDirectoryPersisted} />
+          </View>
+
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 6, marginTop:6 }}>
+            <Text style={{ marginRight: 8 }}>Show Wall Posts</Text>
+            <Switch value={showWall} onValueChange={setShowWallPersisted} />
+          </View>
 
           <TouchableOpacity onPress={() => setShowLoginModal(true)} style={styles.menuBtn}>
             <Text>Open Login Screen</Text>
+          </TouchableOpacity>
+          <View style={{ height: 1, backgroundColor: '#f3f4f6', marginVertical: 6 }} />
+          <TouchableOpacity onPress={() => seedAdminAlertA()} style={styles.menuBtn}>
+            <Text>Seed Admin Alert A (pickup)</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => seedAdminAlertB()} style={styles.menuBtn}>
+            <Text>Seed Admin Alert B (dropoff)</Text>
+          </TouchableOpacity>
+          <View style={{ height: 1, backgroundColor: '#f3f4f6', marginVertical: 6 }} />
+          <TouchableOpacity onPress={() => seedParentAlertA()} style={styles.menuBtn}>
+            <Text>Seed Parent Alert A</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => seedParentAlertB()} style={styles.menuBtn}>
+            <Text>Seed Parent Alert B</Text>
+          </TouchableOpacity>
+          <View style={{ height: 1, backgroundColor: '#f3f4f6', marginVertical: 6 }} />
+          <TouchableOpacity onPress={() => { try { resetMessagesToDemo(); Alert.alert('Demo messages loaded'); } catch (e) { Alert.alert('Error', 'Could not load demo messages'); } }} style={styles.menuBtn}>
+            <Text>Load Demo Messages</Text>
+          </TouchableOpacity>
+          <TouchableOpacity onPress={() => {
+            Alert.alert('Confirm', 'Clear all messages?', [
+              { text: 'Cancel', style: 'cancel' },
+              { text: 'Clear', style: 'destructive', onPress: () => { try { clearMessages(); Alert.alert('Cleared', 'All messages removed'); } catch (e) { Alert.alert('Error', 'Could not clear messages'); } } }
+            ]);
+          }} style={styles.menuBtn}>
+            <Text>Clear Messages</Text>
+          </TouchableOpacity>
+          <View style={{ height: 1, backgroundColor: '#f3f4f6', marginVertical: 6 }} />
+          <TouchableOpacity onPress={() => { try { resetChildrenToDemo(); Alert.alert('Cleared', 'Children cleared (use dev seed to repopulate)'); } catch (e) { Alert.alert('Error', 'Could not clear children'); } }} style={styles.menuBtn}>
+            <Text>Clear Children (use dev seed)</Text>
           </TouchableOpacity>
         </View>
       )}
@@ -135,7 +257,7 @@ function DevLoginWrapper({ onClose }) {
   // Lazy require to avoid loading login screen in production bundles
   let LoginScreen = null;
   try {
-    const mod = require('../../screens/LoginScreen');
+    const mod = require('../screens/LoginScreen');
     LoginScreen = (mod && mod.default) ? mod.default : mod;
   } catch (e) { return null; }
 

@@ -6,7 +6,7 @@
     "sdkVersion": "54.0.0",
     "ios": {
       "bundleIdentifier": "com.azlabs.buddyboard",
-      "buildNumber": "1.0.1",
+      "buildNumber": "1.0.4",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false
       }
@@ -20,21 +20,22 @@
     "plugins": [
       "expo-asset"
     ],
-    "icon": "./assets/BuddyBoardicon.png",
+    "icon": "./assets/icon.png",
     "splash": {
-      "image": "./assets/buddyBoardSplash.png",
+      "image": "./assets/splash-icon.png",
       "resizeMode": "contain",
       "backgroundColor": "#ffffff"
     },
     "android": {
       "package": "com.azlabs.buddyboard",
+      "versionCode": 2,
       "adaptiveIcon": {
-        "foregroundImage": "./assets/BuddyBoardicon.png",
+        "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#ffffff"
       }
     },
     "web": {
-      "favicon": "./assets/BuddyBoardicon.png"
+      "favicon": "./assets/icon.png"
     },
     "extra": {
       "eas": {

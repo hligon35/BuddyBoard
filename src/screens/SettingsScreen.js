@@ -6,6 +6,8 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import devToolsFlag from '../utils/devToolsFlag';
+import { ScreenWrapper } from '../components/ScreenWrapper';
+import { pravatarUriFor, setIdVisibilityEnabled, initIdVisibilityFromStorage } from '../utils/idVisibility';
 
 const ARRIVAL_KEY = 'settings_arrival_enabled_v1';
 const PUSH_KEY = 'settings_push_enabled_v1';
@@ -19,6 +21,7 @@ const PUSH_UPDATES_KEY = 'settings_push_updates_v1';
 const PUSH_OTHER_KEY = 'settings_push_other_v1';
 const SHOW_EMAIL_KEY = 'settings_show_email_v1';
 const SHOW_PHONE_KEY = 'settings_show_phone_v1';
+const SHOW_IDS_KEY = 'settings_show_ids_v1';
 const BUSINESS_ADDR_KEY = 'business_address_v1';
 
 export default function SettingsScreen() {
@@ -37,6 +40,7 @@ export default function SettingsScreen() {
   const [pushOther, setPushOther] = useState(false);
   const [showEmail, setShowEmail] = useState(true);
   const [showPhone, setShowPhone] = useState(true);
+  const [showIds, setShowIds] = useState(false);
 
   // header buttons are provided globally by the navigator
 
@@ -69,8 +73,12 @@ export default function SettingsScreen() {
         if (po !== null) setPushOther(po === '1');
         const se = await AsyncStorage.getItem(SHOW_EMAIL_KEY);
         const sp = await AsyncStorage.getItem(SHOW_PHONE_KEY);
+        const si = await AsyncStorage.getItem(SHOW_IDS_KEY);
         if (se !== null) setShowEmail(se === '1');
         if (sp !== null) setShowPhone(sp === '1');
+        if (si !== null) setShowIds(si === '1');
+        // initialize module-level cache from storage
+        initIdVisibilityFromStorage().catch(() => {});
         const bRaw = await AsyncStorage.getItem(BUSINESS_ADDR_KEY);
         if (bRaw) {
           try { const parsed = JSON.parse(bRaw); if (parsed && parsed.address) setBusinessAddress(parsed.address); } catch (e) {}
@@ -162,6 +170,12 @@ export default function SettingsScreen() {
     AsyncStorage.setItem(SHOW_PHONE_KEY, showPhone ? '1' : '0').catch(() => {});
   }, [showPhone]);
 
+  useEffect(() => {
+    AsyncStorage.setItem(SHOW_IDS_KEY, showIds ? '1' : '0').catch(() => {});
+    // update module-level visibility immediately
+    setIdVisibilityEnabled(!!showIds);
+  }, [showIds]);
+
   const toggleArrival = () => {
     const next = !arrivalEnabled;
     if (next) {
@@ -189,7 +203,7 @@ export default function SettingsScreen() {
   };
 
   return (
-    <View style={{ flex: 1 }}>
+    <ScreenWrapper bannerShowBack={false} style={{ flex: 1 }}>
       <ScrollView style={{ flex: 1, width: '100%' }} contentContainerStyle={{ alignItems: 'center', paddingBottom: 28 }} bounces={true} alwaysBounceVertical={true} showsVerticalScrollIndicator={false}>
         <View style={{ width: '100%', maxWidth: 720, borderRadius: 14, backgroundColor: '#fff', padding: 20, elevation: 3, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, marginTop: 8 }}>
         <TouchableOpacity onPress={() => Alert.alert('Edit Profile', 'Edit profile tapped')} style={{ position: 'absolute', right: 12, top: 12, padding: 6 }}>
@@ -198,7 +212,7 @@ export default function SettingsScreen() {
 
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
           <Image
-            source={{ uri: user?.avatar || `https://i.pravatar.cc/120?u=${user?.email || 'anon'}` }}
+            source={{ uri: (user?.avatar && !String(user.avatar).includes('pravatar.cc')) ? user.avatar : pravatarUriFor(user, 120) }}
             style={{ width: 84, height: 84, borderRadius: 42, marginRight: 16 }}
           />
           <View style={{ flex: 1, justifyContent: 'center' }}>
@@ -221,14 +235,31 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* Other Settings Section - Push Notification Groups */}
-        <View style={{ marginTop: 18, borderTopWidth: 1, borderTopColor: '#eef2f7', paddingTop: 16 }}>
-          <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8 }}>Other Settings</Text>
+        {/* Profile Privacy */}
+        <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: '#eef2f7', paddingTop: 12 }}>
+          <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8 }}>Profile Privacy</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <View style={{ flex: 1, paddingRight: 8 }}>
+              <Text style={{ fontSize: 14 }}>Show Email in profile</Text>
+              <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>Allow others to see your email in the user info modal.</Text>
+            </View>
+            <Switch value={showEmail} onValueChange={setShowEmail} />
+          </View>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <View style={{ flex: 1, paddingRight: 8 }}>
+              <Text style={{ fontSize: 14 }}>Show Phone in profile</Text>
+              <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>Allow others to see your phone number in the user info modal.</Text>
+            </View>
+            <Switch value={showPhone} onValueChange={setShowPhone} />
+          </View>
+        </View>
 
+        {/* Push Notifications - moved to be immediately under Arrival Detection (subsections alphabetical) */}
+        <View style={{ marginTop: 18, borderTopWidth: 1, borderTopColor: '#eef2f7', paddingTop: 16 }}>
           {/* Master Push Toggle */}
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
             <View style={{ flex: 1, paddingRight: 8 }}>
-              <Text style={{ fontSize: 14, fontWeight: '600' }}>Push Notifications</Text>
+              <Text style={{ fontSize: 16, fontWeight: '700' }}>Push Notifications</Text>
               <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>Enable or disable all push notifications.</Text>
             </View>
             <Switch value={pushEnabled} onValueChange={togglePush} />
@@ -246,16 +277,28 @@ export default function SettingsScreen() {
             </View>
           </View>
 
+          {/* Comments */}
+          <View style={{ marginTop: 8, paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#f3f4f6' }}>
+            <Text style={{ fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Comments</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <Text style={{ fontSize: 14 }}>Mentions in comments</Text>
+                <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>Notify when you're mentioned in a comment.</Text>
+              </View>
+              <Switch value={pushMentionsComments} onValueChange={setPushMentionsComments} disabled={!pushEnabled} />
+            </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <Text style={{ fontSize: 14 }}>Replies to my comments</Text>
+                <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>Notify when someone replies to your comment.</Text>
+              </View>
+              <Switch value={pushRepliesComments} onValueChange={setPushRepliesComments} disabled={!pushEnabled} />
+            </View>
+          </View>
+
           {/* Timeline / Posts */}
           <View style={{ marginTop: 8, paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#f3f4f6' }}>
             <Text style={{ fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Timeline & Posts</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <View style={{ flex: 1, paddingRight: 8 }}>
-                <Text style={{ fontSize: 14 }}>New posts on timeline</Text>
-                <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>Notify for new posts added to the timeline.</Text>
-              </View>
-              <Switch value={pushTimelinePosts} onValueChange={setPushTimelinePosts} disabled={!pushEnabled} />
-            </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
               <View style={{ flex: 1, paddingRight: 8 }}>
                 <Text style={{ fontSize: 14 }}>Mentions in posts</Text>
@@ -263,31 +306,19 @@ export default function SettingsScreen() {
               </View>
               <Switch value={pushMentionsPosts} onValueChange={setPushMentionsPosts} disabled={!pushEnabled} />
             </View>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+              <View style={{ flex: 1, paddingRight: 8 }}>
+                <Text style={{ fontSize: 14 }}>New posts on timeline</Text>
+                <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>Notify for new posts added to the timeline.</Text>
+              </View>
+              <Switch value={pushTimelinePosts} onValueChange={setPushTimelinePosts} disabled={!pushEnabled} />
+            </View>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
               <View style={{ flex: 1, paddingRight: 8 }}>
                 <Text style={{ fontSize: 14 }}>Tags in posts</Text>
                 <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>Notify when a post is tagged for you or your child.</Text>
               </View>
               <Switch value={pushTagsPosts} onValueChange={setPushTagsPosts} disabled={!pushEnabled} />
-            </View>
-          </View>
-
-          {/* Comments */}
-          <View style={{ marginTop: 8, paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#f3f4f6' }}>
-            <Text style={{ fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Comments</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <View style={{ flex: 1, paddingRight: 8 }}>
-                <Text style={{ fontSize: 14 }}>Replies to my comments</Text>
-                <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>Notify when someone replies to your comment.</Text>
-              </View>
-              <Switch value={pushRepliesComments} onValueChange={setPushRepliesComments} disabled={!pushEnabled} />
-            </View>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <View style={{ flex: 1, paddingRight: 8 }}>
-                <Text style={{ fontSize: 14 }}>Mentions in comments</Text>
-                <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>Notify when you're mentioned in a comment.</Text>
-              </View>
-              <Switch value={pushMentionsComments} onValueChange={setPushMentionsComments} disabled={!pushEnabled} />
             </View>
           </View>
 
@@ -302,65 +333,47 @@ export default function SettingsScreen() {
               <Switch value={pushUpdates} onValueChange={setPushUpdates} disabled={!pushEnabled} />
             </View>
           </View>
+        </View>
 
-          {/* Other (removed content, preserving space) */}
-          <View style={{ marginTop: 8, paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#f3f4f6' }}>
-            <View style={{ height: 72 }} />
-          </View>
-
-          {/* Privacy: show email / phone to others */}
+        {/* Admin: business address (used for arrival detection geofence) */}
+        {user && (user.role === 'admin' || user.role === 'administrator') ? (
           <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: '#eef2f7', paddingTop: 12 }}>
-            <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8 }}>Profile Privacy</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <View style={{ flex: 1, paddingRight: 8 }}>
-                <Text style={{ fontSize: 14 }}>Show Email in profile</Text>
-                <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>Allow others to see your email in the user info modal.</Text>
-              </View>
-              <Switch value={showEmail} onValueChange={setShowEmail} />
-            </View>
+            <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8 }}>Business Address</Text>
+            <Text style={{ fontSize: 14, color: '#6b7280', marginBottom: 8 }}>Set the center's address used to detect nearby arrivals (lat,lng).</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <View style={{ flex: 1, paddingRight: 8 }}>
-                <Text style={{ fontSize: 14 }}>Show Phone in profile</Text>
-                <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>Allow others to see your phone number in the user info modal.</Text>
-              </View>
-              <Switch value={showPhone} onValueChange={setShowPhone} />
+              <Text style={{ flex: 1 }}>{businessAddress || 'Not set'}</Text>
+              <TouchableOpacity onPress={pickBusinessLocation} style={{ marginLeft: 8, padding: 8, backgroundColor: '#2563eb', borderRadius: 8 }}>
+                <Text style={{ color: '#fff' }}>Use current location</Text>
+              </TouchableOpacity>
             </View>
           </View>
+        ) : null}
+        
 
-          {/* Admin: business address (used for arrival detection geofence) */}
-          {user && (user.role === 'admin' || user.role === 'administrator') ? (
+          {/* Profile Privacy moved above Push Notifications */}
+
+          {/* IDs: developer toggle (persistent) - admin only (moved for admins to Admin Controls) */}
+          {(user && (user.role === 'admin' || user.role === 'administrator')) ? (
             <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: '#eef2f7', paddingTop: 12 }}>
-              <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8 }}>Business Address</Text>
-              <Text style={{ fontSize: 14, color: '#6b7280', marginBottom: 8 }}>Set the center's address used to detect nearby arrivals (lat,lng).</Text>
+              <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8 }}>IDs</Text>
               <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                <Text style={{ flex: 1 }}>{businessAddress || 'Not set'}</Text>
-                <TouchableOpacity onPress={pickBusinessLocation} style={{ marginLeft: 8, padding: 8, backgroundColor: '#2563eb', borderRadius: 8 }}>
-                  <Text style={{ color: '#fff' }}>Use current location</Text>
-                </TouchableOpacity>
+                <View style={{ flex: 1, paddingRight: 8 }}>
+                  <Text style={{ fontSize: 14 }}>Show internal IDs</Text>
+                  <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>Toggle to show internal ID strings in profiles (debug only).</Text>
+                </View>
+                <Switch value={showIds} onValueChange={setShowIds} />
               </View>
             </View>
           ) : null}
 
-        </View>
-        </View>
-        {/* Dev-only role switcher for local testing */}
-        {(__DEV__ && devToolsVisible) && (
-          <View style={{ width: '100%', maxWidth: 720, marginTop: 18 }}>
-            <Text style={{ fontSize: 14, fontWeight: '700', marginBottom: 8 }}>Developer: switch role</Text>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <TouchableOpacity onPress={() => { setRole && setRole('parent'); Alert.alert('Role changed', 'Switched to parent (dev)'); }} style={{ flex: 1, marginRight: 6, backgroundColor: '#e5e7eb', padding: 10, borderRadius: 8, alignItems: 'center' }}>
-                <Text>Parent</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => { setRole && setRole('therapist'); Alert.alert('Role changed', 'Switched to therapist (dev)'); }} style={{ flex: 1, marginHorizontal: 6, backgroundColor: '#e5e7eb', padding: 10, borderRadius: 8, alignItems: 'center' }}>
-                <Text>Therapist</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => { setRole && setRole('admin'); Alert.alert('Role changed', 'Switched to admin (dev)'); }} style={{ flex: 1, marginLeft: 6, backgroundColor: '#e5e7eb', padding: 10, borderRadius: 8, alignItems: 'center' }}>
-                <Text>Admin</Text>
-              </TouchableOpacity>
-            </View>
+          {/* Empty placeholder tile (kept at bottom of settings card) */}
+          <View style={{ marginTop: 12, paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#f3f4f6' }}>
+            <View style={{ height: 72 }} />
           </View>
-        )}
+
+        </View>
+        {/* Dev role switcher moved to DevRoleSwitcher (floating) */}
       </ScrollView>
-    </View>
+    </ScreenWrapper>
   );
 }
