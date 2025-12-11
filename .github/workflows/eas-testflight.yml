@@ -1,8 +1,8 @@
 name: Build and submit iOS to TestFlight
 
 on:
-  push:
-    branches: [ master, main ]
+  push: {}
+  workflow_dispatch: {}
 
 jobs:
   build-and-submit:
