@@ -21,10 +21,20 @@ export function LogoutButton() {
   );
 }
 
+export function BackButton({ onPress }) {
+  return (
+    <TouchableOpacity style={[styles.btn, styles.backBtn]} onPress={onPress}>
+      <Text style={styles.backText}>‹ Back</Text>
+    </TouchableOpacity>
+  );
+}
+
 const styles = StyleSheet.create({
   btn: { paddingHorizontal: 12 },
   help: { color: '#2563eb', fontWeight: '600' },
   logout: { color: '#ef4444', fontWeight: '600' },
+  backBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, backgroundColor: '#eef2ff' },
+  backText: { color: '#2563eb', fontWeight: '700', fontSize: 14 },
 });
 
 export default { HelpButton, LogoutButton };

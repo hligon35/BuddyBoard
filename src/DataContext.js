@@ -519,6 +519,42 @@ export function DataProvider({ children: reactChildren }) {
     }
   }
 
+  // Send a general admin memo to multiple recipients
+  async function sendAdminMemo({ recipients = [], subject = '', body = '', childId = null } = {}) {
+    try {
+      const temp = {
+        id: `urgent-${Date.now()}`,
+        type: 'admin_memo',
+        subject: subject || '',
+        body: body || '',
+        childId: childId || null,
+        recipients: Array.isArray(recipients) ? recipients : [],
+        proposerId: user?.id,
+        status: 'sent',
+        createdAt: new Date().toISOString(),
+      };
+      // Optimistically add to local urgent memos so admins can see it immediately
+      setUrgentMemos((s) => [temp, ...(s || [])]);
+
+      // Attempt server send if API supports it
+      if (Api.sendUrgentMemo) {
+        try {
+          const created = await Api.sendUrgentMemo(temp);
+          if (created && created.id) {
+            setUrgentMemos((s) => (s || []).map((m) => (m.id === temp.id ? created : m)));
+            return created;
+          }
+        } catch (e) {
+          console.warn('sendAdminMemo API failed', e?.message || e);
+        }
+      }
+      return temp;
+    } catch (e) {
+      console.warn('sendAdminMemo failed', e?.message || e);
+      return null;
+    }
+  }
+
   // Update urgent memo status locally and attempt server notify
   async function respondToUrgentMemo(memoId, action) {
     try {
@@ -601,6 +637,7 @@ export function DataProvider({ children: reactChildren }) {
       sendMessage,
       fetchAndSync,
       markUrgentRead,
+      sendAdminMemo,
       // time change proposals
       timeChangeProposals,
       proposeTimeChange,

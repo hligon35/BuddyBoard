@@ -30,7 +30,7 @@ export default function AdminControlsScreen() {
   }, [therapists]);
 
   // Navigation helpers
-  const openMemos = () => navigation.navigate('UrgentMemos');
+  const openMemos = () => navigation.navigate('AdminMemos');
   const openAlerts = () => navigation.navigate('AdminAlerts');
   const openCommunity = () => navigation.navigate('Home');
   const openChats = () => navigation.navigate('Chats');
