@@ -1,0 +1,53 @@
+name: Build and submit iOS to TestFlight
+
+on:
+  push:
+    branches: [ master, main ]
+
+jobs:
+  build-and-submit:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '18'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Install EAS CLI
+        run: npm install -g eas-cli
+
+      - name: Configure App Store Connect API key
+        if: ${{ secrets.APP_STORE_CONNECT_JSON != '' }}
+        run: |
+          echo "Writing App Store Connect API key file"
+          echo "${{ secrets.APP_STORE_CONNECT_JSON }}" > ./appstore_connect.json
+
+      - name: Login to EAS
+        env:
+          EAS_TOKEN: ${{ secrets.EAS_TOKEN }}
+        run: |
+          if [ -n "${EAS_TOKEN-}" ]; then
+            echo "Using provided EAS_TOKEN"
+            eas whoami || true
+          else
+            echo "EAS_TOKEN not set. Exiting."
+            exit 1
+          fi
+
+      - name: Build iOS (cloud)
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          eas build --platform ios --profile production --non-interactive
+
+      - name: Submit to TestFlight
+        env:
+          EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
+        run: |
+          eas submit --platform ios --latest --non-interactive
