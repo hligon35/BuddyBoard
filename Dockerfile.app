@@ -1,11 +1,12 @@
 FROM node:18-alpine
 
 # Create app directory
-WORKDIR /usr/src/app
+WORKDIR /app
 
 # Install app dependencies (copy lock files first for better caching)
 COPY package*.json ./
-RUN npm ci --only=production || npm install --silent
+# Use npm install for development-friendly container
+RUN npm install --silent
 
 # Copy app source
 COPY . .
