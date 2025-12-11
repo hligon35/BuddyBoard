@@ -10,8 +10,7 @@
       "android": { "buildType": "app-bundle" }
     },
     "production": {
-      "android": { "buildType": "app-bundle" },
-      "ios": { "buildType": "release" }
+      "android": { "buildType": "app-bundle" }
     }
   },
   "submit": {}
