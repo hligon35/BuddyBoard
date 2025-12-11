@@ -1,10 +1,10 @@
 import React from 'react';
-import { View, Text, StyleSheet } from 'react-native';
+import { View, Text, StyleSheet, Image } from 'react-native';
 
 export default function LogoTitle() {
   return (
     <View style={styles.wrap}>
-      <Text style={styles.text}>BuddyBoard</Text>
+      <Image source={require('../../assets/TitleLogo.png')} style={{ width: 120, height: 36, resizeMode: 'contain' }} />
     </View>
   );
 }

@@ -19,9 +19,9 @@ $repoRoot = Resolve-Path (Join-Path $scriptDir '..')
 
 Write-Host "Repo root: $repoRoot"
 
-$source = Join-Path $repoRoot 'assets\\BuddyBoardicon.png'
+$source = Join-Path $repoRoot 'assets\\icon.png'
 if (-not (Test-Path $source)) {
-    Write-Error "Source icon not found at $source. Put your 1024x1024 icon at assets\\BuddyBoardicon.png and re-run."
+    Write-Error "Source icon not found at $source. Put your 1024x1024 icon at assets\\icon.png and re-run."
     exit 2
 }
 

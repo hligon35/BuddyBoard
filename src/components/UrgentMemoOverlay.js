@@ -111,29 +111,11 @@ export default function UrgentMemoOverlay() {
         </View>
       </Modal>
 
-      {/* Dev-only: floating debug button to open urgent memo modal */}
-      {__DEV__ && devToolsVisible && (
-        <TouchableOpacity style={styles.debugBtn} onPress={() => setVisible(true)} accessibilityLabel="Open urgent memo (dev)">
-          <Text style={styles.debugBtnText}>Urgent</Text>
-        </TouchableOpacity>
-      )}
+      {/* Dev floating button removed per request */}
     </>
   );
 }
 
 const styles = StyleSheet.create({
-  debugBtn: {
-    position: 'absolute',
-    left: 16,
-    bottom: 90,
-    backgroundColor: '#ef4444',
-    paddingHorizontal: 12,
-    paddingVertical: 8,
-    borderRadius: 20,
-    elevation: 6,
-  },
-  debugBtnText: {
-    color: '#fff',
-    fontWeight: '700',
-  },
+  // debug button removed
 });

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, Image, StyleSheet, ScrollView, TouchableOpacity, Linking, Modal, TouchableWithoutFeedback, Alert, Platform } from 'react-native';
+import { View, Text, Image, StyleSheet, ScrollView, TouchableOpacity, Linking, Modal, TouchableWithoutFeedback, Alert, Platform, Switch } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useData } from '../DataContext';
@@ -7,7 +7,7 @@ import { useAuth } from '../AuthContext';
 import { ScreenWrapper } from '../components/ScreenWrapper';
 
 export default function MyChildScreen() {
-  const { children, resetChildrenToDemo, urgentMemos, sendTimeUpdateAlert } = useData();
+  const { children, resetChildrenToDemo, urgentMemos, sendTimeUpdateAlert, timeChangeProposals, proposeTimeChange, respondToProposal, respondToUrgentMemo } = useData();
   // Only use real children from context; do not auto-seed a demo child here — the demo loader button remains.
   const childList = (Array.isArray(children) && children.length) ? children : [];
   const [selectedIndex, setSelectedIndex] = useState(0);
@@ -20,12 +20,13 @@ export default function MyChildScreen() {
   }, [childList.length]);
   const child = childList[selectedIndex] || { id: 'no-child', name: 'No children added', age: '', room: '', avatar: 'https://i.pravatar.cc/120?u=empty', carePlan: '', notes: '' };
 
-  const { timeChangeProposals, proposeTimeChange, respondToProposal } = useData();
+  // const provided above via single useData call
   const { user } = useAuth();
   const [showProposeModal, setShowProposeModal] = useState(false);
   const [proposeType, setProposeType] = useState('pickup');
   const [useExactDate, setUseExactDate] = useState(false);
   const [exactDate, setExactDate] = useState(new Date());
+  const [isPermanent, setIsPermanent] = useState(false);
   const [showPicker, setShowPicker] = useState(false);
 
   function formatISO(iso) {
@@ -52,7 +53,9 @@ export default function MyChildScreen() {
         proposedISO = new Date(base.getTime() + offsetMillis).toISOString();
       }
       const note = `${proposeType} change via app`; 
-      const created = await proposeTimeChange(child.id, proposeType, proposed, note);
+      // include permanence in note so it is visible in local proposals when server doesn't persist scope
+      const scopeNote = isPermanent ? `${note} (permanent)` : note;
+      const created = await proposeTimeChange(child.id, proposeType, proposedISO, scopeNote);
       if (created) {
         Alert.alert('Proposal sent');
         setShowProposeModal(false);
@@ -101,9 +104,7 @@ export default function MyChildScreen() {
           ))}
         </ScrollView>
       ) : null}
-      <TouchableOpacity onPress={() => { resetChildrenToDemo(); setSelectedIndex(0); }} style={styles.demoButton}>
-        <Text style={{ color: '#fff', fontWeight: '700' }}>Clear children (use dev seed to populate)</Text>
-      </TouchableOpacity>
+      {/* Developer action moved to DevRoleSwitcher */}
       
       <View style={styles.card}>
         <Image source={{ uri: child.avatar }} style={styles.avatar} />
@@ -128,6 +129,10 @@ export default function MyChildScreen() {
                     <TouchableOpacity onPress={() => submitProposal(60 * 60 * 1000)} style={{ padding: 8, backgroundColor: '#e5e7eb', borderRadius: 8 }}><Text>+1h</Text></TouchableOpacity>
                     <TouchableOpacity onPress={() => submitProposal(-15 * 60 * 1000)} style={{ padding: 8, backgroundColor: '#e5e7eb', borderRadius: 8 }}><Text>-15m</Text></TouchableOpacity>
                   </View>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <Text>Permanent change</Text>
+                      <Switch value={isPermanent} onValueChange={(v) => { setIsPermanent(v); if (v) { setUseExactDate(false); } }} />
+                    </View>
                     <View style={{ marginBottom: 8 }}>
                       <TouchableOpacity onPress={() => { setUseExactDate(!useExactDate); if (Platform.OS === 'android' && !showPicker && !useExactDate) setShowPicker(true); }} style={{ padding: 8, backgroundColor: useExactDate ? '#c7f9cc' : '#e5e7eb', borderRadius: 8 }}>
                         <Text>{useExactDate ? 'Using exact date/time' : 'Choose exact date/time'}</Text>
@@ -243,29 +248,49 @@ export default function MyChildScreen() {
 
       {/* Proposals list */}
       <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Pending Proposals</Text>
-        {childProposals.length ? childProposals.map((p) => (
-          <View key={p.id} style={{ paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
-            <Text style={{ fontWeight: '700' }}>{p.type === 'pickup' ? 'Pickup' : 'Drop-off'} change</Text>
-            <Text style={{ color: '#374151' }}>Proposed: {formatISO(p.proposedISO)}</Text>
-            <Text style={{ color: '#6b7280', fontSize: 12 }}>{p.note || ''}</Text>
-            <Text style={{ fontSize: 12, color: '#6b7280' }}>By: {p.proposerName || p.proposerId}</Text>
-            {user && (user.role === 'admin' || user.role === 'administrator') ? (
-              <View style={{ flexDirection: 'row', marginTop: 8 }}>
-                <TouchableOpacity onPress={async () => { const res = await respondToProposal(p.id, 'accept'); if (res) Alert.alert('Accepted'); }} style={{ marginRight: 8, padding: 8, backgroundColor: '#10B981', borderRadius: 8 }}>
-                  <Text style={{ color: '#fff' }}>Accept</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={async () => { const res = await respondToProposal(p.id, 'reject'); if (res) Alert.alert('Rejected'); }} style={{ padding: 8, backgroundColor: '#ef4444', borderRadius: 8 }}>
-                  <Text style={{ color: '#fff' }}>Reject</Text>
-                </TouchableOpacity>
-              </View>
-            ) : (
-              <Text style={{ marginTop: 8, color: '#6b7280' }}>Waiting for admin response</Text>
-            )}
-          </View>
-        )) : (
-          <Text style={styles.sectionText}>No pending proposals.</Text>
-        )}
+        <Text style={styles.sectionTitle}>Pending Requests</Text>
+        {(() => {
+          const memoRequests = (urgentMemos || []).filter((m) => m.childId === child.id && m.type === 'time_update' && (!m.status || m.status === 'pending'));
+          const proposalRequests = (timeChangeProposals || []).filter((p) => p.childId === child.id);
+          const combined = [
+            ...proposalRequests.map((p) => ({ ...p, _source: 'proposal', status: p.status || 'pending' })),
+            ...memoRequests.map((m) => ({ id: m.id, type: m.updateType, proposedISO: m.proposedISO, note: m.note, proposerName: m.proposerId, _source: 'memo', status: m.status || 'pending' }))
+          ];
+          if (!combined.length) return <Text style={styles.sectionText}>No pending requests.</Text>;
+          return combined.map((p) => (
+            <View key={p.id} style={{ paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
+              <Text style={{ fontWeight: '700' }}>{p.type === 'pickup' ? 'Pickup' : 'Drop-off'} request</Text>
+              <Text style={{ color: '#374151' }}>Requested: {formatISO(p.proposedISO)}</Text>
+              <Text style={{ color: '#6b7280', fontSize: 12 }}>{p.note || ''}</Text>
+              <Text style={{ fontSize: 12, color: '#6b7280' }}>By: {p.proposerName || p.proposerId}</Text>
+              {user && (user.role === 'admin' || user.role === 'administrator') ? (
+                <View style={{ flexDirection: 'row', marginTop: 8 }}>
+                  {p._source === 'proposal' ? (
+                    <>
+                      <TouchableOpacity onPress={async () => { const res = await respondToProposal(p.id, 'accept'); if (res) Alert.alert('Accepted'); }} style={{ marginRight: 8, padding: 8, backgroundColor: '#10B981', borderRadius: 8 }}>
+                        <Text style={{ color: '#fff' }}>Accept</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={async () => { const res = await respondToProposal(p.id, 'reject'); if (res) Alert.alert('Rejected'); }} style={{ padding: 8, backgroundColor: '#ef4444', borderRadius: 8 }}>
+                        <Text style={{ color: '#fff' }}>Reject</Text>
+                      </TouchableOpacity>
+                    </>
+                  ) : (
+                    <>
+                      <TouchableOpacity onPress={async () => { const ok = await respondToUrgentMemo(p.id, 'accepted'); if (ok) Alert.alert('Accepted'); }} style={{ marginRight: 8, padding: 8, backgroundColor: '#10B981', borderRadius: 8 }}>
+                        <Text style={{ color: '#fff' }}>Accept</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity onPress={async () => { const ok = await respondToUrgentMemo(p.id, 'denied'); if (ok) Alert.alert('Denied'); }} style={{ padding: 8, backgroundColor: '#ef4444', borderRadius: 8 }}>
+                        <Text style={{ color: '#fff' }}>Deny</Text>
+                      </TouchableOpacity>
+                    </>
+                  )}
+                </View>
+              ) : (
+                <Text style={{ marginTop: 8, color: '#6b7280' }}>Waiting for admin response</Text>
+              )}
+            </View>
+          ));
+        })()}
       </View>
 
       {/* BCA therapist tile (always render; show placeholder when not assigned) */}

@@ -1,4 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
+import { InteractionManager } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Api from './Api';
 import { Share } from 'react-native';
@@ -17,6 +18,7 @@ const MESSAGES_KEY = 'bbs_messages_v1';
 const MEMOS_KEY = 'bbs_memos_v1';
 const ARCHIVED_KEY = 'bbs_archived_threads_v1';
 const CHILDREN_KEY = 'bbs_children_v1';
+const BLOCKED_KEY = 'bbs_blocked_v1';
 
 // Demo posts for local development — authored by seeded therapists and parents only
 const now = Date.now();
@@ -101,6 +103,7 @@ export function DataProvider({ children: reactChildren }) {
   const [children, setChildren] = useState([]);
   const [parents, setParents] = useState([]);
   const [therapists, setTherapists] = useState([]);
+  const [blockedUserIds, setBlockedUserIds] = useState([]);
 
   // Hydrate from storage then attempt remote sync
   useEffect(() => {
@@ -116,6 +119,7 @@ export function DataProvider({ children: reactChildren }) {
           AsyncStorage.getItem(THERAPISTS_KEY),
           AsyncStorage.getItem(ARCHIVED_KEY),
         ]);
+        const blockedRaw = await AsyncStorage.getItem(BLOCKED_KEY);
         if (!mounted) return;
 
         // Posts
@@ -163,10 +167,26 @@ export function DataProvider({ children: reactChildren }) {
         } else {
           setArchivedThreads([]);
         }
+        // Blocked users
+        if (blockedRaw) {
+          try { const parsed = JSON.parse(blockedRaw); if (Array.isArray(parsed)) setBlockedUserIds(parsed); else setBlockedUserIds([]); }
+          catch (e) { setBlockedUserIds([]); }
+        } else {
+          setBlockedUserIds([]);
+        }
       } catch (e) {
         console.warn('hydrate failed', e.message);
       }
-      await fetchAndSync();
+      // Defer the network / sync work until after initial interactions/render
+      try {
+        InteractionManager.runAfterInteractions(() => {
+          console.log('DataProvider: running fetchAndSync after interactions', new Date().toISOString());
+          fetchAndSync().catch((e) => console.warn('fetchAndSync deferred failed', e?.message || e));
+        });
+      } catch (e) {
+        // fallback to immediate call
+        await fetchAndSync();
+      }
     })();
     return () => { mounted = false; };
   }, [user]);
@@ -192,6 +212,11 @@ export function DataProvider({ children: reactChildren }) {
   useEffect(() => {
     AsyncStorage.setItem(MEMOS_KEY, JSON.stringify(urgentMemos)).catch(() => {});
   }, [urgentMemos]);
+
+  // Persist blocked user ids
+  useEffect(() => {
+    AsyncStorage.setItem(BLOCKED_KEY, JSON.stringify(blockedUserIds)).catch(() => {});
+  }, [blockedUserIds]);
 
   // Listen for dev directory toggle: seed or revert directory data
   useEffect(() => {
@@ -236,6 +261,7 @@ export function DataProvider({ children: reactChildren }) {
   }, []);
 
   async function fetchAndSync() {
+    
     try {
       const remotePosts = await Api.getPosts();
       if (Array.isArray(remotePosts)) setPosts(remotePosts);
@@ -385,6 +411,28 @@ export function DataProvider({ children: reactChildren }) {
     }
   }
 
+  function deleteComment(postId, commentId, parentCommentId = null) {
+    try {
+      setPosts((s) => (s || []).map((p) => {
+        if (p.id !== postId) return p;
+        if (!parentCommentId) {
+          return { ...p, comments: (p.comments || []).filter((c) => c.id !== commentId) };
+        }
+        return {
+          ...p,
+          comments: (p.comments || []).map((c) => {
+            if (c.id !== parentCommentId) return c;
+            return { ...c, replies: (c.replies || []).filter((r) => r.id !== commentId) };
+          }),
+        };
+      }));
+      // best-effort persist
+      AsyncStorage.setItem(POSTS_KEY, JSON.stringify((posts || []).map((p) => p))).catch(() => {});
+    } catch (e) {
+      console.warn('deleteComment failed', e?.message || e);
+    }
+  }
+
   async function recordShare(postId, { notifyServer = true } = {}) {
     // Only increment and optionally notify the server without invoking native share UI
     setPosts((s) => s.map((x) => (x.id === postId ? { ...x, shares: (x.shares || 0) + 1 } : x)));
@@ -399,7 +447,7 @@ export function DataProvider({ children: reactChildren }) {
   async function proposeTimeChange(childId, type, proposedISO, note) {
     try {
       const payload = { childId, type, proposedISO, note, proposerId: user?.id };
-      const created = await Api.proposeTimeChange(payload);
+      const created = await Api.proposeTimeChange ? await Api.proposeTimeChange(payload) : { id: `proposal-${Date.now()}`, childId, type, proposedISO, note, proposerId: user?.id, scope: 'temporary', createdAt: new Date().toISOString() };
       // server should return the created proposal; append locally
       setTimeChangeProposals((s) => [created, ...s]);
       return created;
@@ -411,14 +459,35 @@ export function DataProvider({ children: reactChildren }) {
 
   async function respondToProposal(proposalId, action) {
     try {
-      const res = await Api.respondTimeChange(proposalId, action);
-      // server should return updated proposal and possibly updated child
-      // remove or update local proposals
+      // Find local proposal so we can apply local changes immediately
+      const local = (timeChangeProposals || []).find((p) => p.id === proposalId);
+      // Attempt server call if available
+      let res = null;
+      try {
+        if (Api.respondTimeChange) res = await Api.respondTimeChange(proposalId, action);
+      } catch (e) {
+        console.warn('respondTimeChange API failed', e?.message || e);
+      }
+
+      // Remove the proposal locally
       setTimeChangeProposals((s) => (s || []).filter((p) => p.id !== proposalId));
-      // if server returned updated child, merge it
+
+      // If accepted and we have proposal details, update the child's schedule locally
+      if (action === 'accept' && local) {
+        try {
+          const childId = local.childId;
+          const field = local.type === 'pickup' ? 'pickupTimeISO' : 'dropoffTimeISO';
+          setChildren((prev) => (prev || []).map((c) => (c.id === childId ? { ...c, [field]: local.proposedISO } : c)));
+        } catch (e) {
+          console.warn('apply accepted proposal locally failed', e?.message || e);
+        }
+      }
+
+      // If server returned updated child, merge it as authoritative
       if (res && res.updatedChild && res.updatedChild.id) {
         setChildren((prev) => (prev || []).map((c) => (c.id === res.updatedChild.id ? { ...c, ...res.updatedChild } : c)));
       }
+
       return res;
     } catch (e) {
       console.warn('respondToProposal failed', e?.message || e);
@@ -559,6 +628,8 @@ export function DataProvider({ children: reactChildren }) {
   async function respondToUrgentMemo(memoId, action) {
     try {
       // action: 'accepted' | 'denied' | 'opened'
+      // Find memo locally
+      const localMemo = (urgentMemos || []).find((m) => m.id === memoId);
       setUrgentMemos((s) => (s || []).map((m) => (m.id === memoId ? { ...m, status: action, respondedAt: new Date().toISOString() } : m)));
       if (Api.respondUrgentMemo) {
         try {
@@ -567,6 +638,17 @@ export function DataProvider({ children: reactChildren }) {
           console.warn('respondUrgentMemo API failed', e?.message || e);
         }
       }
+      // If this was a time_update and accepted, apply the time change to the child locally
+      if (action === 'accepted' && localMemo && localMemo.type === 'time_update') {
+        try {
+          const childId = localMemo.childId;
+          const field = localMemo.updateType === 'pickup' ? 'pickupTimeISO' : 'dropoffTimeISO';
+          setChildren((prev) => (prev || []).map((c) => (c.id === childId ? { ...c, [field]: localMemo.proposedISO } : c)));
+        } catch (e) {
+          console.warn('apply urgent memo accepted to child failed', e?.message || e);
+        }
+      }
+
       return true;
     } catch (e) {
       console.warn('respondToUrgentMemo failed', e?.message || e);
@@ -606,6 +688,39 @@ export function DataProvider({ children: reactChildren }) {
     }
   }
 
+  function blockUser(userId) {
+    try {
+      if (!userId) return;
+      setBlockedUserIds((s) => Array.from(new Set([...(s || []), userId])));
+      // remove posts authored by this user locally
+      setPosts((s) => (s || []).filter((p) => {
+        const authorId = p?.author?.id || p?.author?.name;
+        if (!authorId) return true;
+        return `${authorId}` !== `${userId}`;
+      }));
+      // remove messages where this user is sender or recipient
+      setMessages((s) => (s || []).filter((m) => {
+        const senderId = m?.sender?.id || m?.sender?.name;
+        if (senderId && `${senderId}` === `${userId}`) return false;
+        const toIds = (m.to || []).map(t => t.id || t.name).filter(Boolean);
+        if (toIds.find(t => `${t}` === `${userId}`)) return false;
+        return true;
+      }));
+      AsyncStorage.setItem(BLOCKED_KEY, JSON.stringify(Array.from(new Set([...(blockedUserIds || []), userId])))).catch(() => {});
+    } catch (e) {
+      console.warn('blockUser failed', e?.message || e);
+    }
+  }
+
+  function unblockUser(userId) {
+    try {
+      setBlockedUserIds((s) => (s || []).filter((id) => `${id}` !== `${userId}`));
+      AsyncStorage.setItem(BLOCKED_KEY, JSON.stringify((blockedUserIds || []).filter((id) => `${id}` !== `${userId}`))).catch(() => {});
+    } catch (e) {
+      console.warn('unblockUser failed', e?.message || e);
+    }
+  }
+
   return (
     <DataContext.Provider value={{
       posts,
@@ -632,12 +747,16 @@ export function DataProvider({ children: reactChildren }) {
       comment,
       replyToComment,
       reactToComment,
+      deleteComment,
       share,
       recordShare,
       sendMessage,
       fetchAndSync,
       markUrgentRead,
       sendAdminMemo,
+      blockedUserIds,
+      blockUser,
+      unblockUser,
       // time change proposals
       timeChangeProposals,
       proposeTimeChange,

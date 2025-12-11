@@ -20,9 +20,9 @@ export default function BottomNav({ navigationRef, currentRoute }) {
     { key: 'Chats', label: 'Chats', icon: (active) => (<MaterialIcons name={active ? 'chat' : 'chat-bubble-outline'} size={22} color={active ? '#0066FF' : '#444'} />) },
   ];
   if (role === 'therapist') {
-    tabs.push({ key: 'Schedule', label: 'Schedule', icon: (active) => (<Ionicons name={active ? 'calendar' : 'calendar-outline'} size={22} color={active ? '#0066FF' : '#444'} />) });
+    tabs.push({ key: 'MyClass', label: 'My Class', icon: (active) => (<MaterialCommunityIcons name={active ? 'account-group' : 'account-group-outline'} size={22} color={active ? '#0066FF' : '#444'} />) });
   } else if (role === 'admin' || role === 'administrator') {
-  tabs.push({ key: 'Controls', label: 'Controls', icon: (active) => (<MaterialIcons name={'tune'} size={22} color={active ? '#0066FF' : '#444'} />), count: (urgentMemos || []).filter((m) => !m.status || m.status === 'pending').length });
+  tabs.push({ key: 'Controls', label: 'Dashboard', icon: (active) => (<MaterialIcons name={'tune'} size={22} color={active ? '#0066FF' : '#444'} />), count: (urgentMemos || []).filter((m) => !m.status || m.status === 'pending').length });
   } else {
     tabs.push({ key: 'MyChild', label: 'My Child', icon: (active) => (<MaterialCommunityIcons name={active ? 'account-child' : 'account-child-outline'} size={22} color={active ? '#0066FF' : '#444'} />), count: parentPendingCount });
   }

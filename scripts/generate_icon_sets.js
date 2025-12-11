@@ -8,7 +8,7 @@ async function generate() {
   const jimpMod = await import('jimp');
   const Jimp = jimpMod.Jimp || jimpMod.default || jimpMod;
   const root = path.join(__dirname, '..');
-  const src = path.join(root, 'assets', 'BuddyBoardicon.png');
+  const src = path.join(root, 'assets', 'icon.png');
   if(!fs.existsSync(src)){
     console.error('Source icon not found at', src);
     process.exit(1);

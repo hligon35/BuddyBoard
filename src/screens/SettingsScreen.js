@@ -235,28 +235,31 @@ export default function SettingsScreen() {
           </View>
         </View>
 
-        {/* Admin: business address (used for arrival detection geofence) */}
-        {user && (user.role === 'admin' || user.role === 'administrator') ? (
-          <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: '#eef2f7', paddingTop: 12 }}>
-            <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8 }}>Business Address</Text>
-            <Text style={{ fontSize: 14, color: '#6b7280', marginBottom: 8 }}>Set the center's address used to detect nearby arrivals (lat,lng).</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <Text style={{ flex: 1 }}>{businessAddress || 'Not set'}</Text>
-              <TouchableOpacity onPress={pickBusinessLocation} style={{ marginLeft: 8, padding: 8, backgroundColor: '#2563eb', borderRadius: 8 }}>
-                <Text style={{ color: '#fff' }}>Use current location</Text>
-              </TouchableOpacity>
+        {/* Profile Privacy */}
+        <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: '#eef2f7', paddingTop: 12 }}>
+          <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8 }}>Profile Privacy</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+            <View style={{ flex: 1, paddingRight: 8 }}>
+              <Text style={{ fontSize: 14 }}>Show Email in profile</Text>
+              <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>Allow others to see your email in the user info modal.</Text>
             </View>
+            <Switch value={showEmail} onValueChange={setShowEmail} />
           </View>
-        ) : null}
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <View style={{ flex: 1, paddingRight: 8 }}>
+              <Text style={{ fontSize: 14 }}>Show Phone in profile</Text>
+              <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>Allow others to see your phone number in the user info modal.</Text>
+            </View>
+            <Switch value={showPhone} onValueChange={setShowPhone} />
+          </View>
+        </View>
 
-        {/* Other Settings Section - Push Notification Groups (subsections sorted alphabetically) */}
+        {/* Push Notifications - moved to be immediately under Arrival Detection (subsections alphabetical) */}
         <View style={{ marginTop: 18, borderTopWidth: 1, borderTopColor: '#eef2f7', paddingTop: 16 }}>
-          <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8 }}>Other Settings</Text>
-
           {/* Master Push Toggle */}
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
             <View style={{ flex: 1, paddingRight: 8 }}>
-              <Text style={{ fontSize: 14, fontWeight: '600' }}>Push Notifications</Text>
+              <Text style={{ fontSize: 16, fontWeight: '700' }}>Push Notifications</Text>
               <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>Enable or disable all push notifications.</Text>
             </View>
             <Switch value={pushEnabled} onValueChange={togglePush} />
@@ -293,7 +296,7 @@ export default function SettingsScreen() {
             </View>
           </View>
 
-          {/* Timeline / Posts (sub-items sorted alphabetically) */}
+          {/* Timeline / Posts */}
           <View style={{ marginTop: 8, paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#f3f4f6' }}>
             <Text style={{ fontSize: 14, fontWeight: '700', marginBottom: 6 }}>Timeline & Posts</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
@@ -330,37 +333,38 @@ export default function SettingsScreen() {
               <Switch value={pushUpdates} onValueChange={setPushUpdates} disabled={!pushEnabled} />
             </View>
           </View>
+        </View>
 
-          {/* Privacy: show email / phone to others */}
+        {/* Admin: business address (used for arrival detection geofence) */}
+        {user && (user.role === 'admin' || user.role === 'administrator') ? (
           <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: '#eef2f7', paddingTop: 12 }}>
-            <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8 }}>Profile Privacy</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
-              <View style={{ flex: 1, paddingRight: 8 }}>
-                <Text style={{ fontSize: 14 }}>Show Email in profile</Text>
-                <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>Allow others to see your email in the user info modal.</Text>
-              </View>
-              <Switch value={showEmail} onValueChange={setShowEmail} />
-            </View>
+            <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8 }}>Business Address</Text>
+            <Text style={{ fontSize: 14, color: '#6b7280', marginBottom: 8 }}>Set the center's address used to detect nearby arrivals (lat,lng).</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <View style={{ flex: 1, paddingRight: 8 }}>
-                <Text style={{ fontSize: 14 }}>Show Phone in profile</Text>
-                <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>Allow others to see your phone number in the user info modal.</Text>
-              </View>
-              <Switch value={showPhone} onValueChange={setShowPhone} />
+              <Text style={{ flex: 1 }}>{businessAddress || 'Not set'}</Text>
+              <TouchableOpacity onPress={pickBusinessLocation} style={{ marginLeft: 8, padding: 8, backgroundColor: '#2563eb', borderRadius: 8 }}>
+                <Text style={{ color: '#fff' }}>Use current location</Text>
+              </TouchableOpacity>
             </View>
           </View>
+        ) : null}
+        
 
-          {/* IDs: developer toggle (persistent) */}
-          <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: '#eef2f7', paddingTop: 12 }}>
-            <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8 }}>IDs</Text>
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-              <View style={{ flex: 1, paddingRight: 8 }}>
-                <Text style={{ fontSize: 14 }}>Show internal IDs</Text>
-                <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>Toggle to show internal ID strings in profiles (debug only).</Text>
+          {/* Profile Privacy moved above Push Notifications */}
+
+          {/* IDs: developer toggle (persistent) - admin only (moved for admins to Admin Controls) */}
+          {(user && (user.role === 'admin' || user.role === 'administrator')) ? (
+            <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: '#eef2f7', paddingTop: 12 }}>
+              <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8 }}>IDs</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                <View style={{ flex: 1, paddingRight: 8 }}>
+                  <Text style={{ fontSize: 14 }}>Show internal IDs</Text>
+                  <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>Toggle to show internal ID strings in profiles (debug only).</Text>
+                </View>
+                <Switch value={showIds} onValueChange={setShowIds} />
               </View>
-              <Switch value={showIds} onValueChange={setShowIds} />
             </View>
-          </View>
+          ) : null}
 
           {/* Empty placeholder tile (kept at bottom of settings card) */}
           <View style={{ marginTop: 12, paddingVertical: 8, borderTopWidth: 1, borderTopColor: '#f3f4f6' }}>
@@ -368,24 +372,7 @@ export default function SettingsScreen() {
           </View>
 
         </View>
-        </View>
-        {/* Dev-only role switcher for local testing */}
-        {(__DEV__ && devToolsVisible) && (
-          <View style={{ width: '100%', maxWidth: 720, marginTop: 18 }}>
-            <Text style={{ fontSize: 14, fontWeight: '700', marginBottom: 8 }}>Developer: switch role</Text>
-            <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
-              <TouchableOpacity onPress={() => { setRole && setRole('parent'); Alert.alert('Role changed', 'Switched to parent (dev)'); }} style={{ flex: 1, marginRight: 6, backgroundColor: '#e5e7eb', padding: 10, borderRadius: 8, alignItems: 'center' }}>
-                <Text>Parent</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => { setRole && setRole('therapist'); Alert.alert('Role changed', 'Switched to therapist (dev)'); }} style={{ flex: 1, marginHorizontal: 6, backgroundColor: '#e5e7eb', padding: 10, borderRadius: 8, alignItems: 'center' }}>
-                <Text>Therapist</Text>
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => { setRole && setRole('admin'); Alert.alert('Role changed', 'Switched to admin (dev)'); }} style={{ flex: 1, marginLeft: 6, backgroundColor: '#e5e7eb', padding: 10, borderRadius: 8, alignItems: 'center' }}>
-                <Text>Admin</Text>
-              </TouchableOpacity>
-            </View>
-          </View>
-        )}
+        {/* Dev role switcher moved to DevRoleSwitcher (floating) */}
       </ScrollView>
     </ScreenWrapper>
   );

@@ -1,15 +1,17 @@
 {
   "build": {
-    "production": {
-      "android": {
-        "buildType": "app-bundle"
-      }
-    },
-    "internal": {
+    "development": {
+      "developmentClient": true,
       "distribution": "internal",
-      "android": {
-        "buildType": "app-bundle"
-      }
+      "android": { "buildType": "apk" }
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": { "buildType": "app-bundle" }
+    },
+    "production": {
+      "android": { "buildType": "app-bundle" },
+      "ios": { "buildType": "release" }
     }
   },
   "submit": {}

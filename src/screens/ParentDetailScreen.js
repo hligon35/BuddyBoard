@@ -3,6 +3,7 @@ import { View, Text, Image, StyleSheet, ScrollView, TouchableOpacity, Linking, M
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { MaterialIcons } from '@expo/vector-icons';
 import { useData } from '../DataContext';
+import { useAuth } from '../AuthContext';
 import { useNavigation, useRoute } from '@react-navigation/native';
 import ScreenWrapper from '../components/ScreenWrapper';
 import { formatIdForDisplay, pravatarUriFor } from '../utils/idVisibility';
@@ -11,7 +12,8 @@ export default function ParentDetailScreen() {
   const route = useRoute();
   const navigation = useNavigation();
   const { parentId } = route.params || {};
-  const { parents = [], children = [], therapists = [], sendTimeUpdateAlert, sendMessage } = useData();
+  const { parents = [], children = [], therapists = [], sendTimeUpdateAlert, sendMessage, messages = [] } = useData();
+  const { user } = useAuth();
 
   const parent = (parents || []).find((p) => p.id === parentId) || null;
   if (!parent) return (<View style={styles.empty}><Text style={{ color: '#666' }}>Parent not found</Text></View>);
@@ -69,6 +71,8 @@ export default function ParentDetailScreen() {
     return Array.from(map.values());
   }, [myChildren]);
 
+  
+
   const getDisplayName = (t) => {
     if (!t) return 'TBA';
     if (t.name) return t.name;
@@ -114,9 +118,30 @@ export default function ParentDetailScreen() {
           </View>
         </View>
 
-        <View style={styles.iconActionsRow}>
+          <View style={styles.iconActionsRow}>
           <View style={styles.iconCol}>
-            <TouchableOpacity style={styles.iconButton} onPress={() => navigation.navigate('Chats')}>
+            <TouchableOpacity style={styles.iconButton} onPress={async () => {
+              try {
+                const adminId = user?.id || (user?.name || 'admin');
+                // find existing thread where both admin and parent are participants
+                const threadMatch = (messages || []).find(m => {
+                  const senderId = m.sender?.id || m.sender?.name;
+                  const toIds = (m.to || []).map(t => t.id || t.name).filter(Boolean);
+                  const participants = new Set([String(senderId), ...toIds.map(String)]);
+                  return participants.has(String(adminId)) && participants.has(String(parent.id));
+                });
+                if (threadMatch && (threadMatch.threadId || threadMatch.threadId === 0)) {
+                  navigation.navigate('ChatThread', { threadId: threadMatch.threadId });
+                } else if (threadMatch && threadMatch.id) {
+                  // fallback when threadId absent
+                  navigation.navigate('ChatThread', { threadId: threadMatch.id });
+                } else {
+                  // no existing thread — create a new thread id and open it so admin can send the first message
+                  const newThreadId = `t-${Date.now()}`;
+                  navigation.navigate('ChatThread', { threadId: newThreadId });
+                }
+              } catch (e) { console.warn('open chat failed', e); }
+            }}>
               <MaterialIcons name="chat" size={22} color="#fff" />
             </TouchableOpacity>
             <Text style={styles.iconLabel}>Chat</Text>
@@ -128,10 +153,10 @@ export default function ParentDetailScreen() {
             <Text style={styles.iconLabel}>Urgent Memo</Text>
           </View>
           <View style={styles.iconCol}>
-            <TouchableOpacity style={styles.iconButton} onPress={() => setShowMeetingModal(true)}>
-              <MaterialIcons name="event" size={22} color="#fff" />
+            <TouchableOpacity style={styles.iconButton} onPress={() => navigation.navigate('UserMonitor', { initialUserId: parent.id })}>
+              <MaterialIcons name="manage-account" size={22} color="#fff" />
             </TouchableOpacity>
-            <Text style={styles.iconLabel}>Meeting</Text>
+            <Text style={styles.iconLabel}>Manage</Text>
           </View>
         </View>
 
@@ -303,6 +328,8 @@ export default function ParentDetailScreen() {
           </TouchableWithoutFeedback>
         </Modal>
       )}
+
+      
 
     </ScreenWrapper>
   );

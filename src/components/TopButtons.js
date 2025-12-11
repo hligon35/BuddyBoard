@@ -22,8 +22,19 @@ export function LogoutButton() {
 }
 
 export function BackButton({ onPress }) {
+  const logEvent = (ev) => { try { console.log(`TopButtons.BackButton: ${ev} @ ${new Date().toISOString()}`); } catch (e) {} };
   return (
-    <TouchableOpacity style={[styles.btn, styles.backBtn]} onPress={onPress}>
+    <TouchableOpacity
+      style={[styles.btn, styles.backBtn]}
+      onPress={() => { logEvent('onPress'); onPress && onPress(); }}
+      onPressIn={() => logEvent('onPressIn')}
+      onPressOut={() => logEvent('onPressOut')}
+      onLongPress={() => logEvent('onLongPress')}
+      delayLongPress={600}
+      accessibilityLabel="Go back"
+      hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
+      activeOpacity={0.85}
+    >
       <Text style={styles.backText}>‹ Back</Text>
     </TouchableOpacity>
   );
@@ -33,8 +44,8 @@ const styles = StyleSheet.create({
   btn: { paddingHorizontal: 12 },
   help: { color: '#2563eb', fontWeight: '600' },
   logout: { color: '#ef4444', fontWeight: '600' },
-  backBtn: { paddingHorizontal: 10, paddingVertical: 6, borderRadius: 6, backgroundColor: '#eef2ff' },
-  backText: { color: '#2563eb', fontWeight: '700', fontSize: 14 },
+  backBtn: { paddingHorizontal: 10, paddingVertical: 8, borderRadius: 8, borderWidth: 1, borderColor: '#e6eef8', backgroundColor: '#fff', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 2 },
+  backText: { color: '#111827', fontWeight: '700', fontSize: 14 },
 });
 
 export default { HelpButton, LogoutButton };

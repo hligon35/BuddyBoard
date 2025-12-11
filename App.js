@@ -21,7 +21,7 @@ import ChatsScreen from './src/screens/ChatsScreen';
 import ChatThreadScreen from './src/screens/ChatThreadScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import HelpScreen from './src/screens/HelpScreen';
-import TherapistScheduleScreen from './src/screens/TherapistScheduleScreen';
+import MyClassScreen from './src/screens/MyClassScreen';
 import AdminControlsScreen from './src/screens/AdminControlsScreen';
 import StudentDirectoryScreen from './src/screens/StudentDirectoryScreen';
 import FacultyDirectoryScreen from './src/screens/FacultyDirectoryScreen';
@@ -31,11 +31,9 @@ import ChildDetailScreen from './src/screens/ChildDetailScreen';
 import FacultyDetailScreen from './src/screens/FacultyDetailScreen';
 import ManagePermissionsScreen from './src/screens/ManagePermissionsScreen';
 import PrivacyDefaultsScreen from './src/screens/PrivacyDefaultsScreen';
-import ManageUsersScreen from './src/screens/ManageUsersScreen';
 import ModeratePostsScreen from './src/screens/ModeratePostsScreen';
 import AdminAlertsScreen from './src/screens/AdminAlertsScreen';
 import AdminMemosScreen from './src/screens/AdminMemosScreen';
-import SystemSettingsScreen from './src/screens/SystemSettingsScreen';
 import ExportDataScreen from './src/screens/ExportDataScreen';
 import { HelpButton, LogoutButton, BackButton } from './src/components/TopButtons';
 import { View, Text } from 'react-native';
@@ -43,10 +41,10 @@ import LogoTitle from './src/components/LogoTitle';
 
 const RootStack = createNativeStackNavigator();
 
-const ScheduleStackNav = createNativeStackNavigator();
-function ScheduleStack() {
+const MyClassStackNav = createNativeStackNavigator();
+function MyClassStack() {
   return (
-    <ScheduleStackNav.Navigator
+    <MyClassStackNav.Navigator
       screenOptions={({ navigation, route, back }) => ({
         headerTitleAlign: 'center',
         headerTitle: () => <LogoTitle />,
@@ -54,8 +52,8 @@ function ScheduleStack() {
         headerRight: () => <LogoutButton />,
       })}
     >
-      <ScheduleStackNav.Screen name="ScheduleMain" component={TherapistScheduleScreen} options={{ title: 'Schedule' }} />
-    </ScheduleStackNav.Navigator>
+      <MyClassStackNav.Screen name="MyClassMain" component={MyClassScreen} options={{ title: 'My Class' }} />
+    </MyClassStackNav.Navigator>
   );
 }
 
@@ -70,7 +68,7 @@ function ControlsStack() {
         headerRight: () => <LogoutButton />,
       })}
     >
-      <ControlsStackNav.Screen name="ControlsMain" component={AdminControlsScreen} options={{ title: 'App Controls' }} />
+      <ControlsStackNav.Screen name="ControlsMain" component={AdminControlsScreen} options={{ title: 'Dashboard' }} />
       <ControlsStackNav.Screen name="StudentDirectory" component={StudentDirectoryScreen} options={{ title: 'Student Directory' }} />
       <ControlsStackNav.Screen name="FacultyDirectory" component={FacultyDirectoryScreen} options={{ title: 'Faculty Directory' }} />
       <ControlsStackNav.Screen name="ParentDirectory" component={ParentDirectoryScreen} options={{ title: 'Parent Directory' }} />
@@ -78,12 +76,14 @@ function ControlsStack() {
       <ControlsStackNav.Screen name="ChildDetail" component={ChildDetailScreen} options={{ title: 'Student' }} />
       <ControlsStackNav.Screen name="FacultyDetail" component={FacultyDetailScreen} options={{ title: 'Faculty' }} />
       <ControlsStackNav.Screen name="AdminMemos" component={AdminMemosScreen} options={{ title: 'Compose Memo' }} />
+      <ControlsStackNav.Screen name="AdminChatMonitor" component={require('./src/screens/AdminChatMonitorScreen').default} options={{ title: 'Chat Monitor' }} />
+      <ControlsStackNav.Screen name="UserMonitor" component={require('./src/screens/UserMonitorScreen').default} options={{ title: 'User Monitor' }} />
+      <ControlsStackNav.Screen name="ChatThread" component={ChatThreadScreen} options={{ title: 'Thread' }} />
       <ControlsStackNav.Screen name="ManagePermissions" component={ManagePermissionsScreen} options={{ title: 'Manage Permissions' }} />
       <ControlsStackNav.Screen name="PrivacyDefaults" component={PrivacyDefaultsScreen} options={{ title: 'Profile Settings' }} />
-      <ControlsStackNav.Screen name="ManageUsers" component={ManageUsersScreen} options={{ title: 'Manage Users' }} />
       <ControlsStackNav.Screen name="ModeratePosts" component={ModeratePostsScreen} options={{ title: 'Moderate Posts' }} />
       <ControlsStackNav.Screen name="AdminAlerts" component={AdminAlertsScreen} options={{ title: 'Alerts' }} />
-      <ControlsStackNav.Screen name="SystemSettings" component={SystemSettingsScreen} options={{ title: 'Profile Settings' }} />
+      
       <ControlsStackNav.Screen name="ExportData" component={ExportDataScreen} options={{ title: 'Export Data' }} />
     </ControlsStackNav.Navigator>
   );
@@ -94,6 +94,7 @@ function CommunityStack() {
   return (
     <CommunityStackNav.Navigator
       screenOptions={({ navigation, route, back }) => ({
+        headerShown: true,
         headerTitleAlign: 'center',
         headerTitle: () => <LogoTitle />,
         headerLeft: () => (back ? <BackButton onPress={() => navigation.goBack()} /> : <HelpButton />),
@@ -166,7 +167,7 @@ function MainRoutes() {
   screens.push({ name: 'Chats', component: ChatsStack });
 
   if (role === 'therapist') {
-    screens.push({ name: 'Schedule', component: ScheduleStack });
+    screens.push({ name: 'MyClass', component: MyClassStack });
   } else if (role === 'admin' || role === 'administrator') {
     screens.push({ name: 'Controls', component: ControlsStack });
   } else {
@@ -234,7 +235,7 @@ export default function App() {
                     ChatThread: 'Chats',
                     MyChildMain: 'MyChild',
                     SettingsMain: 'Settings',
-                    ScheduleMain: 'Schedule',
+                    MyClassMain: 'MyClass',
                     ControlsMain: 'Controls',
                   };
                   setCurrentRoute(map[r.name] || r.name);

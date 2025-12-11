@@ -15,6 +15,8 @@ export default function ChildDetailScreen() {
 
   const child = (children || []).find((c) => c.id === childId) || null;
 
+  
+
   if (!child) {
     return (
       <View style={styles.empty}><Text style={{ color: '#666' }}>Child not found</Text></View>
@@ -42,6 +44,17 @@ export default function ChildDetailScreen() {
           <Text style={styles.sectionText}>{child.carePlan}</Text>
         </View>
       ) : null}
+
+      <View style={{ marginTop: 12, flexDirection: 'row', justifyContent: 'space-between' }}>
+        <TouchableOpacity style={{ padding: 8, backgroundColor: '#2563eb', borderRadius: 8 }} onPress={() => navigation.navigate('ModeratePosts', { childId: child.id })}><Text style={{ color: '#fff', fontWeight: '700' }}>Posts</Text></TouchableOpacity>
+        <TouchableOpacity style={{ padding: 8, backgroundColor: '#2563eb', borderRadius: 8 }} onPress={() => {
+          const firstParent = (child.parents || [])[0];
+          const firstTherapist = child.amTherapist || child.pmTherapist || child.bcaTherapist;
+          const target = firstParent ? firstParent.id : (firstTherapist ? firstTherapist.id : null);
+          if (target) navigation.navigate('AdminChatMonitor', { initialUserId: target });
+        }}><Text style={{ color: '#fff', fontWeight: '700' }}>Related Chats</Text></TouchableOpacity>
+        
+      </View>
 
           <View style={styles.section}>
             <Text style={styles.sectionTitle}>Parents</Text>
@@ -114,6 +127,7 @@ export default function ChildDetailScreen() {
 
       <View style={{ height: 32 }} />
       </ScrollView>
+      
     </ScreenWrapper>
   );
 }

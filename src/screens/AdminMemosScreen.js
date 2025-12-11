@@ -1,7 +1,8 @@
 import React, { useMemo, useState, useCallback, useRef, useEffect } from 'react';
-import { View, Text, TextInput, FlatList, TouchableOpacity, Image, StyleSheet, Alert, ScrollView } from 'react-native';
+import { View, Text, TextInput, FlatList, TouchableOpacity, Image, StyleSheet, Alert, ScrollView, TouchableWithoutFeedback } from 'react-native';
 import { useData } from '../DataContext';
 import { pravatarUriFor } from '../utils/idVisibility';
+import ScreenHeader from '../components/ScreenHeader';
 
 export default function AdminMemosScreen() {
   const { parents = [], therapists = [], sendAdminMemo } = useData();
@@ -132,7 +133,7 @@ export default function AdminMemosScreen() {
   // Top area: title, search, inline dropdown
   const renderTop = useCallback(() => (
     <View style={[styles.headerWrap, { position: 'relative' }] }>
-      <Text style={styles.header}>Compose Memo</Text>
+      {/* Title is handled by universal ScreenHeader */}
 
       <Text style={styles.label}>Filter recipients by name</Text>
       <TextInput
@@ -221,6 +222,7 @@ export default function AdminMemosScreen() {
 
   return (
     <View style={{ flex: 1 }}>
+      <ScreenHeader title="Compose Memo" />
       <ScrollView contentContainerStyle={styles.container} keyboardShouldPersistTaps="always">
         {renderTop()}
 
@@ -239,6 +241,12 @@ export default function AdminMemosScreen() {
 
         {renderBottom()}
       </ScrollView>
+      {/* Backdrop: tapping outside dropdown/search should dismiss dropdown (only when visible) */}
+      {dropdownVisible ? (
+        <TouchableWithoutFeedback onPress={() => { pushLog('dropdown dismissed by backdrop'); setIsFocused(false); try { inputRef.current?.blur(); } catch (e) {} }}>
+          <View style={styles.backdrop} />
+        </TouchableWithoutFeedback>
+      ) : null}
       {/* Render debug overlay (non-interactive) */}
       <View pointerEvents="none">
         <DebugOverlay />

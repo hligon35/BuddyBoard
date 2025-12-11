@@ -1,8 +1,8 @@
-import React, { useMemo, useState } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Animated, Linking, Alert } from 'react-native';
+import React, { useMemo, useState, useEffect } from 'react';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Animated, Linking, Alert, Switch } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { ScreenWrapper } from '../components/ScreenWrapper';
-import { pravatarUriFor } from '../utils/idVisibility';
+import { pravatarUriFor, setIdVisibilityEnabled, initIdVisibilityFromStorage } from '../utils/idVisibility';
 import { useData } from '../DataContext';
 import { useNavigation } from '@react-navigation/native';
 
@@ -32,15 +32,33 @@ export default function AdminControlsScreen() {
   // Navigation helpers
   const openMemos = () => navigation.navigate('AdminMemos');
   const openAlerts = () => navigation.navigate('AdminAlerts');
-  const openCommunity = () => navigation.navigate('Home');
-  const openChats = () => navigation.navigate('Chats');
+  // open community moderation screen
+  const openCommunity = () => navigation.navigate('ModeratePosts');
+  // open admin chat monitor (admin-only chat oversight)
+  const openChats = () => navigation.navigate('AdminChatMonitor');
+  const openImport = () => {
+    try {
+      navigation.navigate('ImportData');
+    } catch (e) {
+      Alert.alert('Import', 'Import screen is not available.');
+    }
+  };
   const openStudentDirectory = () => navigation.navigate('StudentDirectory');
   const openFacultyDirectory = () => navigation.navigate('FacultyDirectory');
   const openParentDirectory = () => navigation.navigate('ParentDirectory');
 
   const pendingAlertCount = (urgentMemos || []).filter((m) => !m.status || m.status === 'pending').length;
+  const [showIds, setShowIds] = useState(false);
 
-  function DirectoryBanner({ label, onOpen, onToggle, open, childrenPreview, count }) {
+  useEffect(() => {
+    let mounted = true;
+    initIdVisibilityFromStorage().then((v) => { if (mounted) setShowIds(!!v); }).catch(() => {});
+    return () => { mounted = false; };
+  }, []);
+
+  const toggleShowIds = () => { const next = !showIds; setShowIds(next); setIdVisibilityEnabled(next); };
+
+  function DirectoryBanner({ label, onOpen, onToggle, open, childrenPreview, count, rightAction }) {
     return (
       <View style={{ marginTop: 12 }}>
         <TouchableOpacity style={styles.banner} activeOpacity={0.85} onPress={onToggle}>
@@ -62,6 +80,9 @@ export default function AdminControlsScreen() {
                 <MaterialIcons name={open ? 'keyboard-arrow-up' : 'keyboard-arrow-down'} size={20} color={open ? '#2563eb' : '#6b7280'} />
               </TouchableOpacity>
             </View>
+            {rightAction ? (
+              <View style={{ marginLeft: 8 }}>{rightAction}</View>
+            ) : null}
           </View>
         </TouchableOpacity>
         {open ? (
@@ -76,44 +97,39 @@ export default function AdminControlsScreen() {
   return (
     <ScreenWrapper bannerShowBack={false} style={styles.container}>
       <ScrollView contentContainerStyle={styles.content}>
-        <Text style={styles.paragraph}>Administrative tools for managing users, content, and system settings.</Text>
+        
 
-        <Text style={{ marginTop: 12, fontWeight: '700' }}>Summary</Text>
-        <Text style={styles.paragraph}>Posts: {posts?.length || 0}</Text>
-        <Text style={styles.paragraph}>Messages: {messages?.length || 0}</Text>
-        <Text style={styles.paragraph}>Children: {children?.length || 0}</Text>
-        <Text style={styles.paragraph}>Therapists referenced: {therapistCount}</Text>
+        {/* Communications section removed (Alerts retained below Directory) */}
 
-        {/* Communications Section */}
-        <Text style={{ marginTop: 18, fontWeight: '700' }}>Communications</Text>
-        <Text style={styles.paragraph}>Manage memos, community posts and chat threads.</Text>
-        <View style={{ flexDirection: 'row', marginTop: 8, justifyContent: 'space-between', alignItems: 'center' }}>
-          <TouchableOpacity style={styles.iconTile} onPress={openMemos} accessibilityLabel="Open Urgent Memos">
-            <View style={styles.iconTileBtn}><MaterialIcons name="notification-important" size={22} color="#fff" /></View>
-            <Text style={styles.iconTileLabel}>Memos</Text>
+        {/* Quick Actions (Export + Alerts) */}
+        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 12 }}>
+          <TouchableOpacity onPress={() => navigation.navigate('ExportData')} style={{ marginRight: 12, alignItems: 'center' }} accessibilityLabel="Export Data">
+            <View style={[styles.iconTileBtn, { width: 44, height: 44, borderRadius: 10 }]}>
+              <MaterialIcons name="file-download" size={20} color="#fff" />
+            </View>
+            <Text style={{ fontSize: 12, marginTop: 6 }}>Export</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.iconTile} onPress={openCommunity} accessibilityLabel="Open Community Wall">
-            <View style={styles.iconTileBtn}><MaterialIcons name="forum" size={22} color="#fff" /></View>
-            <Text style={styles.iconTileLabel}>Wall</Text>
+
+          <TouchableOpacity onPress={openImport} style={{ marginRight: 12, alignItems: 'center' }} accessibilityLabel="Import Data">
+            <View style={[styles.iconTileBtn, { width: 44, height: 44, borderRadius: 10 }]}>
+              <MaterialIcons name="file-upload" size={20} color="#fff" />
+            </View>
+            <Text style={{ fontSize: 12, marginTop: 6 }}>Import</Text>
           </TouchableOpacity>
-          <TouchableOpacity style={styles.iconTile} onPress={openChats} accessibilityLabel="Open Chats">
-            <View style={styles.iconTileBtn}><MaterialIcons name="chat" size={22} color="#fff" /></View>
-            <Text style={styles.iconTileLabel}>Chats</Text>
-          </TouchableOpacity>
-          <TouchableOpacity style={styles.iconTile} onPress={openAlerts} accessibilityLabel="Open Alerts">
-            <View style={styles.iconTileBtn}>
-              <MaterialIcons name="report" size={22} color="#fff" />
+
+          <TouchableOpacity onPress={openAlerts} style={{ alignItems: 'center' }} accessibilityLabel="Open Alerts">
+            <View style={[styles.iconTileBtn, { width: 44, height: 44, borderRadius: 10 }]}>
+              <MaterialIcons name="report" size={20} color="#fff" />
               {pendingAlertCount > 0 ? (
-                <View style={styles.countBadge}><Text style={{ color: '#fff', fontWeight: '700', fontSize: 12 }}>{pendingAlertCount}</Text></View>
+                <View style={[styles.countBadge, { width: 18, height: 18, borderRadius: 9, top: -6, right: -6 }]}><Text style={{ color: '#fff', fontWeight: '700', fontSize: 10 }}>{pendingAlertCount}</Text></View>
               ) : null}
             </View>
-            <Text style={styles.iconTileLabel}>Alerts</Text>
+            <Text style={{ fontSize: 12, marginTop: 6 }}>Alerts</Text>
           </TouchableOpacity>
         </View>
 
         {/* Directory Section */}
         <Text style={{ marginTop: 18, fontWeight: '700' }}>Directory</Text>
-        <Text style={styles.paragraph}>Directory section — quick previews and access to lists.</Text>
 
         <DirectoryBanner
           label="Students"
@@ -165,6 +181,8 @@ export default function AdminControlsScreen() {
           )}
         />
 
+        
+
         <DirectoryBanner
           label="Parents"
           count={(parents || []).length}
@@ -202,18 +220,19 @@ export default function AdminControlsScreen() {
           )}
         />
 
-        {/* Permissions & Privacy Section */}
-        <Text style={{ marginTop: 18, fontWeight: '700' }}>Permissions & Privacy</Text>
-        <Text style={styles.paragraph}>Manage app permissions, data sharing and privacy defaults.</Text>
-        <TouchableOpacity style={styles.btn} onPress={() => navigation.navigate('ManagePermissions')}><Text style={styles.btnText}>Manage Permissions</Text></TouchableOpacity>
-        <TouchableOpacity style={styles.btn} onPress={() => navigation.navigate('PrivacyDefaults')}><Text style={styles.btnText}>Privacy Defaults</Text></TouchableOpacity>
+        {/* IDs (admin) - moved below Directory */}
+        <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: '#eef2f7', paddingTop: 12 }}>
+          <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8 }}>IDs</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+            <View style={{ flex: 1, paddingRight: 8 }}>
+              <Text style={{ fontSize: 14 }}>Show internal IDs</Text>
+              <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>Toggle to show internal ID strings in profiles (debug only).</Text>
+            </View>
+            <Switch value={showIds} onValueChange={toggleShowIds} />
+          </View>
+        </View>
 
-        {/* Other admin tools */}
-        <Text style={{ marginTop: 18, fontWeight: '700' }}>Other Tools</Text>
-        <TouchableOpacity style={styles.btn} onPress={() => navigation.navigate('ManageUsers')}><Text style={styles.btnText}>Manage Users</Text></TouchableOpacity>
-        <TouchableOpacity style={styles.btn} onPress={() => navigation.navigate('ModeratePosts')}><Text style={styles.btnText}>Moderate Posts</Text></TouchableOpacity>
-        <TouchableOpacity style={styles.btn} onPress={() => navigation.navigate('SystemSettings')}><Text style={styles.btnText}>System Settings</Text></TouchableOpacity>
-        <TouchableOpacity style={styles.btn} onPress={() => navigation.navigate('ExportData')}><Text style={styles.btnText}>Export Data (CSV)</Text></TouchableOpacity>
+        {/* Permissions & Privacy section removed per request */}
 
         <View style={{ height: 32 }} />
       </ScrollView>

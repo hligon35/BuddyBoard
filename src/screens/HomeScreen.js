@@ -7,6 +7,7 @@ import * as ImagePicker from 'expo-image-picker';
 import { useAuth } from '../AuthContext';
 import { useNavigation } from '@react-navigation/native';
 import { useData } from '../DataContext';
+import devWallFlag from '../utils/devWallFlag';
 import { pravatarUriFor } from '../utils/idVisibility';
 import * as Api from '../Api';
 import PostCard from '../components/PostCard';
@@ -89,6 +90,7 @@ export default function HomeScreen() {
   const { user } = useAuth();
   const navigation = useNavigation();
   const { posts, createPost, like, comment, share, recordShare, fetchAndSync, children, therapists } = useData();
+  const [showWall, setShowWall] = useState(true);
   const [selectedUser, setSelectedUser] = useState(null);
   const [showUserModal, setShowUserModal] = useState(false);
   const [title, setTitle] = useState('');
@@ -108,6 +110,19 @@ export default function HomeScreen() {
   const scrollY = useRef(0);
 
   useEffect(() => { fetchAndSync(); }, []);
+
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const v = await devWallFlag.get();
+        if (!mounted) return;
+        setShowWall(Boolean(v));
+      } catch (e) {}
+    })();
+    const unsub = devWallFlag.addListener((v) => { if (mounted) setShowWall(Boolean(v)); });
+    return () => { mounted = false; unsub(); };
+  }, []);
 
   async function onRefresh() {
     try {
@@ -212,6 +227,11 @@ export default function HomeScreen() {
   return (
     <ScreenWrapper bannerShowBack={false} hideBanner={true}>
       <CenteredContainer>
+      {!showWall ? (
+        <View style={{ padding: 20, alignItems: 'center' }}>
+          <Text style={{ fontSize: 16, color: '#6b7280' }}>Wall posts are hidden (dev)</Text>
+        </View>
+      ) : (
       <FlatList
         data={posts.slice().reverse()}
         keyExtractor={(i) => i.id}
@@ -266,7 +286,7 @@ export default function HomeScreen() {
             <Image source={{ uri: (user?.avatar && !String(user.avatar).includes('pravatar.cc')) ? user.avatar : pravatarUriFor(user, 80) }} style={styles.inputAvatarCompact} />
 
             <TextInput
-              placeholder="Share something with the community..."
+              placeholder="Share something..."
               value={body}
               onChangeText={setBody}
               style={[styles.inputTextCompact, { flex: 1, marginHorizontal: 6 }]}
@@ -283,14 +303,15 @@ export default function HomeScreen() {
           </View>
         ])}
       />
+      )}
       {/* sticky input clone positioned at top when banner scrolls away */}
       {showStickyInput ? (
         <View style={{ position: 'absolute', left: 0, right: 0, top: insets.top + NATIVE_HEADER_HEIGHT, zIndex: 50, alignItems: 'center' }} pointerEvents="box-none">
-          <View style={{ width: '100%', maxWidth: 720, paddingHorizontal: 0 }} pointerEvents="box-none">
+          <View style={{ width: '100%', maxWidth: 720}} pointerEvents="box-none">
             <View style={[styles.inputTileCompact, { marginHorizontal: 0 }]}> 
               <Image source={{ uri: (user?.avatar && !String(user.avatar).includes('pravatar.cc')) ? user.avatar : pravatarUriFor(user, 80) }} style={styles.inputAvatarCompact} />
               <TextInput
-                placeholder="Share something with the community..."
+                placeholder="Share something..."
                 value={body}
                 onChangeText={setBody}
                 style={[styles.inputTextCompact, { flex: 1, marginHorizontal: 6 }]}

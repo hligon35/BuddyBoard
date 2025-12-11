@@ -144,16 +144,7 @@ export default function ChatsScreen({ navigation }) {
   return (
     <ScreenWrapper bannerShowBack={false}>
       <CenteredContainer>
-        {(__DEV__ && devToolsVisible) ? (
-          <View style={{ padding: 12 }}>
-            <TouchableOpacity onPress={() => { resetMessagesToDemo(); fetchAndSync(); }} style={{ backgroundColor: '#2563eb', padding: 10, borderRadius: 8, alignItems: 'center', marginBottom: 8 }}>
-              <Text style={{ color: '#fff', fontWeight: '700' }}>Load demo messages</Text>
-            </TouchableOpacity>
-            <TouchableOpacity onPress={() => { clearMessages(); }} style={{ backgroundColor: '#ef4444', padding: 10, borderRadius: 8, alignItems: 'center' }}>
-              <Text style={{ color: '#fff', fontWeight: '700' }}>Clear messages</Text>
-            </TouchableOpacity>
-          </View>
-        ) : null}
+        {/* Dev buttons moved to DevRoleSwitcher */}
         <FlatList
           style={{ width: '100%' }}
           data={unarchivedList}

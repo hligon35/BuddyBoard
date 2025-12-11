@@ -14,8 +14,8 @@ export function ScreenWrapper({ children, style, hideBanner = false, bannerShowB
     ChatThread: 'Thread',
     MyChildMain: 'My Child',
     SettingsMain: 'Profile Settings',
-    ScheduleMain: 'Schedule',
-    ControlsMain: 'App Controls',
+    MyClassMain: 'My Class',
+    ControlsMain: 'Dashboard',
     StudentDirectory: 'Student Directory',
     ParentDirectory: 'Parent Directory',
     FacultyDirectory: 'Faculty Directory',
@@ -23,9 +23,7 @@ export function ScreenWrapper({ children, style, hideBanner = false, bannerShowB
     FacultyDetail: 'Faculty',
     ManagePermissions: 'Manage Permissions',
     PrivacyDefaults: 'Profile Settings',
-    ManageUsers: 'Manage Users',
     ModeratePosts: 'Moderate Posts',
-    SystemSettings: 'Profile Settings',
     ExportData: 'Export Data',
   };
 
