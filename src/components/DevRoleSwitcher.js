@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { View, TouchableOpacity, Text, Alert, StyleSheet, Switch, Modal } from 'react-native';
+import { View, TouchableOpacity, Text, Alert, StyleSheet, Switch, Modal, ActivityIndicator } from 'react-native';
 import devToolsFlag from '../utils/devToolsFlag';
 import devDirectoryFlag from '../utils/devDirectoryFlag';
 import devWallFlag from '../utils/devWallFlag';
@@ -254,32 +254,45 @@ const styles = StyleSheet.create({
 });
 
 function DevLoginWrapper({ onClose }) {
-  // Lazy require to avoid loading login screen in production bundles
-  let LoginScreen = null;
-  try {
-    const mod = require('../screens/LoginScreen');
-    LoginScreen = (mod && mod.default) ? mod.default : mod;
-  } catch (e) { return null; }
+  const [LoginScreenComp, setLoginScreenComp] = useState(null);
+  const [err, setErr] = useState(null);
 
-  // Guard: ensure the required module is a valid component before attempting to render
-  if (!LoginScreen || (typeof LoginScreen !== 'function' && typeof LoginScreen !== 'object')) {
-    return (
-      <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
-        <Text>Login screen unavailable</Text>
-      </View>
-    );
-  }
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const mod = await import('../../screens/LoginScreen');
+        const Comp = (mod && mod.default) ? mod.default : mod;
+        if (mounted) setLoginScreenComp(() => Comp);
+      } catch (e) {
+        console.warn('DevLoginWrapper import failed', e);
+        if (mounted) setErr(e);
+      }
+    })();
+    return () => { mounted = false; };
+  }, []);
+
+  if (err) return (
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+      <Text>Login screen failed to load</Text>
+    </View>
+  );
+
+  if (!LoginScreenComp) return (
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center' }}>
+      <ActivityIndicator size="large" />
+    </View>
+  );
 
   const fakeNav = {
     replace: (/* routeName */) => {
-      // Close the modal instead of navigating
       try { onClose && onClose(); } catch (e) {}
     }
   };
 
   return (
     <View style={{ flex: 1 }}>
-      <LoginScreen navigation={fakeNav} />
+      <LoginScreenComp navigation={fakeNav} suppressAutoRedirect={true} />
     </View>
   );
 }

@@ -77,8 +77,29 @@ export function AuthProvider({ children }) {
     setUser(next);
   }
 
+  // Dev helper to programmatically set auth (only exposed in dev builds)
+  async function devSetAuth({ token: t, user: u }) {
+    if (!__DEV__) return;
+    try {
+      if (t) {
+        await AsyncStorage.setItem(TOKEN_KEY, t);
+        setToken(t);
+        Api.setAuthToken(t);
+      }
+      if (u) {
+        await AsyncStorage.setItem('auth_user', JSON.stringify(u));
+        setUser(u);
+      }
+    } catch (e) {
+      console.warn('devSetAuth failed', e);
+    }
+  }
+
+  const value = { token, user, loading, login, logout, setRole };
+  if (__DEV__) value.devSetAuth = devSetAuth;
+
   return (
-    <AuthContext.Provider value={{ token, user, loading, login, logout, setRole }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );
