@@ -12,6 +12,16 @@
     "build:android:internal:interactive": "eas build -p android --profile internal",
     "submit:android:internal": "eas submit -p android --latest --non-interactive --key ./google-play-service-account.json"
   },
+  "scripts": {
+    "start": "expo start",
+    "android": "expo run:android",
+    "ios": "expo run:ios",
+    "web": "expo start --web",
+    "build:android:internal": "eas build -p android --profile internal --non-interactive",
+    "build:android:internal:interactive": "eas build -p android --profile internal",
+    "submit:android:internal": "eas submit -p android --latest --non-interactive --key ./google-play-service-account.json",
+    "dev-clear-server": "node ./scripts/dev-clear-server.js"
+  },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.2.0",
     "@react-navigation/bottom-tabs": "^6.5.7",

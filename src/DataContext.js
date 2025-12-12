@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { InteractionManager } from 'react-native';
+import { InteractionManager, NativeModules } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Api from './Api';
 import { Share } from 'react-native';
@@ -258,6 +258,36 @@ export function DataProvider({ children: reactChildren }) {
       }
     });
     return () => { mounted = false; unsub(); };
+  }, []);
+
+  // Dev: poll a dev-clear server running on the packager host to trigger clearing persisted data
+  useEffect(() => {
+    if (!__DEV__) return undefined;
+    let mounted = true;
+    const port = process.env.DEV_CLEAR_PORT || 4001;
+    // derive packager host from scriptURL
+    let host = 'localhost';
+    try {
+      const scriptURL = NativeModules?.SourceCode?.scriptURL || '';
+      const m = scriptURL.match(/https?:\/\/([^:\/]+)/);
+      if (m && m[1]) host = m[1];
+    } catch (e) {}
+
+    const base = `http://${host}:${port}`;
+    const iv = setInterval(async () => {
+      try {
+        const res = await fetch(`${base}/clear-status`);
+        if (!res.ok) return;
+        const json = await res.json();
+        if (json && json.clear) {
+          await clearAllData();
+          await fetch(`${base}/ack`, { method: 'POST' }).catch(() => {});
+        }
+      } catch (e) {
+        // ignore
+      }
+    }, 3000);
+    return () => { mounted = false; clearInterval(iv); };
   }, []);
 
   async function fetchAndSync() {
@@ -688,6 +718,23 @@ export function DataProvider({ children: reactChildren }) {
     }
   }
 
+  async function clearAllData() {
+    try {
+      const keys = [POSTS_KEY, MESSAGES_KEY, MEMOS_KEY, ARCHIVED_KEY, CHILDREN_KEY, PARENTS_KEY, THERAPISTS_KEY, BLOCKED_KEY];
+      await AsyncStorage.multiRemove(keys);
+      setPosts([]);
+      setMessages([]);
+      setArchivedThreads([]);
+      setUrgentMemos([]);
+      setChildren([]);
+      setParents([]);
+      setTherapists([]);
+      setBlockedUserIds([]);
+    } catch (e) {
+      console.warn('clearAllData failed', e?.message || e);
+    }
+  }
+
   function blockUser(userId) {
     try {
       if (!userId) return;
@@ -719,6 +766,13 @@ export function DataProvider({ children: reactChildren }) {
     } catch (e) {
       console.warn('unblockUser failed', e?.message || e);
     }
+  }
+
+  // Expose a dev-only helper for clearing all persisted app data
+  if (__DEV__) {
+    try {
+      global.clearBuddyBoardData = clearAllData;
+    } catch (e) {}
   }
 
   return (
@@ -757,6 +811,7 @@ export function DataProvider({ children: reactChildren }) {
       blockedUserIds,
       blockUser,
       unblockUser,
+      clearAllData,
       // time change proposals
       timeChangeProposals,
       proposeTimeChange,
