@@ -177,16 +177,8 @@ export function DataProvider({ children: reactChildren }) {
       } catch (e) {
         console.warn('hydrate failed', e.message);
       }
-      // Defer the network / sync work until after initial interactions/render
-      try {
-        InteractionManager.runAfterInteractions(() => {
-          console.log('DataProvider: running fetchAndSync after interactions', new Date().toISOString());
-          fetchAndSync().catch((e) => console.warn('fetchAndSync deferred failed', e?.message || e));
-        });
-      } catch (e) {
-        // fallback to immediate call
-        await fetchAndSync();
-      }
+      // NOTE: network sync will be triggered by a separate effect
+      // after auth finishes loading to ensure requests include auth token.
     })();
     return () => { mounted = false; };
   }, [user]);
@@ -309,6 +301,23 @@ export function DataProvider({ children: reactChildren }) {
       setTimeChangeProposals(Array.isArray(proposals) ? proposals : (proposals?.proposals || []));
     } catch (e) { console.warn('getUrgentMemos failed', e.message); }
   }
+
+  // Trigger network fetch once auth has finished loading so API calls include auth token
+  useEffect(() => {
+    let mounted = true;
+    if (auth.loading) return () => { mounted = false; };
+    try {
+      InteractionManager.runAfterInteractions(() => {
+        if (!mounted) return;
+        console.log('DataProvider: running fetchAndSync after auth ready', new Date().toISOString());
+        fetchAndSync().catch((e) => console.warn('fetchAndSync after auth failed', e?.message || e));
+      });
+    } catch (e) {
+      // fallback
+      fetchAndSync().catch(() => {});
+    }
+    return () => { mounted = false; };
+  }, [auth.loading, user]);
 
   async function createPost(payload) {
     const temp = { ...payload, id: `temp-${Date.now()}`, createdAt: new Date().toISOString(), pending: true };

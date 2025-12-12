@@ -22,11 +22,39 @@ const client = axios.create({
   headers: { Accept: 'application/json' },
 });
 
+// Debugging interceptors: log requests and responses to help diagnose 401/404s
+client.interceptors.request.use((req) => {
+  try {
+    const auth = req.headers && (req.headers.Authorization || req.headers.authorization);
+    console.log('[Api] Request:', req.method && req.method.toUpperCase(), req.url, auth ? '[auth]' : '[no-auth]');
+  } catch (e) {}
+  return req;
+}, (err) => {
+  console.warn('[Api] Request error', err && err.message);
+  return Promise.reject(err);
+});
+
+client.interceptors.response.use((res) => {
+  try { console.log('[Api] Response:', res.status, res.config && res.config.url); } catch (e) {}
+  return res;
+}, (err) => {
+  try {
+    if (err && err.response) {
+      console.warn('[Api] Response error:', err.response.status, err.response.config && err.response.config.url, err.response.data);
+    } else {
+      console.warn('[Api] Network or other error:', err && err.message);
+    }
+  } catch (e) {}
+  return Promise.reject(err);
+});
+
 export function setAuthToken(token) {
   if (token) {
     client.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    try { console.log('[Api] Auth token set:', (token || '').toString().slice(0,8) + '...'); } catch (e) {}
   } else {
     delete client.defaults.headers.common['Authorization'];
+    console.log('[Api] Auth token cleared');
   }
 }
 
@@ -80,6 +108,12 @@ export async function getLinkPreview(url) {
 
 export async function getUrgentMemos() {
   const res = await client.get('/api/urgent-memos');
+  return res.data;
+}
+
+// Convenience health check to verify API availability and help debug 404s
+export async function health() {
+  const res = await client.get('/api/health');
   return res.data;
 }
 
