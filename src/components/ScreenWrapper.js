@@ -1,6 +1,7 @@
 import React from 'react';
-import { View } from 'react-native';
+import { View, Platform } from 'react-native';
 import ScreenHeader from './ScreenHeader';
+import WebNav from './WebNav';
 import { useNavigation, useRoute } from '@react-navigation/native';
 
 export function ScreenWrapper({ children, style, hideBanner = false, bannerShowBack, bannerTitle, bannerRight }) {
@@ -33,17 +34,18 @@ export function ScreenWrapper({ children, style, hideBanner = false, bannerShowB
 
   return (
     <View style={[{ flex: 1, backgroundColor: '#fff' }, style]}>
-      {!hideBanner && <ScreenHeader title={title} showBack={showBack} right={bannerRight} />}
+      {/* web: show top WebNav; mobile: show ScreenHeader */}
+      {Platform.OS === 'web' ? <WebNav /> : (!hideBanner && <ScreenHeader title={title} showBack={showBack} right={bannerRight} />)}
       {children}
-      {/* spacer to prevent bottom nav from overlapping content */}
-      <View style={{ height: 88 }} accessibilityElementsHidden importantForAccessibility="no" />
+      {/* spacer to prevent bottom nav from overlapping content (smaller on web) */}
+      <View style={{ height: Platform.OS === 'web' ? 24 : 88 }} accessibilityElementsHidden importantForAccessibility="no" />
     </View>
   );
 }
 
 export function CenteredContainer({ children, contentStyle }) {
   return (
-    <View style={{ flex: 1, alignItems: 'center', padding: 16 }}>
+    <View style={{ flex: 1, alignItems: 'center', padding: 16, paddingTop: Platform.OS === 'web' ? 20 : 16 }}>
       <View style={[{ width: '100%', maxWidth: 720 }, contentStyle]}>{children}</View>
     </View>
   );

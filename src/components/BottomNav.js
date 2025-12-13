@@ -1,5 +1,5 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Animated, Platform } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Ionicons } from '@expo/vector-icons';
@@ -7,6 +7,8 @@ import { useAuth } from '../AuthContext';
 import { useData } from '../DataContext';
 
 export default function BottomNav({ navigationRef, currentRoute }) {
+  // don't show mobile bottom nav on web
+  if (Platform.OS === 'web') return null;
   const { user } = useAuth();
   const { urgentMemos = [] } = useData();
   const role = (user && user.role) ? (user.role || '').toString().toLowerCase() : 'parent';

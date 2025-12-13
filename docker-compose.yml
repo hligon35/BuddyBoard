@@ -26,6 +26,17 @@ services:
     command: sh -c "npm install --no-audit --no-fund express body-parser --no-save && node ./scripts/dev-clear-server.js"
     restart: unless-stopped
 
+  api-mock:
+    image: node:18-alpine
+    working_dir: /usr/src/app
+    volumes:
+      - ./:/usr/src/app:rw
+      - node_modules:/usr/src/app/node_modules
+    ports:
+      - '3005:3005'
+    command: sh -c "npm install --no-audit --no-fund express body-parser cors --no-save && node ./scripts/api-mock.js"
+    restart: unless-stopped
+
 volumes:
   node_modules:
     name: buddyboard_node_modules

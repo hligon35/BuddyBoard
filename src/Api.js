@@ -26,7 +26,9 @@ const client = axios.create({
 client.interceptors.request.use((req) => {
   try {
     const auth = req.headers && (req.headers.Authorization || req.headers.authorization);
-    console.log('[Api] Request:', req.method && req.method.toUpperCase(), req.url, auth ? '[auth]' : '[no-auth]');
+    const base = req.baseURL || client.defaults.baseURL || '';
+    const full = base + (req.url || '');
+    console.log('[Api] Request:', req.method && req.method.toUpperCase(), full, auth ? '[auth]' : '[no-auth]');
   } catch (e) {}
   return req;
 }, (err) => {
@@ -38,13 +40,15 @@ client.interceptors.response.use((res) => {
   try { console.log('[Api] Response:', res.status, res.config && res.config.url); } catch (e) {}
   return res;
 }, (err) => {
-  try {
-    if (err && err.response) {
-      console.warn('[Api] Response error:', err.response.status, err.response.config && err.response.config.url, err.response.data);
-    } else {
-      console.warn('[Api] Network or other error:', err && err.message);
-    }
-  } catch (e) {}
+    try {
+      if (err && err.response) {
+        const base = err.response.config && (err.response.config.baseURL || client.defaults.baseURL) || '';
+        const url = (err.response.config && err.response.config.url) || '';
+        console.warn('[Api] Response error:', err.response.status, base + url, err.response.data);
+      } else {
+        console.warn('[Api] Network or other error:', err && err.message);
+      }
+    } catch (e) {}
   return Promise.reject(err);
 });
 
@@ -123,8 +127,14 @@ export async function ackUrgentMemo(memoIds) {
 }
 
 export async function getMessages() {
-  const res = await client.get('/api/messages');
-  return res.data;
+  try {
+    const res = await client.get('/api/messages');
+    return res.data;
+  } catch (err) {
+    // Treat 401 as empty messages for dev/test clients that use a fake token
+    if (err && err.response && err.response.status === 401) return [];
+    throw err;
+  }
 }
 
 export async function sendMessage(payload) {
@@ -146,8 +156,14 @@ export async function proposeTimeChange(payload) {
 }
 
 export async function getTimeChangeProposals() {
-  const res = await client.get('/api/children/time-change-proposals');
-  return res.data;
+  try {
+    const res = await client.get('/api/children/time-change-proposals');
+    return res.data;
+  } catch (err) {
+    // If the backend doesn't implement this route yet, treat as empty list
+    if (err && err.response && err.response.status === 404) return [];
+    throw err;
+  }
 }
 
 export async function respondTimeChange(proposalId, action) {

@@ -94,7 +94,7 @@ const THERAPISTS_KEY = 'bbs_therapists_v1';
 // Directory seed data is provided from `src/seed/directorySeed.js` (imported above)
 
 export function DataProvider({ children: reactChildren }) {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const [posts, setPosts] = useState([]);
   const [messages, setMessages] = useState([]);
   const [urgentMemos, setUrgentMemos] = useState([]);
@@ -299,13 +299,13 @@ export function DataProvider({ children: reactChildren }) {
     try {
       const proposals = await Api.getTimeChangeProposals();
       setTimeChangeProposals(Array.isArray(proposals) ? proposals : (proposals?.proposals || []));
-    } catch (e) { console.warn('getUrgentMemos failed', e.message); }
+    } catch (e) { console.warn('getTimeChangeProposals failed', e.message); }
   }
 
   // Trigger network fetch once auth has finished loading so API calls include auth token
   useEffect(() => {
     let mounted = true;
-    if (auth.loading) return () => { mounted = false; };
+    if (loading) return () => { mounted = false; };
     try {
       InteractionManager.runAfterInteractions(() => {
         if (!mounted) return;
@@ -317,7 +317,7 @@ export function DataProvider({ children: reactChildren }) {
       fetchAndSync().catch(() => {});
     }
     return () => { mounted = false; };
-  }, [auth.loading, user]);
+  }, [loading, user]);
 
   async function createPost(payload) {
     const temp = { ...payload, id: `temp-${Date.now()}`, createdAt: new Date().toISOString(), pending: true };
