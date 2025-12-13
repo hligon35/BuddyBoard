@@ -286,7 +286,18 @@ export function DataProvider({ children: reactChildren }) {
     
     try {
       const remotePosts = await Api.getPosts();
-      if (Array.isArray(remotePosts)) setPosts(remotePosts);
+      if (Array.isArray(remotePosts)) {
+        const norm = remotePosts.map((p) => {
+          const out = { ...(p || {}) };
+          if (out.text && !out.body) out.body = out.text;
+          if (out.author && typeof out.author === 'string') out.author = { id: null, name: out.author, avatar: null };
+          if (!Array.isArray(out.comments)) out.comments = [];
+          if (typeof out.likes !== 'number') out.likes = Number(out.likes) || 0;
+          if (!out.createdAt) out.createdAt = new Date().toISOString();
+          return out;
+        });
+        setPosts(norm);
+      }
     } catch (e) { console.warn('getPosts failed', e.message); }
     try {
       const remoteMessages = await Api.getMessages();
@@ -324,6 +335,17 @@ export function DataProvider({ children: reactChildren }) {
     setPosts((s) => [temp, ...s]);
     try {
       const created = await Api.createPost(payload);
+      // normalize backend field names (mock may return `text`)
+      if (created && created.text && !created.body) created.body = created.text;
+      // normalize author shape: mock may return a string
+      if (created && created.author && typeof created.author === 'string') {
+        created.author = { id: null, name: created.author, avatar: null };
+      }
+      // ensure arrays and fields exist
+      if (created && !Array.isArray(created.comments)) created.comments = [];
+      if (created && typeof created.likes !== 'number') created.likes = Number(created.likes) || 0;
+      if (created && !created.createdAt) created.createdAt = new Date().toISOString();
+      console.log('DataProvider: created post from API', created && created.id, created && (created.body || created.text || created.title));
       setPosts((s) => [created, ...s.filter((p) => p.id !== temp.id)]);
       return created;
     } catch (e) {

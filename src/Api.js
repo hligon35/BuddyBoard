@@ -79,7 +79,10 @@ export async function getPosts() {
 }
 
 export async function createPost(payload) {
-  const res = await client.post('/api/board', payload);
+  const send = { ...(payload || {}) };
+  // Some dev backends (api-mock) expect `text` instead of `body`.
+  if (send.body && !send.text) send.text = send.body;
+  const res = await client.post('/api/board', send);
   return res.data;
 }
 

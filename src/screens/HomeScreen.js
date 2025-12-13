@@ -1,5 +1,5 @@
 import React, { useEffect, useState, useRef } from 'react';
-import { View, Text, TextInput, Button, FlatList, Image, TouchableOpacity, ActivityIndicator, StyleSheet, Modal, Alert, TouchableWithoutFeedback, Linking, Platform, Share, RefreshControl } from 'react-native';
+import { View, Text, TextInput, Button, FlatList, Image, TouchableOpacity, ActivityIndicator, StyleSheet, Modal, Alert, TouchableWithoutFeedback, Linking, Platform, Share, RefreshControl, Keyboard } from 'react-native';
 import { ScreenWrapper, CenteredContainer } from '../components/ScreenWrapper';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -106,9 +106,16 @@ export default function HomeScreen() {
   const insets = useSafeAreaInsets();
   const [bannerHeight, setBannerHeight] = useState(0);
   const [showStickyInput, setShowStickyInput] = useState(false);
+  const [isComposerFocused, setIsComposerFocused] = useState(false);
   const NATIVE_HEADER_HEIGHT = -55; // approximate native stack header height
   const scrollY = useRef(0);
-  const reversedPosts = React.useMemo(() => (posts || []).slice().reverse(), [posts]);
+  const displayedPosts = React.useMemo(() => (posts || []), [posts]);
+
+  React.useEffect(() => {
+    try {
+      console.log('HomeScreen: posts updated', (posts || []).length, (posts && posts[0] && (posts[0].body || posts[0].text || posts[0].title)));
+    } catch (e) {}
+  }, [posts]);
 
   useEffect(() => { fetchAndSync(); }, []);
 
@@ -216,8 +223,12 @@ export default function HomeScreen() {
         const up = await Api.uploadMedia(form);
         imageUrl = up.url || up?.url;
       }
-      await createPost({ title, body, image: imageUrl });
+      const created = await createPost({ title, body, image: imageUrl });
+      // Clear composer and dismiss keyboard after successful post
       setTitle(''); setBody(''); setImage(null);
+      // iOS sometimes needs a short delay to process blur before dismissing keyboard
+      setTimeout(() => Keyboard.dismiss(), 120);
+      return created;
     } catch (e) {
       console.warn('post failed', e.message);
     } finally {
@@ -227,7 +238,8 @@ export default function HomeScreen() {
 
   return (
     <ScreenWrapper bannerShowBack={false} hideBanner={true}>
-      <CenteredContainer>
+      <TouchableWithoutFeedback onPress={() => Keyboard.dismiss()}>
+        <CenteredContainer>
       <View onLayout={(e) => setBannerHeight(e.nativeEvent.layout.height)} style={{ width: '100%', paddingVertical: 12, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#eee', backgroundColor: '#fff', alignItems: 'center' }}>
         <Text style={{ fontSize: 18, fontWeight: '700' }}>Post Board</Text>
       </View>
@@ -241,6 +253,8 @@ export default function HomeScreen() {
           onChangeText={setBody}
           style={[styles.inputTextCompact, { flex: 1, marginHorizontal: 6 }]}
           multiline
+          onFocus={() => setIsComposerFocused(true)}
+          onBlur={() => setIsComposerFocused(false)}
         />
 
         <TouchableOpacity style={styles.pickButtonCompact} onPress={onAttachPress} accessibilityLabel="Attach">
@@ -258,15 +272,18 @@ export default function HomeScreen() {
         </View>
       ) : (
       <FlatList
-        data={reversedPosts}
+        data={displayedPosts}
+        onTouchStart={() => Keyboard.dismiss()}
         keyExtractor={(i) => i.id}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode="on-drag"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         onScroll={(e) => {
           const y = e.nativeEvent.contentOffset.y || 0;
           scrollY.current = y;
           // show sticky input once the banner (index 0 header) has scrolled off
           if (bannerHeight && y > (bannerHeight - 4)) {
-            if (!showStickyInput) setShowStickyInput(true);
+            if (!showStickyInput && !isComposerFocused) setShowStickyInput(true);
           } else {
             if (showStickyInput) setShowStickyInput(false);
           }
@@ -317,6 +334,8 @@ export default function HomeScreen() {
                 onChangeText={setBody}
                 style={[styles.inputTextCompact, { flex: 1, marginHorizontal: 6 }]}
                 multiline
+                onFocus={() => setIsComposerFocused(true)}
+                onBlur={() => setIsComposerFocused(false)}
               />
               <TouchableOpacity style={styles.pickButtonCompact} onPress={onAttachPress} accessibilityLabel="Attach">
                 <MaterialIcons name="attach-file" size={20} color="#444" />
@@ -386,6 +405,7 @@ export default function HomeScreen() {
         </Modal>
       )}
       </CenteredContainer>
+      </TouchableWithoutFeedback>
     </ScreenWrapper>
   );
 }
