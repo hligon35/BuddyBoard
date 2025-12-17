@@ -13,12 +13,15 @@ import BottomNav from './src/components/BottomNav';
 import DevRoleSwitcher from './src/components/DevRoleSwitcher';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import ArrivalDetector from './src/components/ArrivalDetector';
+import { logger, setDebugContext } from './src/utils/logger';
+import { registerGlobalDebugHandlers } from './src/utils/registerDebugHandlers';
 // navigation ref used by the global bottom nav
 const navigationRef = createNavigationContainerRef();
 
 import HomeScreen from './src/screens/HomeScreen';
 import ChatsScreen from './src/screens/ChatsScreen';
 import ChatThreadScreen from './src/screens/ChatThreadScreen';
+import NewThreadScreen from './src/screens/NewThreadScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import HelpScreen from './src/screens/HelpScreen';
 import MyClassScreen from './src/screens/MyClassScreen';
@@ -135,6 +138,7 @@ function ChatsStack() {
       })}
     >
       <ChatsStackNav.Screen name="ChatsList" component={ChatsScreen} options={{ title: 'Chats' }} />
+      <ChatsStackNav.Screen name="NewThread" component={NewThreadScreen} options={{ title: 'New Message' }} />
       <ChatsStackNav.Screen name="ChatThread" component={ChatThreadScreen} options={{ title: 'Thread' }} />
     </ChatsStackNav.Navigator>
   );
@@ -190,6 +194,13 @@ export default function App() {
   const [currentRoute, setCurrentRoute] = useState('Home');
 
   useEffect(() => {
+    try {
+      registerGlobalDebugHandlers();
+      logger.debug('app', 'Registered global debug handlers');
+    } catch (e) {
+      // ignore
+    }
+
     const missing = [];
     if (!HomeScreen) missing.push('HomeScreen');
     if (!ChatsScreen) missing.push('ChatsScreen');
@@ -201,7 +212,15 @@ export default function App() {
     if (missing.length) setProblem(missing);
     else setProblem(null);
     // log for Metro/console
-    console.log('App imports:', { HomeScreen, ChatsScreen, ChatThreadScreen, SettingsScreen, AuthProvider, DataProvider, UrgentMemoOverlay });
+    logger.info('app', 'App imports', {
+      HomeScreen: !!HomeScreen,
+      ChatsScreen: !!ChatsScreen,
+      ChatThreadScreen: !!ChatThreadScreen,
+      SettingsScreen: !!SettingsScreen,
+      AuthProvider: !!AuthProvider,
+      DataProvider: !!DataProvider,
+      UrgentMemoOverlay: !!UrgentMemoOverlay,
+    });
   }, []);
 
   if (problem && problem.length) {
@@ -233,12 +252,16 @@ export default function App() {
                     PostThread: 'Home',
                     ChatsList: 'Chats',
                     ChatThread: 'Chats',
+                    NewThread: 'Chats',
                     MyChildMain: 'MyChild',
                     SettingsMain: 'Settings',
                     MyClassMain: 'MyClass',
                     ControlsMain: 'Controls',
                   };
-                  setCurrentRoute(map[r.name] || r.name);
+                  const next = map[r.name] || r.name;
+                  setCurrentRoute(next);
+                  setDebugContext({ route: next });
+                  logger.debug('nav', 'Route change', { route: next });
                 }
               } catch (e) {
                 // ignore

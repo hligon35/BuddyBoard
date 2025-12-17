@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { BASE_URL, EMULATOR_HOST } from './config';
 import { Platform } from 'react-native';
+import { logger } from './utils/logger';
 
 // Support Android emulator host mapping: if BASE_URL points to localhost
 // convert it to the emulator host (10.0.2.2) so requests from the
@@ -10,7 +11,7 @@ let effectiveBase = BASE_URL;
 try {
   if (Platform.OS === 'android' && BASE_URL && BASE_URL.includes('localhost')) {
     effectiveBase = BASE_URL.replace('localhost', EMULATOR_HOST);
-    console.log('Api: Rewriting BASE_URL for Android emulator ->', effectiveBase);
+    logger.info('api', 'Rewriting BASE_URL for Android emulator', { baseURL: effectiveBase });
   }
 } catch (e) {
   // ignore
@@ -51,6 +52,47 @@ client.interceptors.response.use((res) => {
     } catch (e) {}
   return Promise.reject(err);
 });
+// Request/response instrumentation (dev-friendly; redacts auth)
+try {
+  client.interceptors.request.use((config) => {
+    const startedAt = Date.now();
+    config.metadata = { startedAt };
+    const method = (config.method || 'get').toUpperCase();
+    const url = config.url || '';
+    logger.debug('api', 'HTTP request', { method, url });
+    return config;
+  });
+
+  client.interceptors.response.use(
+    (response) => {
+      const cfg = response.config || {};
+      const method = (cfg.method || 'get').toUpperCase();
+      const url = cfg.url || '';
+      const ms = cfg.metadata?.startedAt ? (Date.now() - cfg.metadata.startedAt) : undefined;
+      logger.debug('api', 'HTTP response', { method, url, status: response.status, ms });
+      return response;
+    },
+    (error) => {
+      const cfg = error?.config || {};
+      const method = (cfg.method || 'get').toUpperCase();
+      const url = cfg.url || '';
+      const ms = cfg.metadata?.startedAt ? (Date.now() - cfg.metadata.startedAt) : undefined;
+      const status = error?.response?.status;
+      const dataType = error?.response?.data ? typeof error.response.data : undefined;
+      logger.error('api', 'HTTP error', {
+        method,
+        url,
+        status,
+        ms,
+        message: error?.message,
+        responseType: dataType,
+      });
+      return Promise.reject(error);
+    }
+  );
+} catch (e) {
+  // ignore
+}
 
 export function setAuthToken(token) {
   if (token) {

@@ -6,6 +6,7 @@ import devWallFlag from '../utils/devWallFlag';
 import { useAuth } from '../AuthContext';
 import { useData } from '../DataContext';
 import { MaterialIcons } from '@expo/vector-icons';
+import { logPress, logger } from '../utils/logger';
 
 export default function DevRoleSwitcher() {
   if (!__DEV__) return null;
@@ -56,18 +57,21 @@ export default function DevRoleSwitcher() {
   }, []);
 
   const setDevToolsPersisted = async (val) => {
+    logPress('DevTools:ShowDevTools', { value: !!val });
     try {
       await devToolsFlag.set(val);
     } catch (e) {}
   };
 
   const setShowDirectoryPersisted = async (val) => {
+    logPress('DevTools:ShowDirectorySeed', { value: !!val });
     try {
       await devDirectoryFlag.set(val);
     } catch (e) {}
   };
 
   const setShowWallPersisted = async (val) => {
+    logPress('DevTools:ShowWallPosts', { value: !!val });
     try {
       await devWallFlag.set(val);
     } catch (e) {}
@@ -75,6 +79,7 @@ export default function DevRoleSwitcher() {
 
   const changeRole = (r) => {
     if (!setRole) return;
+    logPress('DevTools:ChangeRole', { role: r });
     setRole(r);
     setOpen(false);
     Alert.alert('Role changed', `Switched to ${r}`);
@@ -84,6 +89,7 @@ export default function DevRoleSwitcher() {
 
   async function seedAdminAlertA() {
     try {
+      logPress('DevTools:SeedAdminAlertA');
       const child = (children || [])[0];
       if (!child) return Alert.alert('No child available to seed');
       await sendTimeUpdateAlert(child.id, 'pickup', new Date(Date.now() + 1000 * 60 * 60).toISOString(), 'Seeded pickup alert A');
@@ -93,6 +99,7 @@ export default function DevRoleSwitcher() {
 
   async function seedAdminAlertB() {
     try {
+      logPress('DevTools:SeedAdminAlertB');
       const child = (children || [])[1] || (children || [])[0];
       if (!child) return Alert.alert('No child available to seed');
       await sendTimeUpdateAlert(child.id, 'dropoff', new Date(Date.now() + 1000 * 60 * 30).toISOString(), 'Seeded dropoff alert B');
@@ -102,6 +109,7 @@ export default function DevRoleSwitcher() {
 
   async function seedParentAlertA() {
     try {
+      logPress('DevTools:SeedParentAlertA');
       const parent = (parents || [])[0];
       if (!parent) return Alert.alert('No parent available to seed');
       const name = parent.name || `${parent.firstName || ''} ${parent.lastName || ''}`.trim();
@@ -112,6 +120,7 @@ export default function DevRoleSwitcher() {
 
   async function seedParentAlertB() {
     try {
+      logPress('DevTools:SeedParentAlertB');
       const parent = (parents || [])[1] || (parents || [])[0];
       if (!parent) return Alert.alert('No parent available to seed');
       const name = parent.name || `${parent.firstName || ''} ${parent.lastName || ''}`.trim();
@@ -172,19 +181,20 @@ export default function DevRoleSwitcher() {
             <Text>Seed Parent Alert B</Text>
           </TouchableOpacity>
           <View style={{ height: 1, backgroundColor: '#f3f4f6', marginVertical: 6 }} />
-          <TouchableOpacity onPress={() => { try { resetMessagesToDemo(); Alert.alert('Demo messages loaded'); } catch (e) { Alert.alert('Error', 'Could not load demo messages'); } }} style={styles.menuBtn}>
+          <TouchableOpacity onPress={() => { try { logPress('DevTools:LoadDemoMessages'); resetMessagesToDemo(); Alert.alert('Demo messages loaded'); } catch (e) { Alert.alert('Error', 'Could not load demo messages'); } }} style={styles.menuBtn}>
             <Text>Load Demo Messages</Text>
           </TouchableOpacity>
           <TouchableOpacity onPress={() => {
+            logPress('DevTools:ClearMessagesPrompt');
             Alert.alert('Confirm', 'Clear all messages?', [
               { text: 'Cancel', style: 'cancel' },
-              { text: 'Clear', style: 'destructive', onPress: () => { try { clearMessages(); Alert.alert('Cleared', 'All messages removed'); } catch (e) { Alert.alert('Error', 'Could not clear messages'); } } }
+              { text: 'Clear', style: 'destructive', onPress: () => { try { logPress('DevTools:ClearMessagesConfirm'); clearMessages(); Alert.alert('Cleared', 'All messages removed'); } catch (e) { Alert.alert('Error', 'Could not clear messages'); } } }
             ]);
           }} style={styles.menuBtn}>
             <Text>Clear Messages</Text>
           </TouchableOpacity>
           <View style={{ height: 1, backgroundColor: '#f3f4f6', marginVertical: 6 }} />
-          <TouchableOpacity onPress={() => { try { resetChildrenToDemo(); Alert.alert('Cleared', 'Children cleared (use dev seed to repopulate)'); } catch (e) { Alert.alert('Error', 'Could not clear children'); } }} style={styles.menuBtn}>
+          <TouchableOpacity onPress={() => { try { logPress('DevTools:ClearChildren'); resetChildrenToDemo(); Alert.alert('Cleared', 'Children cleared (use dev seed to repopulate)'); } catch (e) { Alert.alert('Error', 'Could not clear children'); } }} style={styles.menuBtn}>
             <Text>Clear Children (use dev seed)</Text>
           </TouchableOpacity>
         </View>
@@ -196,7 +206,7 @@ export default function DevRoleSwitcher() {
         <DevLoginWrapper onClose={() => setShowLoginModal(false)} />
       </Modal>
 
-      <TouchableOpacity style={styles.fab} onPress={() => setOpen(!open)} accessibilityLabel="Developer role switcher">
+      <TouchableOpacity style={styles.fab} onPress={() => { logPress('DevTools:ToggleMenu', { open: !open }); setOpen(!open); }} accessibilityLabel="Developer role switcher">
         <MaterialIcons name="developer-mode" size={20} color="#fff" />
       </TouchableOpacity>
     </View>

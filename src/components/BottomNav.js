@@ -5,6 +5,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../AuthContext';
 import { useData } from '../DataContext';
+import { logPress } from '../utils/logger';
 
 export default function BottomNav({ navigationRef, currentRoute }) {
   // don't show mobile bottom nav on web
@@ -30,6 +31,7 @@ export default function BottomNav({ navigationRef, currentRoute }) {
   }
   tabs.push({ key: 'Settings', label: 'Settings', icon: (active) => (<Ionicons name={active ? 'settings' : 'settings-outline'} size={22} color={active ? '#0066FF' : '#444'} />) });
   function go(name) {
+    logPress('BottomNav:tab', { to: name, from: currentRoute });
     if (navigationRef && navigationRef.current && navigationRef.current.navigate) {
       navigationRef.current.navigate(name);
     }

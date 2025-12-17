@@ -6,7 +6,7 @@ import { useAuth } from '../AuthContext';
 import { ScreenWrapper } from '../components/ScreenWrapper';
 
 export default function ChatThreadScreen({ route }) {
-  const { threadId } = route.params || {};
+  const { threadId, isNew, to: initialTo } = route.params || {};
   const { messages, sendMessage } = useData();
   const [text, setText] = useState('');
   const { user } = useAuth();
@@ -16,6 +16,7 @@ export default function ChatThreadScreen({ route }) {
 
   // authorization: only participants or admin may view the thread
   const isParticipant = useMemo(() => {
+    if (isNew) return true;
     if (!threadMessages || !threadMessages.length) return false;
     if (user && (user.role === 'admin' || user.role === 'ADMIN')) return true;
     const participants = new Set();
@@ -26,12 +27,12 @@ export default function ChatThreadScreen({ route }) {
     });
     const uid = (user?.id || user?.name || '').toString();
     return !!Array.from(participants).find(p => p.toLowerCase() === uid.toLowerCase());
-  }, [threadMessages, user]);
+  }, [threadMessages, user, isNew]);
 
   async function handleSend() {
     if (!text.trim()) return;
     if (!isParticipant) return; // prevent sending if not authorized
-    await sendMessage({ threadId, body: text });
+    await sendMessage({ threadId, body: text, to: (Array.isArray(initialTo) && initialTo.length) ? initialTo : undefined });
     setText('');
   }
   if (!isParticipant) {

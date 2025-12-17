@@ -2,11 +2,13 @@ import React from 'react';
 import { TouchableOpacity, Text, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
 import { useAuth } from '../AuthContext';
+import { logger } from '../utils/logger';
+import { logPress } from '../utils/logger';
 
 export function HelpButton() {
   const navigation = useNavigation();
   return (
-    <TouchableOpacity style={styles.btn} onPress={() => navigation.navigate('Settings', { screen: 'Help' })}>
+    <TouchableOpacity style={styles.btn} onPress={() => { logPress('TopButtons:Help'); navigation.navigate('Settings', { screen: 'Help' }); }}>
       <Text style={styles.help}>Help</Text>
     </TouchableOpacity>
   );
@@ -15,18 +17,18 @@ export function HelpButton() {
 export function LogoutButton() {
   const { logout } = useAuth();
   return (
-    <TouchableOpacity style={styles.btn} onPress={() => logout()}>
+    <TouchableOpacity style={styles.btn} onPress={() => { logPress('TopButtons:Logout'); logout(); }}>
       <Text style={styles.logout}>Logout</Text>
     </TouchableOpacity>
   );
 }
 
 export function BackButton({ onPress }) {
-  const logEvent = (ev) => { try { console.log(`TopButtons.BackButton: ${ev} @ ${new Date().toISOString()}`); } catch (e) {} };
+  const logEvent = (ev) => { logger.debug('ui', `TopButtons.BackButton:${ev}`); };
   return (
     <TouchableOpacity
       style={[styles.btn, styles.backBtn]}
-      onPress={() => { logEvent('onPress'); onPress && onPress(); }}
+      onPress={() => { logPress('TopButtons:Back'); logEvent('onPress'); onPress && onPress(); }}
       onPressIn={() => logEvent('onPressIn')}
       onPressOut={() => logEvent('onPressOut')}
       onLongPress={() => logEvent('onLongPress')}

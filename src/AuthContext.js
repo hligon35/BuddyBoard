@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Api from './Api';
+import { setDebugContext, logger } from './utils/logger';
 
 const TOKEN_KEY = 'auth_token';
 
@@ -35,6 +36,18 @@ export function AuthProvider({ children }) {
     return () => { mounted = false; };
   }, []);
 
+  useEffect(() => {
+    try {
+      setDebugContext({
+        userId: user?.id,
+        role: user?.role,
+        hasToken: !!token,
+      });
+    } catch (e) {
+      // ignore
+    }
+  }, [user, token]);
+
   // Dev auto-login for local testing (non-persistent)
   useEffect(() => {
     if (__DEV__ && !loading && !token) {
@@ -42,7 +55,7 @@ export function AuthProvider({ children }) {
       setToken(devToken);
       Api.setAuthToken(devToken);
       setUser({ id: 'dev', name: 'Developer', email: 'dev@example.com', role: 'ADMIN' });
-      console.log('AuthContext: dev auto-login enabled');
+      logger.info('auth', 'Dev auto-login enabled');
     }
   }, [loading]);
 

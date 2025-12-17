@@ -1,10 +1,13 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, Image, Alert, Platform, ToastAndroid, Animated, RefreshControl } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import devToolsFlag from '../utils/devToolsFlag';
 import { useData } from '../DataContext';
 import { useAuth } from '../AuthContext';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
+import { MaterialIcons } from '@expo/vector-icons';
+import { logPress } from '../utils/logger';
+import { HelpButton, LogoutButton } from '../components/TopButtons';
 
 function timeAgo(iso) {
   if (!iso) return '';
@@ -92,6 +95,7 @@ export default function ChatsScreen({ navigation }) {
   const { user } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
   const [devToolsVisible, setDevToolsVisible] = useState(true);
+  const [dateFilterDays, setDateFilterDays] = useState(null); // null => no filter
 
   useEffect(() => {
     let mounted = true;
@@ -108,6 +112,14 @@ export default function ChatsScreen({ navigation }) {
   }, []);
 
   useEffect(() => { fetchAndSync(); }, []);
+
+  // Ensure the native stack header buttons are reset (Fast Refresh can preserve prior setOptions).
+  useLayoutEffect(() => {
+    navigation.setOptions({
+      headerLeft: () => <HelpButton />,
+      headerRight: () => <LogoutButton />,
+    });
+  }, [navigation]);
 
   // Group by threadId (fallback to id)
   const threads = (messages || []).reduce((acc, msg) => {
@@ -136,27 +148,96 @@ export default function ChatsScreen({ navigation }) {
 
   // remove archived threads from visible list
   const unarchivedList = (visibleList || []).filter(l => !(archivedThreads || []).includes(l.id));
+  const displayList = (dateFilterDays && Number(dateFilterDays) > 0)
+    ? (unarchivedList || []).filter((t) => {
+        const iso = t?.last?.createdAt;
+        if (!iso) return true;
+        const ts = new Date(iso).getTime();
+        if (!Number.isFinite(ts)) return true;
+        const cutoff = Date.now() - (Number(dateFilterDays) * 24 * 60 * 60 * 1000);
+        return ts >= cutoff;
+      })
+    : unarchivedList;
 
   async function onRefresh() {
     try { setRefreshing(true); await fetchAndSync(); } catch (e) {} finally { setRefreshing(false); }
   }
 
+  function HeaderIconButton({ name, onPress, accessibilityLabel, active }) {
+    return (
+      <TouchableOpacity
+        onPress={onPress}
+        accessibilityLabel={accessibilityLabel}
+        hitSlop={{ top: 14, bottom: 14, left: 14, right: 14 }}
+        style={{
+          paddingVertical: 6,
+          paddingHorizontal: 10,
+          borderRadius: 8,
+          borderWidth: 1,
+          borderColor: '#e6eef8',
+          backgroundColor: '#fff',
+        }}
+      >
+        <MaterialIcons name={name} size={20} color={active ? '#2563eb' : '#111827'} />
+      </TouchableOpacity>
+    );
+  }
+
+  const openDateFilter = () => {
+    logPress('Chats:OpenDateFilter');
+    Alert.alert(
+      'Filter by date',
+      'Show conversations from the last…',
+      [
+        { text: '3 days', onPress: () => { logPress('Chats:DateFilter', { days: 3 }); setDateFilterDays(3); } },
+        { text: '7 days', onPress: () => { logPress('Chats:DateFilter', { days: 7 }); setDateFilterDays(7); } },
+        { text: '30 days', onPress: () => { logPress('Chats:DateFilter', { days: 30 }); setDateFilterDays(30); } },
+        { text: 'Off', onPress: () => { logPress('Chats:DateFilter', { days: null }); setDateFilterDays(null); } },
+        { text: 'Cancel', style: 'cancel' },
+      ]
+    );
+  };
+
+  const startNewMessage = () => {
+    logPress('Chats:NewMessage');
+    navigation.navigate('NewThread');
+  };
+
   return (
-    <ScreenWrapper bannerShowBack={false}>
+    <ScreenWrapper
+      bannerShowBack={false}
+      bannerLeft={(
+        <HeaderIconButton
+          name="filter-list"
+          active={!!dateFilterDays}
+          accessibilityLabel={dateFilterDays ? `Filter: last ${dateFilterDays} days` : 'Filter: off'}
+          onPress={openDateFilter}
+        />
+      )}
+      bannerRight={(
+        <HeaderIconButton
+          name="add"
+          accessibilityLabel="New message"
+          onPress={startNewMessage}
+        />
+      )}
+    >
       <CenteredContainer>
         {/* Dev buttons moved to DevRoleSwitcher */}
         <FlatList
           style={{ width: '100%' }}
-          data={unarchivedList}
+          data={displayList}
           keyExtractor={(i) => `${i.id}`}
           renderItem={({ item }) => (
             <MessageRow item={item} user={user} navigation={navigation} archiveThread={archiveThread} deleteThread={deleteThread} />
           )}
           refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
         />
-        {(!visibleList || visibleList.length === 0) && (
+        {(!displayList || displayList.length === 0) && (
           <View style={{ padding: 20, alignItems: 'center' }}>
-            <Text style={{ color: '#6b7280' }}>No conversations yet.</Text>
+            <Text style={{ color: '#6b7280' }}>
+              {dateFilterDays ? `No conversations in last ${dateFilterDays} days.` : 'No conversations yet.'}
+            </Text>
           </View>
         )}
       </CenteredContainer>

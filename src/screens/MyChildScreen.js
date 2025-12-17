@@ -293,59 +293,63 @@ export default function MyChildScreen() {
         })()}
       </View>
 
-      {/* BCA therapist tile (always render; show placeholder when not assigned) */}
-      <View style={[styles.card, { marginTop: 12, alignItems: 'center' }]}>
-        {child.bcaTherapist ? (
-          <>
-            <Image source={{ uri: child.bcaTherapist.avatar }} style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: '#eee' }} />
-            <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={styles.name}>{shortName(child.bcaTherapist.name, 20)}</Text>
-              <Text style={styles.meta}>{child.bcaTherapist.role}</Text>
-            </View>
-            <View style={{ alignItems: 'flex-end' }}>
-              <TouchableOpacity onPress={() => openPhone(child.bcaTherapist.phone)} style={{ paddingVertical: 6 }} accessibilityLabel="Call BCA therapist">
-                <MaterialIcons name="call" size={20} color="#2563eb" />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => openEmail(child.bcaTherapist.email)} style={{ paddingVertical: 6 }} accessibilityLabel="Email BCA therapist">
-                <MaterialIcons name="email" size={20} color="#2563eb" />
-              </TouchableOpacity>
-            </View>
-          </>
-        ) : (
-          <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={styles.name}>BCA Therapist</Text>
-            <Text style={styles.meta}>No BCA therapist assigned.</Text>
-          </View>
-        )}
-      </View>
+      {/* Care team */}
+      <View style={styles.careTeamWrap}>
+        <Text style={styles.careTeamTitle}>Care Team</Text>
 
-      <View style={styles.row}>
-        <View style={[styles.therapistBlock, { marginRight: 8 }]}>
-          <Text style={styles.therapistTitle}>AM Therapist</Text>
-          {child.amTherapist ? (
-            <View style={styles.therapistInner}>
-              <Image source={{ uri: child.amTherapist.avatar }} style={styles.therapistAvatar} />
-              <View style={{ flex: 1, marginLeft: 8, alignItems: 'center' }}>
-                <Text style={styles.therapistName}>{shortName(child.amTherapist.name, 18)}</Text>
-                <Text style={styles.therapistRole}>{child.amTherapist.role}</Text>
-                <View style={styles.amIconRow}>
-                  <TouchableOpacity onPress={() => openPhone(child.amTherapist.phone)} style={styles.iconTouch} accessibilityLabel="Call AM therapist">
-                    <MaterialIcons name="call" size={22} color="#2563eb" />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => openEmail(child.amTherapist.email)} style={styles.iconTouch} accessibilityLabel="Email AM therapist">
-                    <MaterialIcons name="email" size={22} color="#2563eb" />
-                  </TouchableOpacity>
-                </View>
+        {/* BCA therapist tile (always render; show placeholder when not assigned) */}
+        <View style={[styles.card, { marginTop: 8, alignItems: 'center' }]}>
+          {child.bcaTherapist ? (
+            <>
+              <Image source={{ uri: child.bcaTherapist.avatar }} style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: '#eee' }} />
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.name}>{shortName(child.bcaTherapist.name, 20)}</Text>
+                <Text style={styles.meta}>{child.bcaTherapist.role}</Text>
               </View>
-            </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <TouchableOpacity onPress={() => openPhone(child.bcaTherapist.phone)} style={{ paddingVertical: 6 }} accessibilityLabel="Call BCA therapist">
+                  <MaterialIcons name="call" size={20} color="#2563eb" />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => openEmail(child.bcaTherapist.email)} style={{ paddingVertical: 6 }} accessibilityLabel="Email BCA therapist">
+                  <MaterialIcons name="email" size={20} color="#2563eb" />
+                </TouchableOpacity>
+              </View>
+            </>
           ) : (
-            <Text style={styles.sectionText}>No AM therapist assigned.</Text>
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={styles.name}>BCA Therapist</Text>
+              <Text style={styles.meta}>No BCA therapist assigned.</Text>
+            </View>
           )}
         </View>
 
-        <View style={[styles.therapistBlock, { marginLeft: 8 }]}>
-          <Text style={styles.therapistTitle}>PM Therapist</Text>
-          {child.pmTherapist ? (
+        <View style={[styles.row, { marginTop: 12 }]}> 
+          <View style={[styles.therapistBlock, { marginRight: 8 }]}>
+            <Text style={styles.therapistTitle}>AM Therapist</Text>
+            {child.amTherapist ? (
+              <View style={styles.therapistInner}>
+                <Image source={{ uri: child.amTherapist.avatar }} style={styles.therapistAvatar} />
+                <View style={{ flex: 1, marginLeft: 8, alignItems: 'center' }}>
+                  <Text style={styles.therapistName}>{shortName(child.amTherapist.name, 18)}</Text>
+                  <Text style={styles.therapistRole}>{child.amTherapist.role}</Text>
+                  <View style={styles.amIconRow}>
+                    <TouchableOpacity onPress={() => openPhone(child.amTherapist.phone)} style={styles.iconTouch} accessibilityLabel="Call AM therapist">
+                      <MaterialIcons name="call" size={22} color="#2563eb" />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => openEmail(child.amTherapist.email)} style={styles.iconTouch} accessibilityLabel="Email AM therapist">
+                      <MaterialIcons name="email" size={22} color="#2563eb" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            ) : (
+              <Text style={styles.sectionText}>No AM therapist assigned.</Text>
+            )}
+          </View>
+
+          <View style={[styles.therapistBlock, { marginLeft: 8 }]}>
+            <Text style={styles.therapistTitle}>PM Therapist</Text>
+            {child.pmTherapist ? (
               <View style={styles.therapistInner}>
                 <Image source={{ uri: child.pmTherapist.avatar }} style={styles.therapistAvatar} />
                 <View style={{ flex: 1, marginLeft: 8, alignItems: 'center' }}>
@@ -361,9 +365,10 @@ export default function MyChildScreen() {
                   </View>
                 </View>
               </View>
-          ) : (
-            <Text style={styles.sectionText}>No PM therapist assigned.</Text>
-          )}
+            ) : (
+              <Text style={styles.sectionText}>No PM therapist assigned.</Text>
+            )}
+          </View>
         </View>
       </View>
 
@@ -427,4 +432,6 @@ const styles = StyleSheet.create({
   amIconRow: { flexDirection: 'row', marginTop: 8, justifyContent: 'center' },
   iconTouch: { marginHorizontal: 12 },
   demoButton: { backgroundColor: '#2563eb', padding: 10, borderRadius: 8, alignItems: 'center', marginBottom: 8 },
+  careTeamWrap: { marginTop: 12, backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 12, padding: 12 },
+  careTeamTitle: { textAlign: 'center', fontWeight: '800', fontSize: 16, color: '#111827' },
 });

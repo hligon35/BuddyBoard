@@ -6,7 +6,13 @@ export const BASE_URL = 'http://10.0.0.187:3005';
 // Use `10.0.2.2` for Android emulator when pointing to host machine
 export const EMULATOR_HOST = '10.0.2.2';
 
+// Debug toggles
+// - DEBUG_LOGS: enables logger.debug(...) output in dev
+// Keep defaults quiet in production builds.
+export const DEBUG_LOGS = (typeof __DEV__ !== 'undefined' ? __DEV__ : false);
+
 export default {
   BASE_URL,
   EMULATOR_HOST,
+  DEBUG_LOGS,
 };

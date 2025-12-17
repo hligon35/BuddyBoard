@@ -4,7 +4,7 @@ import ScreenHeader from './ScreenHeader';
 import WebNav from './WebNav';
 import { useNavigation, useRoute } from '@react-navigation/native';
 
-export function ScreenWrapper({ children, style, hideBanner = false, bannerShowBack, bannerTitle, bannerRight }) {
+export function ScreenWrapper({ children, style, hideBanner = false, bannerShowBack, bannerTitle, bannerLeft, bannerRight }) {
   const navigation = useNavigation();
   const route = useRoute();
 
@@ -34,8 +34,12 @@ export function ScreenWrapper({ children, style, hideBanner = false, bannerShowB
 
   return (
     <View style={[{ flex: 1, backgroundColor: '#fff' }, style]}>
+<<<<<<< Updated upstream
       {/* web: show top WebNav; mobile: show ScreenHeader */}
       {Platform.OS === 'web' ? <WebNav /> : (!hideBanner && <ScreenHeader title={title} showBack={showBack} right={bannerRight} />)}
+=======
+      {!hideBanner && <ScreenHeader title={title} showBack={showBack} left={bannerLeft} right={bannerRight} />}
+>>>>>>> Stashed changes
       {children}
       {/* spacer to prevent bottom nav from overlapping content (smaller on web) */}
       <View style={{ height: Platform.OS === 'web' ? 24 : 88 }} accessibilityElementsHidden importantForAccessibility="no" />
