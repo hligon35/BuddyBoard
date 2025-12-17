@@ -24,8 +24,7 @@ export default function ScreenHeader({ title, showBack = true, left, right }) {
           hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
         >
           <View style={styles.backInner}>
-            <MaterialIcons name="arrow-back" size={18} color="#111827" />
-            <Text style={styles.backText}>Back</Text>
+            <MaterialIcons name="chevron-left" size={26} color="#111827" />
           </View>
         </TouchableOpacity>
       ) : left ? (
@@ -46,7 +45,6 @@ const styles = StyleSheet.create({
   back: { position: 'absolute', left: 12, top: 8 },
   left: { position: 'absolute', left: 12, top: 8 },
   backInner: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 8, borderWidth: 1, borderColor: '#e6eef8', backgroundColor: '#fff', shadowColor: '#000', shadowOffset: { width: 0, height: 1 }, shadowOpacity: 0.05, shadowRadius: 2, elevation: 2 },
-  backText: { marginLeft: 6, fontSize: 14, color: '#111827', fontWeight: '700' },
   backPlaceholder: { width: 84, position: 'absolute', left: 12, top: 8 },
   title: { fontSize: 18, fontWeight: '700', textAlign: 'center' },
   titlePlaceholder: { height: 0 },

@@ -1,6 +1,7 @@
 import React from 'react';
 import { TouchableOpacity, Text, StyleSheet } from 'react-native';
 import { useNavigation } from '@react-navigation/native';
+import { MaterialIcons } from '@expo/vector-icons';
 import { useAuth } from '../AuthContext';
 import { logger } from '../utils/logger';
 import { logPress } from '../utils/logger';
@@ -37,7 +38,7 @@ export function BackButton({ onPress }) {
       hitSlop={{ top: 16, bottom: 16, left: 16, right: 16 }}
       activeOpacity={0.85}
     >
-      <Text style={styles.backText}>‹ Back</Text>
+      <MaterialIcons name="chevron-left" size={26} color="#111827" />
     </TouchableOpacity>
   );
 }

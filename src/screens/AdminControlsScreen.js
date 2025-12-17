@@ -1,10 +1,14 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Animated, Linking, Alert, Switch } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Animated, Linking, Alert, Switch, TextInput } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { ScreenWrapper } from '../components/ScreenWrapper';
 import { pravatarUriFor, setIdVisibilityEnabled, initIdVisibilityFromStorage } from '../utils/idVisibility';
 import { useData } from '../DataContext';
 import { useNavigation } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const BUSINESS_ADDR_KEY = 'business_address_v1';
+const ORG_ARRIVAL_KEY = 'settings_arrival_org_enabled_v1';
 
 export default function AdminControlsScreen() {
   const navigation = useNavigation();
@@ -50,13 +54,99 @@ export default function AdminControlsScreen() {
   const pendingAlertCount = (urgentMemos || []).filter((m) => !m.status || m.status === 'pending').length;
   const [showIds, setShowIds] = useState(false);
 
+  const [orgAddress, setOrgAddress] = useState('');
+  const [orgLat, setOrgLat] = useState('');
+  const [orgLng, setOrgLng] = useState('');
+  const [dropZoneMiles, setDropZoneMiles] = useState('1');
+  const [orgArrivalEnabled, setOrgArrivalEnabled] = useState(true);
+
   useEffect(() => {
     let mounted = true;
     initIdVisibilityFromStorage().then((v) => { if (mounted) setShowIds(!!v); }).catch(() => {});
+    (async () => {
+      try {
+        const orgRaw = await AsyncStorage.getItem(ORG_ARRIVAL_KEY);
+        if (!mounted) return;
+        // default to enabled when not set
+        setOrgArrivalEnabled(orgRaw !== '0');
+
+        const raw = await AsyncStorage.getItem(BUSINESS_ADDR_KEY);
+        if (!mounted) return;
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (parsed && typeof parsed === 'object') {
+            if (parsed.address) setOrgAddress(String(parsed.address));
+            if (typeof parsed.lat === 'number') setOrgLat(String(parsed.lat));
+            if (typeof parsed.lng === 'number') setOrgLng(String(parsed.lng));
+            if (typeof parsed.dropZoneMiles === 'number') setDropZoneMiles(String(parsed.dropZoneMiles));
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
+    })();
     return () => { mounted = false; };
   }, []);
 
   const toggleShowIds = () => { const next = !showIds; setShowIds(next); setIdVisibilityEnabled(next); };
+
+  async function toggleOrgArrival() {
+    const next = !orgArrivalEnabled;
+    setOrgArrivalEnabled(next);
+    try {
+      await AsyncStorage.setItem(ORG_ARRIVAL_KEY, next ? '1' : '0');
+    } catch (e) {
+      // revert on failure
+      setOrgArrivalEnabled(!next);
+      Alert.alert('Error', 'Could not update organization arrival detection setting.');
+    }
+  }
+
+  async function saveArrivalControls() {
+    const latNum = Number(orgLat);
+    const lngNum = Number(orgLng);
+    const milesNum = Number(dropZoneMiles);
+
+    if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) {
+      Alert.alert('Missing location', 'Tap “Use my current location” to set the organization location.');
+      return;
+    }
+    if (!Number.isFinite(milesNum) || milesNum <= 0) {
+      Alert.alert('Invalid Drop Zone', 'Drop Zone must be a number greater than 0 (miles).');
+      return;
+    }
+
+    const obj = {
+      address: orgAddress || `${latNum.toFixed(6)}, ${lngNum.toFixed(6)}`,
+      lat: latNum,
+      lng: lngNum,
+      dropZoneMiles: milesNum,
+    };
+    try {
+      await AsyncStorage.setItem(BUSINESS_ADDR_KEY, JSON.stringify(obj));
+      Alert.alert('Saved', 'Arrival detection controls updated.');
+    } catch (e) {
+      Alert.alert('Error', 'Could not save arrival detection controls.');
+    }
+  }
+
+  async function useCurrentLocationForOrg() {
+    try {
+      const Location = require('expo-location');
+      const perm = await Location.requestForegroundPermissionsAsync();
+      if (!perm.granted) {
+        Alert.alert('Location required', 'Please grant location permission to set the organization location.');
+        return;
+      }
+      const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
+      setOrgLat(String(pos.coords.latitude));
+      setOrgLng(String(pos.coords.longitude));
+      setOrgAddress(`${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`);
+    } catch (e) {
+      console.warn('admin arrival controls: location failed', e?.message || e);
+      Alert.alert('Location failed', 'Could not get current location.');
+    }
+  }
 
   function DirectoryBanner({ label, onOpen, onToggle, open, childrenPreview, count, rightAction }) {
     return (
@@ -70,7 +160,7 @@ export default function AdminControlsScreen() {
                   <View style={styles.dirCount}><Text style={{ color: '#111827', fontWeight: '700', fontSize: 12 }}>{count}</Text></View>
                 ) : null}
               </View>
-              <Text style={{ color: '#6b7280', marginTop: 4 }}>Tap to preview</Text>
+              <Text style={{ color: '#6b7280', marginTop: 4 }}>Tap to view</Text>
             </View>
             <TouchableOpacity onPress={onOpen} style={styles.openIcon} accessibilityLabel={`Open ${label} list`}>
               <MaterialIcons name="open-in-new" size={18} color="#2563eb" />
@@ -148,7 +238,7 @@ export default function AdminControlsScreen() {
               ))}
               {!(children || []).length ? (
                 <View style={[styles.previewCard, { alignItems: 'center', justifyContent: 'center' }]}>
-                  <Text style={{ color: '#6b7280', fontSize: 12, textAlign: 'center' }}>No students. Enable the developer seed toggle to populate demo data.</Text>
+                  <Text style={{ color: '#6b7280', fontSize: 12, textAlign: 'center' }}>No students enrolled yet.</Text>
                 </View>
               ) : null}
             </ScrollView>
@@ -222,13 +312,62 @@ export default function AdminControlsScreen() {
 
         {/* IDs (admin) - moved below Directory */}
         <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: '#eef2f7', paddingTop: 12 }}>
-          <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8 }}>IDs</Text>
+          <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8 }}>Account IDs</Text>
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
             <View style={{ flex: 1, paddingRight: 8 }}>
-              <Text style={{ fontSize: 14 }}>Show internal IDs</Text>
-              <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>Toggle to show internal ID strings in profiles (debug only).</Text>
+              <Text style={{ fontSize: 14 }}>Show internal account ID numbers</Text>
+              <Text style={{ fontSize: 12, color: '#6b7280', marginTop: 4 }}>Toggle to show internal account ID numbers in profiles.</Text>
             </View>
             <Switch value={showIds} onValueChange={toggleShowIds} />
+          </View>
+        </View>
+
+        {/* Arrival Detection Controls (admin) */}
+        <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: '#eef2f7', paddingTop: 12 }}>
+          <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8 }}>Arrival Detection Controls</Text>
+          <Text style={{ fontSize: 12, color: '#6b7280' }}>
+            Set the organization location and the “Drop Zone” (Radius in miles, used to determine when a parent has arrived.)
+          </Text>
+
+          <View style={styles.formCard}>
+            <View style={styles.toggleRow}>
+              <View style={{ flex: 1, paddingRight: 12 }}>
+                <Text style={styles.toggleTitle}>Arrival detection enabled</Text>
+                <Text style={styles.toggleHint}>If turned off, arrival detection does not run for anyone (even if enabled in their settings).</Text>
+              </View>
+              <Switch value={orgArrivalEnabled} onValueChange={toggleOrgArrival} />
+            </View>
+
+            <Text style={styles.fieldLabel}>Organization Address</Text>
+            <TextInput
+              value={orgAddress}
+              editable={false}
+              placeholder="Has not been set"
+              style={styles.input}
+              autoCapitalize="words"
+            />
+
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 10 }}>
+              <TouchableOpacity onPress={useCurrentLocationForOrg} style={[styles.secondaryBtn, { flex: 1, marginTop: 0, marginRight: 10 }]}>
+                <MaterialIcons name="my-location" size={18} color="#2563eb" />
+                <Text style={styles.secondaryBtnText}>Use my current location</Text>
+              </TouchableOpacity>
+
+              <View style={{ width: 140 }}>
+                <Text style={[styles.fieldLabel, { marginTop: 0 }]}>Drop Zone (miles)</Text>
+                <TextInput
+                  value={dropZoneMiles}
+                  onChangeText={setDropZoneMiles}
+                  placeholder="1"
+                  style={styles.input}
+                  keyboardType="decimal-pad"
+                />
+              </View>
+            </View>
+
+            <TouchableOpacity onPress={saveArrivalControls} style={styles.primaryBtn}>
+              <Text style={styles.primaryBtnText}>Save</Text>
+            </TouchableOpacity>
           </View>
         </View>
 
@@ -282,4 +421,15 @@ const styles = StyleSheet.create({
   openIcon: { paddingHorizontal: 8, paddingVertical: 6 },
   previewIcon: { paddingHorizontal: 8, paddingVertical: 6 },
   dirCount: { backgroundColor: '#eef2ff', paddingHorizontal: 8, paddingVertical: 4, borderRadius: 12, marginLeft: 8 }
+  ,
+  formCard: { marginTop: 10, padding: 12, borderRadius: 10, borderWidth: 1, borderColor: '#eef2f7', backgroundColor: '#fff' },
+  toggleRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingBottom: 10, borderBottomWidth: 1, borderBottomColor: '#eef2f7' },
+  toggleTitle: { fontSize: 14, fontWeight: '700', color: '#111827' },
+  toggleHint: { fontSize: 12, color: '#6b7280', marginTop: 4 },
+  fieldLabel: { fontSize: 12, fontWeight: '700', color: '#111827', marginTop: 10, marginBottom: 6 },
+  input: { borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 12, backgroundColor: '#fff' },
+  secondaryBtn: { marginTop: 10, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, borderRadius: 10, borderWidth: 1, borderColor: '#e6eef8', backgroundColor: '#f1f5f9' },
+  secondaryBtnText: { marginLeft: 8, color: '#2563eb', fontWeight: '700' },
+  primaryBtn: { marginTop: 12, backgroundColor: '#2563eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
+  primaryBtnText: { color: '#fff', fontWeight: '700' },
 });

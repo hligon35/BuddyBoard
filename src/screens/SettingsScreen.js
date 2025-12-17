@@ -95,8 +95,19 @@ export default function SettingsScreen() {
 
   async function saveBusinessAddress(obj) {
     try {
-      await AsyncStorage.setItem(BUSINESS_ADDR_KEY, JSON.stringify(obj));
-      setBusinessAddress(obj.address || '');
+      // Preserve any existing admin-configured fields (e.g., dropZoneMiles)
+      let merged = { ...(obj || {}) };
+      try {
+        const existingRaw = await AsyncStorage.getItem(BUSINESS_ADDR_KEY);
+        if (existingRaw) {
+          const existing = JSON.parse(existingRaw);
+          if (existing && typeof existing === 'object') {
+            merged = { ...existing, ...merged };
+          }
+        }
+      } catch (e) {}
+      await AsyncStorage.setItem(BUSINESS_ADDR_KEY, JSON.stringify(merged));
+      setBusinessAddress(merged.address || '');
     } catch (e) {}
   }
 
