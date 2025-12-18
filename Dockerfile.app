@@ -1,7 +1,7 @@
 FROM node:18-alpine
 
 # Create app directory
-WORKDIR /app
+WORKDIR /usr/src/app
 
 # Install app dependencies (copy lock files first for better caching)
 COPY package*.json ./

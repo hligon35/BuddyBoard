@@ -13,6 +13,7 @@ let posts = [
 let messages = [];
 let urgentMemos = [];
 let timeChangeProposals = [];
+let pushTokens = []; // { token, userId, platform, enabled, preferences, updatedAt }
 
 app.get('/api/health', (req, res) => res.json({ ok: true, uptime: process.uptime() }));
 
@@ -75,6 +76,62 @@ app.post('/api/media/sign', (req, res) => {
   // return fake presign info
   const key = req.body.key || `uploads/${Date.now()}`;
   res.json({ url: `http://minio:9000/${key}`, fields: {}, key });
+});
+
+// Push notifications (Expo)
+app.post('/api/push/register', (req, res) => {
+  const token = (req.body && req.body.token) ? String(req.body.token) : '';
+  const userId = (req.body && req.body.userId) ? String(req.body.userId) : '';
+  const platform = (req.body && req.body.platform) ? String(req.body.platform) : '';
+  const enabled = (req.body && typeof req.body.enabled === 'boolean') ? req.body.enabled : true;
+  const preferences = (req.body && typeof req.body.preferences === 'object') ? req.body.preferences : {};
+
+  if (!token) return res.status(400).json({ ok: false, error: 'token required' });
+
+  const now = new Date().toISOString();
+  const idx = pushTokens.findIndex((t) => t.token === token);
+  const record = { token, userId, platform, enabled, preferences, updatedAt: now };
+  if (idx === -1) pushTokens.push(record);
+  else pushTokens[idx] = record;
+
+  res.json({ ok: true, stored: true });
+});
+
+app.post('/api/push/unregister', (req, res) => {
+  const token = (req.body && req.body.token) ? String(req.body.token) : '';
+  if (!token) return res.status(400).json({ ok: false, error: 'token required' });
+  pushTokens = pushTokens.filter((t) => t.token !== token);
+  res.json({ ok: true, removed: true });
+});
+
+app.get('/api/push/tokens', (req, res) => {
+  res.json({ ok: true, tokens: pushTokens });
+});
+
+// Send a test push via Expo push service.
+app.post('/api/push/send-test', async (req, res) => {
+  const to = (req.body && req.body.to) ? String(req.body.to) : (pushTokens[0] ? pushTokens[0].token : '');
+  if (!to) return res.status(400).json({ ok: false, error: 'no token available; register first' });
+
+  const title = (req.body && req.body.title) ? String(req.body.title) : 'BuddyBoard Test';
+  const body = (req.body && req.body.body) ? String(req.body.body) : 'This is a test push notification.';
+  const data = (req.body && typeof req.body.data === 'object') ? req.body.data : { kind: 'test' };
+
+  try {
+    if (typeof fetch !== 'function') {
+      return res.status(500).json({ ok: false, error: 'Node fetch() is not available. Use Node 18+ or add a fetch polyfill.' });
+    }
+    const payload = [{ to, title, body, data, sound: 'default' }];
+    const resp = await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload),
+    });
+    const json = await resp.json();
+    res.json({ ok: true, expo: json });
+  } catch (e) {
+    res.status(500).json({ ok: false, error: e && e.message ? e.message : String(e) });
+  }
 });
 
 app.listen(3005, '0.0.0.0', () => console.log('API mock listening on port 3005'));

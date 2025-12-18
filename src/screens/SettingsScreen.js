@@ -1,5 +1,5 @@
-import React, { useLayoutEffect, useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, Image, Alert, Switch, ScrollView } from 'react-native';
+import React, { useLayoutEffect, useState, useEffect, useRef } from 'react';
+import { View, Text, TouchableOpacity, Image, Alert, Switch, ScrollView, Platform } from 'react-native';
 import { useAuth } from '../AuthContext';
 import { BASE_URL } from '../config';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -8,6 +8,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import devToolsFlag from '../utils/devToolsFlag';
 import { ScreenWrapper } from '../components/ScreenWrapper';
 import { pravatarUriFor, setIdVisibilityEnabled, initIdVisibilityFromStorage } from '../utils/idVisibility';
+import { registerForExpoPushTokenAsync } from '../utils/pushNotifications';
+import * as Api from '../Api';
 
 const ARRIVAL_KEY = 'settings_arrival_enabled_v1';
 const PUSH_KEY = 'settings_push_enabled_v1';
@@ -41,6 +43,10 @@ export default function SettingsScreen() {
   const [showEmail, setShowEmail] = useState(true);
   const [showPhone, setShowPhone] = useState(true);
   const [showIds, setShowIds] = useState(false);
+
+  // Debounced push preference sync to backend (efficient + consistent).
+  const pushSyncTimerRef = useRef(null);
+  const pushSyncLastPayloadRef = useRef('');
 
   // header buttons are provided globally by the navigator
 
@@ -173,6 +179,69 @@ export default function SettingsScreen() {
     AsyncStorage.setItem(PUSH_OTHER_KEY, pushOther ? '1' : '0').catch(() => {});
   }, [pushOther]);
 
+  function buildPushPreferences() {
+    return {
+      chats: !!pushChats,
+      timelinePosts: !!pushTimelinePosts,
+      mentionsPosts: !!pushMentionsPosts,
+      tagsPosts: !!pushTagsPosts,
+      repliesComments: !!pushRepliesComments,
+      mentionsComments: !!pushMentionsComments,
+      updates: !!pushUpdates,
+      other: !!pushOther,
+    };
+  }
+
+  useEffect(() => {
+    if (!pushEnabled) return;
+
+    // Debounce backend sync so rapid toggles don't spam requests.
+    if (pushSyncTimerRef.current) {
+      clearTimeout(pushSyncTimerRef.current);
+      pushSyncTimerRef.current = null;
+    }
+
+    pushSyncTimerRef.current = setTimeout(async () => {
+      try {
+        const token = await AsyncStorage.getItem('push_expo_token_v1');
+        if (!token) return;
+
+        const payload = {
+          token,
+          platform: Platform.OS,
+          userId: user?.id,
+          enabled: true,
+          preferences: buildPushPreferences(),
+        };
+        const payloadKey = JSON.stringify(payload);
+        if (payloadKey === pushSyncLastPayloadRef.current) return;
+
+        await Api.registerPushToken(payload);
+        pushSyncLastPayloadRef.current = payloadKey;
+      } catch (e) {
+        // ignore: preferences will be attempted again on next change
+      }
+    }, 450);
+
+    return () => {
+      if (pushSyncTimerRef.current) {
+        clearTimeout(pushSyncTimerRef.current);
+        pushSyncTimerRef.current = null;
+      }
+    };
+  }, [
+    pushEnabled,
+    pushChats,
+    pushTimelinePosts,
+    pushMentionsPosts,
+    pushTagsPosts,
+    pushRepliesComments,
+    pushMentionsComments,
+    pushUpdates,
+    pushOther,
+    user?.id,
+  ]);
+
   useEffect(() => {
     AsyncStorage.setItem(SHOW_EMAIL_KEY, showEmail ? '1' : '0').catch(() => {});
   }, [showEmail]);
@@ -200,17 +269,57 @@ export default function SettingsScreen() {
     setArrivalEnabled(false);
   };
 
-  const togglePush = () => {
+  const togglePush = async () => {
     const next = !pushEnabled;
     if (next) {
-      Alert.alert(
-        'Enable Push Notifications',
-        'Push notifications require device permission and an active push setup. Enable notifications in device settings to receive alerts.',
-        [{ text: 'OK', onPress: () => setPushEnabled(true) }]
-      );
+      try {
+        const result = await registerForExpoPushTokenAsync();
+        if (!result.ok) {
+          const msg = result.reason === 'permission-denied'
+            ? 'Notification permission was not granted. Enable notifications in iOS Settings for BuddyBoard, then try again.'
+            : (result.reason === 'not-device'
+              ? 'Push notifications require a physical device (not a simulator).'
+              : (result.message || 'Could not enable push notifications.'));
+          Alert.alert('Push Notifications', msg);
+          return;
+        }
+
+        const token = result.token;
+        await AsyncStorage.setItem('push_expo_token_v1', token).catch(() => {});
+
+        // Send token + preferences to backend (if supported).
+        const payload = {
+          token,
+          platform: Platform.OS,
+          userId: user?.id,
+          enabled: true,
+          preferences: buildPushPreferences(),
+        };
+        await Api.registerPushToken(payload);
+        pushSyncLastPayloadRef.current = JSON.stringify(payload);
+
+        setPushEnabled(true);
+      } catch (e) {
+        Alert.alert('Push Notifications', e?.message || 'Could not enable push notifications.');
+      }
       return;
     }
+
+    // Disable
     setPushEnabled(false);
+    pushSyncLastPayloadRef.current = '';
+    if (pushSyncTimerRef.current) {
+      clearTimeout(pushSyncTimerRef.current);
+      pushSyncTimerRef.current = null;
+    }
+    try {
+      const token = await AsyncStorage.getItem('push_expo_token_v1');
+      if (token) {
+        await Api.unregisterPushToken({ token, platform: Platform.OS, userId: user?.id });
+      }
+    } catch (e) {
+      // ignore
+    }
   };
 
   return (

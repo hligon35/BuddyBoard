@@ -18,7 +18,8 @@
     ],
     "orientation": "portrait",
     "plugins": [
-      "expo-asset"
+      "expo-asset",
+      "expo-notifications"
     ],
     "icon": "./assets/icon.png",
     "splash": {
@@ -29,6 +30,7 @@
     "android": {
       "package": "com.azlabs.buddyboard",
       "versionCode": 2,
+      "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
         "backgroundColor": "#ffffff"

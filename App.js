@@ -15,6 +15,7 @@ import ErrorBoundary from './src/components/ErrorBoundary';
 import ArrivalDetector from './src/components/ArrivalDetector';
 import { logger, setDebugContext } from './src/utils/logger';
 import { registerGlobalDebugHandlers } from './src/utils/registerDebugHandlers';
+import { configureNotificationHandling } from './src/utils/pushNotifications';
 // navigation ref used by the global bottom nav
 const navigationRef = createNavigationContainerRef();
 
@@ -195,6 +196,7 @@ export default function App() {
 
   useEffect(() => {
     try {
+      configureNotificationHandling();
       registerGlobalDebugHandlers();
       logger.debug('app', 'Registered global debug handlers');
     } catch (e) {

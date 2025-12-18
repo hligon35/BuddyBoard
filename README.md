@@ -13,10 +13,18 @@ npm start
 # Web: npm run web
 ```
 
+If you see `PluginError: Failed to resolve plugin for module "expo-notifications"`, install deps then restart Metro:
+
+```powershell
+npx expo install expo-notifications expo-device
+npx expo start -c
+```
+
 Configuration
 
 - Edit `src/config.js` to change `BASE_URL`.
 - On Android emulator, if your backend runs on localhost, use `10.0.2.2` as the host.
+- (Optional) For address autocomplete in Admin → Arrival Detection Controls, set `EXPO_PUBLIC_GOOGLE_PLACES_API_KEY` in your environment (recommended) or set `GOOGLE_PLACES_API_KEY` in `src/config.js`.
 
 Notes
 
@@ -25,6 +33,10 @@ Notes
 - Media uploads POST to `/api/media/upload`; S3 signing available via `/api/media/sign` in `src/Api.js`.
 - Link previews use `/api/link/preview?url=`.
 - Urgent memos are fetched on app start and acknowledged via `/api/urgent-memos/read`.
+
+Docker note
+
+- The `expo` service in `docker-compose.yml` installs project dependencies at container startup. If you customize the image/compose, keep that install step or Expo plugins (like `expo-notifications`) may fail to resolve.
 # BuddyBoard (React Native scaffold)
 
 This folder contains a scaffolded React Native (Expo) version of the BuddyBoard web app. It's an approximate, hybrid-native shell with placeholder screens and navigation mirroring the web app structure. This scaffold is not installed — run the included `setup.sh` or `setup.ps1` scripts after moving the directory to your target machine to install dependencies and initialize the project.

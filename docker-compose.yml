@@ -29,7 +29,7 @@ services:
       - '8081:8081'
     environment:
       - EXPO_DEVTOOLS_LISTEN_ADDRESS=0.0.0.0
-    command: sh -c "npm install --no-audit --no-fund @expo/ngrok --no-save && CI=1 npx expo start --tunnel"
+    command: sh -c "npm install --no-audit --no-fund && npm install --no-audit --no-fund @expo/ngrok --no-save && CI=1 npx expo start --tunnel"
     restart: always
 
   dev-clear:

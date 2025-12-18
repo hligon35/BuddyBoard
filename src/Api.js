@@ -222,6 +222,29 @@ export async function sharePost(postId) {
   return res.data;
 }
 
+// Push notifications
+// Server should store the Expo push token and user preferences.
+export async function registerPushToken(payload) {
+  try {
+    const res = await client.post('/api/push/register', payload);
+    return res.data;
+  } catch (err) {
+    // Allow older backends to function without push support.
+    if (err && err.response && err.response.status === 404) return { ok: false, skipped: true };
+    throw err;
+  }
+}
+
+export async function unregisterPushToken(payload) {
+  try {
+    const res = await client.post('/api/push/unregister', payload);
+    return res.data;
+  } catch (err) {
+    if (err && err.response && err.response.status === 404) return { ok: false, skipped: true };
+    throw err;
+  }
+}
+
 // Backwards-compatible wrappers used by some components
 export async function sendMessageApi(payload) {
   return sendMessage(payload);
@@ -253,6 +276,9 @@ export default {
   ackUrgentMemo,
   getMessages,
   sendMessage,
+  sharePost,
+  registerPushToken,
+  unregisterPushToken,
   // legacy
   sendMessageApi,
   createUrgentMemoApi,

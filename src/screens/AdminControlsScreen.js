@@ -1,11 +1,22 @@
-import React, { useMemo, useState, useEffect } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Animated, Linking, Alert, Switch, TextInput } from 'react-native';
+import React, { useMemo, useState, useEffect, useRef } from 'react';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Animated, Linking, Alert, Switch, TextInput, KeyboardAvoidingView, Platform, Keyboard } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { ScreenWrapper } from '../components/ScreenWrapper';
 import { pravatarUriFor, setIdVisibilityEnabled, initIdVisibilityFromStorage } from '../utils/idVisibility';
 import { useData } from '../DataContext';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { GOOGLE_PLACES_API_KEY } from '../config';
+
+const APP_BUNDLE_ID = (() => {
+  try {
+    // Expo projects include app.json; this is safe to read at runtime.
+    const cfg = require('../../app.json');
+    return cfg?.expo?.ios?.bundleIdentifier || '';
+  } catch (e) {
+    return '';
+  }
+})();
 
 const BUSINESS_ADDR_KEY = 'business_address_v1';
 const ORG_ARRIVAL_KEY = 'settings_arrival_org_enabled_v1';
@@ -59,6 +70,14 @@ export default function AdminControlsScreen() {
   const [orgLng, setOrgLng] = useState('');
   const [dropZoneMiles, setDropZoneMiles] = useState('1');
   const [orgArrivalEnabled, setOrgArrivalEnabled] = useState(true);
+  const [keyboardBottomPad, setKeyboardBottomPad] = useState(24);
+
+  const [addressSuggestions, setAddressSuggestions] = useState([]);
+  const [addressLoading, setAddressLoading] = useState(false);
+  const [addressError, setAddressError] = useState('');
+  const placesSessionTokenRef = useRef(String(Math.random()).slice(2));
+  const addressRequestIdRef = useRef(0);
+  const suppressAutocompleteRef = useRef(0);
 
   useEffect(() => {
     let mounted = true;
@@ -75,7 +94,10 @@ export default function AdminControlsScreen() {
         if (raw) {
           const parsed = JSON.parse(raw);
           if (parsed && typeof parsed === 'object') {
-            if (parsed.address) setOrgAddress(String(parsed.address));
+            if (parsed.address) {
+              suppressAutocompleteRef.current = 1;
+              setOrgAddress(String(parsed.address));
+            }
             if (typeof parsed.lat === 'number') setOrgLat(String(parsed.lat));
             if (typeof parsed.lng === 'number') setOrgLng(String(parsed.lng));
             if (typeof parsed.dropZoneMiles === 'number') setDropZoneMiles(String(parsed.dropZoneMiles));
@@ -86,6 +108,25 @@ export default function AdminControlsScreen() {
       }
     })();
     return () => { mounted = false; };
+  }, []);
+
+  useEffect(() => {
+    const showEvent = Platform.OS === 'ios' ? 'keyboardWillShow' : 'keyboardDidShow';
+    const hideEvent = Platform.OS === 'ios' ? 'keyboardWillHide' : 'keyboardDidHide';
+
+    const onShow = (e) => {
+      const h = e?.endCoordinates?.height;
+      // Keep it minimal; KeyboardAvoidingView handles most of the shift.
+      setKeyboardBottomPad(24 + (Number.isFinite(h) ? Math.min(h, 280) : 200));
+    };
+    const onHide = () => setKeyboardBottomPad(24);
+
+    const subShow = Keyboard.addListener(showEvent, onShow);
+    const subHide = Keyboard.addListener(hideEvent, onHide);
+    return () => {
+      try { subShow?.remove?.(); } catch (e) {}
+      try { subHide?.remove?.(); } catch (e) {}
+    };
   }, []);
 
   const toggleShowIds = () => { const next = !showIds; setShowIds(next); setIdVisibilityEnabled(next); };
@@ -103,16 +144,47 @@ export default function AdminControlsScreen() {
   }
 
   async function saveArrivalControls() {
-    const latNum = Number(orgLat);
-    const lngNum = Number(orgLng);
+    let latNum = Number(orgLat);
+    let lngNum = Number(orgLng);
     const milesNum = Number(dropZoneMiles);
 
-    if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) {
-      Alert.alert('Missing location', 'Tap “Use my current location” to set the organization location.');
-      return;
-    }
     if (!Number.isFinite(milesNum) || milesNum <= 0) {
       Alert.alert('Invalid Drop Zone', 'Drop Zone must be a number greater than 0 (miles).');
+      return;
+    }
+
+    // If lat/lng are not set, try to derive them from the typed address.
+    if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) {
+      const raw = String(orgAddress || '').trim();
+
+      // Support simple "lat, lng" paste.
+      const m = raw.match(/^\s*(-?\d+(?:\.\d+)?)\s*,\s*(-?\d+(?:\.\d+)?)\s*$/);
+      if (m) {
+        latNum = Number(m[1]);
+        lngNum = Number(m[2]);
+        if (Number.isFinite(latNum) && Number.isFinite(lngNum)) {
+          setOrgLat(String(latNum));
+          setOrgLng(String(lngNum));
+        }
+      } else if (raw) {
+        try {
+          const Location = require('expo-location');
+          const results = await Location.geocodeAsync(raw);
+          const first = Array.isArray(results) ? results[0] : null;
+          if (first && Number.isFinite(first.latitude) && Number.isFinite(first.longitude)) {
+            latNum = Number(first.latitude);
+            lngNum = Number(first.longitude);
+            setOrgLat(String(latNum));
+            setOrgLng(String(lngNum));
+          }
+        } catch (e) {
+          // ignore and fall through to validation error
+        }
+      }
+    }
+
+    if (!Number.isFinite(latNum) || !Number.isFinite(lngNum)) {
+      Alert.alert('Missing location', 'Enter an address (or “lat, lng”) or tap “Use my current location”.');
       return;
     }
 
@@ -141,12 +213,206 @@ export default function AdminControlsScreen() {
       const pos = await Location.getCurrentPositionAsync({ accuracy: Location.Accuracy.Highest });
       setOrgLat(String(pos.coords.latitude));
       setOrgLng(String(pos.coords.longitude));
-      setOrgAddress(`${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`);
+
+      // Prefer a human-readable street address if available.
+      let formatted = '';
+      try {
+        const results = await Location.reverseGeocodeAsync({
+          latitude: pos.coords.latitude,
+          longitude: pos.coords.longitude,
+        });
+        const first = Array.isArray(results) ? results[0] : null;
+        if (first) {
+          const line1 = [first.streetNumber, first.street].filter(Boolean).join(' ').trim() || String(first.name || '').trim();
+          const cityRegion = [first.city, first.region].filter(Boolean).join(', ').trim();
+          const line2 = [cityRegion, first.postalCode].filter(Boolean).join(' ').trim();
+          formatted = [line1, line2, first.country].filter(Boolean).join(', ').trim();
+        }
+      } catch (e) {
+        // ignore; fall back to lat/lng
+      }
+
+      suppressAutocompleteRef.current = 1;
+      setOrgAddress(formatted || `${pos.coords.latitude.toFixed(6)}, ${pos.coords.longitude.toFixed(6)}`);
     } catch (e) {
       console.warn('admin arrival controls: location failed', e?.message || e);
       Alert.alert('Location failed', 'Could not get current location.');
     }
   }
+
+  async function fetchAddressSuggestions(query) {
+    const key = String(GOOGLE_PLACES_API_KEY || '').trim();
+    if (!key) return { items: [], error: '' };
+
+    const sessiontoken = placesSessionTokenRef.current;
+
+    // Prefer the newer Places API (v1) when available.
+    try {
+      const res = await fetch('https://places.googleapis.com/v1/places:autocomplete', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Goog-Api-Key': key,
+          'X-Goog-FieldMask': 'suggestions.placePrediction.placeId,suggestions.placePrediction.text.text',
+          ...(Platform.OS === 'ios' && APP_BUNDLE_ID ? { 'X-Ios-Bundle-Identifier': APP_BUNDLE_ID } : {}),
+        },
+        body: JSON.stringify({
+          input: query,
+          sessionToken: sessiontoken,
+        }),
+      });
+
+      const json = await res.json();
+      const suggestions = Array.isArray(json?.suggestions) ? json.suggestions : [];
+      const items = suggestions
+        .map((s) => s?.placePrediction)
+        .filter(Boolean)
+        .map((p) => ({
+          description: p?.text?.text || '',
+          place_id: p?.placeId || '',
+        }))
+        .filter((x) => x.description && x.place_id);
+
+      if (items.length) return { items, error: '' };
+
+      // v1 can return errors in different shapes; surface something helpful.
+      if (json?.error?.message) return { items: [], error: String(json.error.message) };
+      // If response is OK but empty, don't show an error.
+    } catch (e) {
+      // Fall back to legacy endpoint below.
+    }
+
+    // Legacy web service endpoint.
+    try {
+      const url = `https://maps.googleapis.com/maps/api/place/autocomplete/json?input=${encodeURIComponent(query)}&types=address&key=${encodeURIComponent(key)}&sessiontoken=${encodeURIComponent(sessiontoken)}`;
+      const res = await fetch(url, {
+        headers: {
+          ...(Platform.OS === 'ios' && APP_BUNDLE_ID ? { 'X-Ios-Bundle-Identifier': APP_BUNDLE_ID } : {}),
+        },
+      });
+      const json = await res.json();
+      if (json?.status !== 'OK') {
+        const msg = json?.error_message ? String(json.error_message) : (json?.status ? `Google Places error: ${json.status}` : 'Google Places error');
+        return { items: [], error: msg };
+      }
+      const items = (json?.predictions || []).map((p) => ({
+        description: p.description,
+        place_id: p.place_id,
+      }));
+      return { items, error: '' };
+    } catch (e) {
+      return { items: [], error: 'Network error contacting Google Places.' };
+    }
+  }
+
+  async function applyPlaceSelection(place) {
+    if (!place) return;
+    suppressAutocompleteRef.current = 1;
+    setOrgAddress(place.description);
+    setAddressSuggestions([]);
+    setAddressError('');
+
+    const key = String(GOOGLE_PLACES_API_KEY || '').trim();
+    if (!key) return;
+
+    const sessiontoken = placesSessionTokenRef.current;
+
+    // Try v1 place details first.
+    try {
+      const url = `https://places.googleapis.com/v1/places/${encodeURIComponent(place.place_id)}`;
+      const res = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'X-Goog-Api-Key': key,
+          'X-Goog-FieldMask': 'location,formattedAddress',
+          ...(Platform.OS === 'ios' && APP_BUNDLE_ID ? { 'X-Ios-Bundle-Identifier': APP_BUNDLE_ID } : {}),
+        },
+      });
+      const json = await res.json();
+      if (json?.location && Number.isFinite(json.location.latitude) && Number.isFinite(json.location.longitude)) {
+        setOrgLat(String(json.location.latitude));
+        setOrgLng(String(json.location.longitude));
+      }
+      if (json?.formattedAddress) {
+        setOrgAddress(String(json.formattedAddress));
+      }
+      if (json?.error?.message) {
+        setAddressError(String(json.error.message));
+      }
+      return;
+    } catch (e) {
+      // fall back
+    }
+
+    // Legacy place details.
+    try {
+      const url = `https://maps.googleapis.com/maps/api/place/details/json?place_id=${encodeURIComponent(place.place_id)}&fields=geometry,formatted_address&key=${encodeURIComponent(key)}&sessiontoken=${encodeURIComponent(sessiontoken)}`;
+      const res = await fetch(url, {
+        headers: {
+          ...(Platform.OS === 'ios' && APP_BUNDLE_ID ? { 'X-Ios-Bundle-Identifier': APP_BUNDLE_ID } : {}),
+        },
+      });
+      const json = await res.json();
+      if (json?.status !== 'OK') {
+        const msg = json?.error_message ? String(json.error_message) : (json?.status ? `Google Places error: ${json.status}` : 'Google Places error');
+        setAddressError(msg);
+        return;
+      }
+      const loc = json?.result?.geometry?.location;
+      if (loc && Number.isFinite(loc.lat) && Number.isFinite(loc.lng)) {
+        setOrgLat(String(loc.lat));
+        setOrgLng(String(loc.lng));
+      }
+      if (json?.result?.formatted_address) {
+        setOrgAddress(String(json.result.formatted_address));
+      }
+    } catch (e) {
+      // ignore; user can still save and we'll try geocode on save
+    }
+  }
+
+  useEffect(() => {
+    if (suppressAutocompleteRef.current > 0) {
+      suppressAutocompleteRef.current -= 1;
+      setAddressSuggestions([]);
+      setAddressLoading(false);
+      setAddressError('');
+      return;
+    }
+
+    const key = String(GOOGLE_PLACES_API_KEY || '').trim();
+    if (!key) return;
+
+    const query = String(orgAddress || '').trim();
+    if (query.length < 3) {
+      setAddressSuggestions([]);
+      setAddressLoading(false);
+      return;
+    }
+
+    const requestId = ++addressRequestIdRef.current;
+    setAddressLoading(true);
+    setAddressError('');
+    const t = setTimeout(() => {
+      fetchAddressSuggestions(query)
+        .then(({ items, error }) => {
+          if (requestId !== addressRequestIdRef.current) return;
+          setAddressSuggestions(items);
+          setAddressError(error || '');
+        })
+        .catch(() => {
+          if (requestId !== addressRequestIdRef.current) return;
+          setAddressSuggestions([]);
+          setAddressError('Network error contacting Google Places.');
+        })
+        .finally(() => {
+          if (requestId !== addressRequestIdRef.current) return;
+          setAddressLoading(false);
+        });
+    }, 250);
+
+    return () => clearTimeout(t);
+  }, [orgAddress]);
 
   function DirectoryBanner({ label, onOpen, onToggle, open, childrenPreview, count, rightAction }) {
     return (
@@ -186,7 +452,19 @@ export default function AdminControlsScreen() {
 
   return (
     <ScreenWrapper bannerShowBack={false} style={styles.container}>
-      <ScrollView contentContainerStyle={styles.content}>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        // ScreenWrapper renders a 56px header on mobile; add a bit extra for safe areas.
+        keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
+      >
+      <ScrollView
+        contentContainerStyle={[styles.content, { paddingBottom: keyboardBottomPad }]}
+        keyboardShouldPersistTaps="handled"
+        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
+        automaticallyAdjustKeyboardInsets
+        contentInsetAdjustmentBehavior="automatic"
+      >
         
 
         {/* Communications section removed (Alerts retained below Directory) */}
@@ -341,11 +619,35 @@ export default function AdminControlsScreen() {
             <Text style={styles.fieldLabel}>Organization Address</Text>
             <TextInput
               value={orgAddress}
-              editable={false}
+              onChangeText={setOrgAddress}
               placeholder="Has not been set"
               style={styles.input}
               autoCapitalize="words"
             />
+
+            {addressLoading ? (
+              <Text style={{ marginTop: 6, fontSize: 12, color: '#6b7280' }}>Searching…</Text>
+            ) : null}
+
+            {!addressLoading && addressError ? (
+              <Text style={{ marginTop: 6, fontSize: 12, color: '#6b7280' }}>{addressError}</Text>
+            ) : null}
+
+            {addressSuggestions.length ? (
+              <View style={styles.suggestionsBox}>
+                {addressSuggestions.slice(0, 6).map((s, idx) => (
+                  <TouchableOpacity
+                    key={s.place_id || `${s.description}-${idx}`}
+                    onPress={() => applyPlaceSelection(s)}
+                    style={[styles.suggestionRow, idx === addressSuggestions.length - 1 ? { borderBottomWidth: 0 } : null]}
+                    activeOpacity={0.8}
+                  >
+                    <MaterialIcons name="place" size={16} color="#6b7280" />
+                    <Text style={styles.suggestionText} numberOfLines={2}>{s.description}</Text>
+                  </TouchableOpacity>
+                ))}
+              </View>
+            ) : null}
 
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginTop: 10 }}>
               <TouchableOpacity onPress={useCurrentLocationForOrg} style={[styles.secondaryBtn, { flex: 1, marginTop: 0, marginRight: 10 }]}>
@@ -375,6 +677,7 @@ export default function AdminControlsScreen() {
 
         <View style={{ height: 32 }} />
       </ScrollView>
+      </KeyboardAvoidingView>
     </ScreenWrapper>
   );
 }
@@ -432,4 +735,7 @@ const styles = StyleSheet.create({
   secondaryBtnText: { marginLeft: 8, color: '#2563eb', fontWeight: '700' },
   primaryBtn: { marginTop: 12, backgroundColor: '#2563eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
   primaryBtnText: { color: '#fff', fontWeight: '700' },
+  suggestionsBox: { marginTop: 6, borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 10, backgroundColor: '#fff', overflow: 'hidden' },
+  suggestionRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#eef2f7' },
+  suggestionText: { marginLeft: 8, flex: 1, color: '#111827' },
 });

@@ -1,10 +1,14 @@
-import { DEBUG_LOGS } from '../config';
+import { DEBUG_LOGS, DEBUG_LOG_COLORS, DEBUG_LOG_LEVEL } from '../config';
 
 const MAX_LOGS = 200;
 
 const state = {
   logs: [],
   context: {},
+  options: {
+    colors: undefined,
+    minLevel: undefined,
+  },
 };
 
 function isReactNative() {
@@ -15,15 +19,55 @@ function isReactNative() {
   }
 }
 
-function supportsAnsiColors() {
-  // Only emit ANSI escape sequences for real terminals (e.g., Metro/Node in a TTY).
-  // RN device logs typically don't interpret ANSI and would look noisy.
-  if (isReactNative()) return false;
+const LEVELS = {
+  debug: 10,
+  info: 20,
+  warn: 30,
+  error: 40,
+};
+
+function normalizeLevel(level) {
+  const l = String(level || '').toLowerCase();
+  return LEVELS[l] ? l : 'info';
+}
+
+function getMinLevel() {
+  const configured = state.options.minLevel ?? DEBUG_LOG_LEVEL;
+  return normalizeLevel(configured);
+}
+
+function shouldLog(level) {
+  const want = normalizeLevel(level);
+  const min = getMinLevel();
+  return LEVELS[want] >= LEVELS[min];
+}
+
+function colorsEnabled() {
+  const opt = state.options.colors;
+  if (typeof opt === 'boolean') return opt;
   try {
-    return typeof process !== 'undefined' && !!process.stdout && !!process.stdout.isTTY;
+    return !!DEBUG_LOG_COLORS;
   } catch (e) {
     return false;
   }
+}
+
+function supportsAnsiColors() {
+  // Emit ANSI when explicitly enabled; Metro/VS Code terminals will render it.
+  // On device logs, ANSI may show as raw characters, but it is still readable.
+  if (!colorsEnabled()) return false;
+  try {
+    // If we are on a real terminal (Metro/Node), render colors.
+    if (typeof process !== 'undefined' && !!process.stdout && process.stdout.isTTY) return true;
+  } catch (e) {
+    // ignore
+  }
+
+  // In React Native, logs are forwarded to Metro where ANSI is useful.
+  // If the console doesn't support ANSI, it will still show plain text.
+  if (isReactNative()) return true;
+
+  return false;
 }
 
 const ANSI = {
@@ -135,13 +179,19 @@ export function logPress(name, data) {
 
 function shouldDebug() {
   try {
-    return !!DEBUG_LOGS;
+    return !!DEBUG_LOGS && shouldLog('debug');
   } catch (e) {
     return false;
   }
 }
 
+export function setLoggerOptions({ colors, minLevel } = {}) {
+  if (typeof colors === 'boolean') state.options.colors = colors;
+  if (typeof minLevel === 'string') state.options.minLevel = minLevel;
+}
+
 function baseLog(level, tag, message, data) {
+  if (!shouldLog(level)) return;
   const entry = {
     t: nowIso(),
     level,
@@ -152,7 +202,8 @@ function baseLog(level, tag, message, data) {
 
   pushLog(entry);
 
-  const prefix = `[${entry.t}] ${colorize(level, `[${entry.level}]`)} ${colorizeTag(entry.tag)}`;
+  const lvl = `[${entry.level.toUpperCase()}]`;
+  const prefix = `[${entry.t}] ${colorize(level, lvl)} ${colorizeTag(entry.tag)}`;
   try {
     if (level === 'error') console.error(prefix, entry.message, entry.data ?? '');
     else if (level === 'warn') console.warn(prefix, entry.message, entry.data ?? '');
