@@ -10,6 +10,9 @@ services:
     environment:
       - NODE_ENV=development
       - CHOKIDAR_USEPOLLING=true
+      # Pass through Expo public config for web/dev tooling if needed
+      - EXPO_PUBLIC_API_BASE_URL=${EXPO_PUBLIC_API_BASE_URL}
+      - EXPO_PUBLIC_GOOGLE_PLACES_API_KEY=${EXPO_PUBLIC_GOOGLE_PLACES_API_KEY}
     volumes:
       - ./:/usr/src/app:rw
       - node_modules:/usr/src/app/node_modules
@@ -29,6 +32,10 @@ services:
       - '8081:8081'
     environment:
       - EXPO_DEVTOOLS_LISTEN_ADDRESS=0.0.0.0
+      # IMPORTANT: When using --tunnel on a physical device, set EXPO_PUBLIC_API_BASE_URL
+      # to a host reachable from the device (e.g. your LAN IP or a public URL).
+      - EXPO_PUBLIC_API_BASE_URL=${EXPO_PUBLIC_API_BASE_URL}
+      - EXPO_PUBLIC_GOOGLE_PLACES_API_KEY=${EXPO_PUBLIC_GOOGLE_PLACES_API_KEY}
     command: sh -c "npm install --no-audit --no-fund && npm install --no-audit --no-fund @expo/ngrok --no-save && CI=1 npx expo start --tunnel"
     restart: always
 

@@ -22,9 +22,9 @@ npx expo start -c
 
 Configuration
 
-- Edit `src/config.js` to change `BASE_URL`.
+- Set `EXPO_PUBLIC_API_BASE_URL` in your environment to change the API base URL (recommended).
 - On Android emulator, if your backend runs on localhost, use `10.0.2.2` as the host.
-- (Optional) For address autocomplete in Admin → Arrival Detection Controls, set `EXPO_PUBLIC_GOOGLE_PLACES_API_KEY` in your environment (recommended) or set `GOOGLE_PLACES_API_KEY` in `src/config.js`.
+- (Optional) For address autocomplete in Admin → Arrival Detection Controls, set `EXPO_PUBLIC_GOOGLE_PLACES_API_KEY` in your environment.
 
 Notes
 
@@ -37,6 +37,26 @@ Notes
 Docker note
 
 - The `expo` service in `docker-compose.yml` installs project dependencies at container startup. If you customize the image/compose, keep that install step or Expo plugins (like `expo-notifications`) may fail to resolve.
+
+Docker env vars (server)
+-----------------------
+When running via Docker Compose, put runtime config in a `.env` file next to `docker-compose.yml` on your server (do not commit it). Compose will substitute those values into the containers.
+
+Required (recommended):
+- `EXPO_PUBLIC_API_BASE_URL` — API base URL the mobile app will call.
+	- For a physical device, this must be reachable from the device (LAN IP or public URL), not `localhost`.
+
+Optional:
+- `EXPO_PUBLIC_GOOGLE_PLACES_API_KEY` — enables address autocomplete.
+
+Example `.env`:
+
+```env
+EXPO_PUBLIC_API_BASE_URL=http://YOUR_SERVER_IP:3005
+EXPO_PUBLIC_GOOGLE_PLACES_API_KEY=
+```
+
+After changing `.env`, restart the `expo` service so Metro rebundles with the new values.
 # BuddyBoard (React Native scaffold)
 
 This folder contains a scaffolded React Native (Expo) version of the BuddyBoard web app. It's an approximate, hybrid-native shell with placeholder screens and navigation mirroring the web app structure. This scaffold is not installed — run the included `setup.sh` or `setup.ps1` scripts after moving the directory to your target machine to install dependencies and initialize the project.
@@ -49,7 +69,7 @@ Files included:
 
 Backend integration
 -------------------
-This scaffold can be wired to your BuddyBoard backend. Edit `src/config.js` and set `BASE_URL` to the base URL for your API (example: `https://buddyboard.example.com` or `http://10.0.0.5:3000`). The mobile app expects the following endpoints (examples):
+This scaffold can be wired to your BuddyBoard backend. Prefer setting `EXPO_PUBLIC_API_BASE_URL` to the base URL for your API (example: `https://buddyboard.example.com` or `http://10.0.0.5:3000`) rather than editing code. The mobile app expects the following endpoints (examples):
 
 - `GET  /api/messages` -> returns an array of messages: [{id,title,body,date,sender,read}]
 - `POST /api/messages` -> accepts {title,body,sender}, returns the created message with `id` and `date`.
@@ -62,7 +82,7 @@ The client implementation is in `src/Api.js`. The `DataContext` uses these metho
 
 Run the app
 ----------
-After editing `src/config.js`:
+After setting your environment variables:
 1. Run `./setup.sh` or `.\setup.ps1` to install dependencies.
 2. Run `npm start` or `expo start`.
 

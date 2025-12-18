@@ -1,8 +1,30 @@
-// Edit this BASE_URL to point at your BuddyBoard backend API.
-// Example: 'https://buddyboard.example.com' or 'http://10.0.0.5:3000'
-// The mock API on the Pi is exposed on host port 3005 for development.
-// Update this if your backend runs on a different host/port.
-export const BASE_URL = 'http://10.0.0.187:3005';
+const getExpoPublicEnv = (key) => {
+  try {
+    if (typeof process !== 'undefined' && process.env && process.env[key] != null) {
+      return String(process.env[key]);
+    }
+  } catch (_) {
+    // no-op
+  }
+  return '';
+};
+
+// API base URL
+// Prefer environment-driven config so dev/staging/prod can be swapped without code edits:
+//   EXPO_PUBLIC_API_BASE_URL=https://buddyboard.example.com
+// In production builds, this should be set via EAS/CI secrets.
+const fallbackDevBaseUrl = 'http://localhost:3005';
+export const BASE_URL =
+  getExpoPublicEnv('EXPO_PUBLIC_API_BASE_URL') ||
+  ((typeof __DEV__ !== 'undefined' && __DEV__) ? fallbackDevBaseUrl : '');
+
+try {
+  if (!BASE_URL && !(typeof __DEV__ !== 'undefined' && __DEV__)) {
+    console.warn('[config] Missing EXPO_PUBLIC_API_BASE_URL for production build');
+  }
+} catch (_) {
+  // no-op
+}
 // Use `10.0.2.2` for Android emulator when pointing to host machine
 export const EMULATOR_HOST = '10.0.2.2';
 
@@ -10,9 +32,7 @@ export const EMULATOR_HOST = '10.0.2.2';
 // Leave empty to disable autocomplete.
 // Prefer setting via environment variable so it isn't committed:
 //   EXPO_PUBLIC_GOOGLE_PLACES_API_KEY=... (Expo will inline EXPO_PUBLIC_* vars)
-export const GOOGLE_PLACES_API_KEY = (typeof process !== 'undefined' && process.env && process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY)
-  ? String(process.env.EXPO_PUBLIC_GOOGLE_PLACES_API_KEY)
-  : '';
+export const GOOGLE_PLACES_API_KEY = getExpoPublicEnv('EXPO_PUBLIC_GOOGLE_PLACES_API_KEY');
 
 // Debug toggles
 // - DEBUG_LOGS: enables logger.debug(...) output in dev
