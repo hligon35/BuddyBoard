@@ -11,7 +11,8 @@
     "build:android:internal": "eas build -p android --profile internal --non-interactive",
     "build:android:internal:interactive": "eas build -p android --profile internal",
     "submit:android:internal": "eas submit -p android --latest --non-interactive --key ./google-play-service-account.json",
-    "dev-clear-server": "node ./scripts/dev-clear-server.js"
+    "dev-clear-server": "node ./scripts/dev-clear-server.js",
+    "api:server": "node ./scripts/api-server.js"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.2.0",
@@ -21,6 +22,8 @@
     "@react-navigation/native-stack": "^6.11.0",
     "axios": "^1.13.2",
     "babel-preset-expo": "~54.0.9",
+    "bcryptjs": "^3.0.3",
+    "better-sqlite3": "^11.10.0",
     "body-parser": "^2.2.1",
     "cors": "^2.8.5",
     "expo": "~54.0.30",
@@ -33,6 +36,7 @@
     "expo-secure-store": "^15.0.8",
     "express": "^5.2.1",
     "jimp": "^1.6.0",
+    "jsonwebtoken": "^9.0.2",
     "nativewind": "^4.2.1",
     "react": "19.1.0",
     "react-dom": "19.1.0",

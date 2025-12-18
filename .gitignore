@@ -1,6 +1,10 @@
 node_modules
 /.expo
 
+# Local database / server data
+/.data
+*.sqlite
+
 # Expo prebuild outputs (recommended: keep generated native projects out of git)
 /android
 /ios

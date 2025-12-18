@@ -49,11 +49,23 @@ Required (recommended):
 Optional:
 - `EXPO_PUBLIC_GOOGLE_PLACES_API_KEY` — enables address autocomplete.
 
+API server (SQLite) settings:
+- `BB_DATA_DIR` — host directory where BuddyBoard stores its SQLite DB (defaults to `./.data`).
+- `BB_JWT_SECRET` — required for real logins; set a long random value.
+- `BB_ADMIN_EMAIL` / `BB_ADMIN_PASSWORD` / `BB_ADMIN_NAME` — optional admin seed on first run.
+- `BB_ALLOW_SIGNUP=1` — optional; enables `/api/auth/signup`.
+
 Example `.env`:
 
 ```env
 EXPO_PUBLIC_API_BASE_URL=http://YOUR_SERVER_IP:3005
 EXPO_PUBLIC_GOOGLE_PLACES_API_KEY=
+BB_DATA_DIR=/mnt/bigdrive/buddyboard
+BB_JWT_SECRET=replace-with-long-random
+BB_ALLOW_SIGNUP=0
+BB_ADMIN_EMAIL=
+BB_ADMIN_PASSWORD=
+BB_ADMIN_NAME=Admin
 ```
 
 After changing `.env`, restart the `expo` service so Metro rebundles with the new values.

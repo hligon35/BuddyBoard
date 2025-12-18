@@ -50,6 +50,28 @@ services:
     command: sh -c "npm install --no-audit --no-fund express body-parser --no-save && node ./scripts/dev-clear-server.js"
     restart: unless-stopped
 
+  api:
+    image: buddyboard-app:dev
+    working_dir: /usr/src/app
+    volumes:
+      - ./:/usr/src/app:rw
+      - node_modules:/usr/src/app/node_modules
+      # Persist API DB/data on the host. Set BB_DATA_DIR to point at your 1TB drive mount.
+      - ${BB_DATA_DIR:-./.data}:/usr/src/app/.data
+    ports:
+      - '3005:3005'
+    environment:
+      - NODE_ENV=production
+      - PORT=3005
+      - BB_DB_PATH=/usr/src/app/.data/buddyboard.sqlite
+      - BB_JWT_SECRET=${BB_JWT_SECRET}
+      - BB_ALLOW_SIGNUP=${BB_ALLOW_SIGNUP}
+      - BB_ADMIN_EMAIL=${BB_ADMIN_EMAIL}
+      - BB_ADMIN_PASSWORD=${BB_ADMIN_PASSWORD}
+      - BB_ADMIN_NAME=${BB_ADMIN_NAME}
+    command: sh -c "npm install --no-audit --no-fund && node ./scripts/api-server.js"
+    restart: unless-stopped
+
   api-mock:
     image: node:18-alpine
     working_dir: /usr/src/app
