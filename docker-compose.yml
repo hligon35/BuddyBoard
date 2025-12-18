@@ -64,6 +64,7 @@ services:
       - NODE_ENV=production
       - PORT=3005
       - BB_DB_PATH=/usr/src/app/.data/buddyboard.sqlite
+      - BB_PUBLIC_BASE_URL=${BB_PUBLIC_BASE_URL}
       - BB_JWT_SECRET=${BB_JWT_SECRET}
       - BB_ALLOW_SIGNUP=${BB_ALLOW_SIGNUP}
       - BB_ALLOW_DEV_TOKEN=${BB_ALLOW_DEV_TOKEN}

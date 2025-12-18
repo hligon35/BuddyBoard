@@ -1,0 +1,17 @@
+# BuddyBoard routing for caddy-central
+#
+# Prereq (recommended): attach caddy-central to the BuddyBoard compose network so it can reach services by name:
+#   docker network connect buddyboard_default caddy-central
+#
+# Then paste this block into caddy-central's Caddyfile.
+
+buddyboard.getsparqd.com {
+  @api path /api/* /uploads/*
+  handle @api {
+    reverse_proxy api:3005
+  }
+
+  handle {
+    reverse_proxy BuddyBoardApp:3000
+  }
+}

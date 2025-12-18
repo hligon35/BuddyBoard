@@ -98,6 +98,32 @@ Start production services:
 ```sh
 docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build api caddy
 ```
+
+Using an existing `caddy-central` (recommended if 80/443 already in use)
+-----------------------------------------------------------------------
+If you already run a central Caddy container that owns ports `80`/`443` (for multiple apps), do **not** start this repo's `caddy` service.
+
+1) Start BuddyBoard services (API + web) normally:
+
+```sh
+cd /srv/apps/BuddyBoard
+docker compose up -d --build BuddyBoardApp api
+```
+
+2) Attach `caddy-central` to the BuddyBoard network so it can reach `api` and `BuddyBoardApp` by service name:
+
+```sh
+docker network connect buddyboard_default caddy-central
+```
+
+3) Add BuddyBoard routing to your central Caddyfile. A ready-to-copy snippet is included here:
+- [caddy-central.buddyboard.getsparqd.com.caddy](caddy-central.buddyboard.getsparqd.com.caddy)
+
+After updating caddy-central's config, reload it and verify:
+
+```sh
+curl -i https://buddyboard.getsparqd.com/api/health
+```
 # BuddyBoard (React Native scaffold)
 
 This folder contains a scaffolded React Native (Expo) version of the BuddyBoard web app. It's an approximate, hybrid-native shell with placeholder screens and navigation mirroring the web app structure. This scaffold is not installed — run the included `setup.sh` or `setup.ps1` scripts after moving the directory to your target machine to install dependencies and initialize the project.
