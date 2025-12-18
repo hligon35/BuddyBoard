@@ -53,7 +53,8 @@ API server (SQLite) settings:
 - `BB_DATA_DIR` — host directory where BuddyBoard stores its SQLite DB (defaults to `./.data`).
 - `BB_JWT_SECRET` — required for real logins; set a long random value.
 - `BB_ADMIN_EMAIL` / `BB_ADMIN_PASSWORD` / `BB_ADMIN_NAME` — optional admin seed on first run.
-- `BB_ALLOW_SIGNUP=1` — optional; enables `/api/auth/signup`.
+- `BB_ALLOW_SIGNUP=1` (or `true`) — optional; enables `/api/auth/signup`.
+- `BB_ALLOW_DEV_TOKEN=1` (or `true`) — optional; enables accepting `Bearer dev-token` for local/dev only. Default is enabled when `NODE_ENV` is not `production`.
 
 Example `.env`:
 
@@ -63,6 +64,7 @@ EXPO_PUBLIC_GOOGLE_PLACES_API_KEY=
 BB_DATA_DIR=/mnt/bigdrive/buddyboard
 BB_JWT_SECRET=replace-with-long-random
 BB_ALLOW_SIGNUP=0
+BB_ALLOW_DEV_TOKEN=0
 BB_ADMIN_EMAIL=
 BB_ADMIN_PASSWORD=
 BB_ADMIN_NAME=Admin

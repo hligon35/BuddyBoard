@@ -12,7 +12,21 @@ const Database = require('better-sqlite3');
 const PORT = Number(process.env.PORT || 3005);
 const DB_PATH = process.env.BB_DB_PATH || path.join(process.cwd(), '.data', 'buddyboard.sqlite');
 const JWT_SECRET = process.env.BB_JWT_SECRET || '';
-const ALLOW_SIGNUP = String(process.env.BB_ALLOW_SIGNUP || '0') === '1';
+const NODE_ENV = String(process.env.NODE_ENV || '').trim().toLowerCase();
+
+function envFlag(value, defaultValue = false) {
+  if (value == null) return defaultValue;
+  const v = String(value).trim().toLowerCase();
+  if (v === '') return defaultValue;
+  if (['1', 'true', 'yes', 'y', 'on'].includes(v)) return true;
+  if (['0', 'false', 'no', 'n', 'off'].includes(v)) return false;
+  return defaultValue;
+}
+
+const ALLOW_SIGNUP = envFlag(process.env.BB_ALLOW_SIGNUP, false);
+// Dev compatibility: allow the mobile app's __DEV__ auto-login token.
+// Default: enabled outside production, disabled in production.
+const ALLOW_DEV_TOKEN = envFlag(process.env.BB_ALLOW_DEV_TOKEN, NODE_ENV !== 'production');
 
 const ADMIN_EMAIL = process.env.BB_ADMIN_EMAIL || '';
 const ADMIN_PASSWORD = process.env.BB_ADMIN_PASSWORD || '';
@@ -170,8 +184,7 @@ function authMiddleware(req, res, next) {
   const header = req.headers.authorization || req.headers.Authorization || '';
   const token = String(header).startsWith('Bearer ') ? String(header).slice(7) : '';
 
-  // Dev compatibility: allow the mobile app's __DEV__ auto-login token.
-  if (token === 'dev-token') {
+  if (ALLOW_DEV_TOKEN && token === 'dev-token') {
     req.user = { id: 'dev', email: 'dev@example.com', name: 'Developer', role: 'ADMIN' };
     return next();
   }

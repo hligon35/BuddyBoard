@@ -66,6 +66,7 @@ services:
       - BB_DB_PATH=/usr/src/app/.data/buddyboard.sqlite
       - BB_JWT_SECRET=${BB_JWT_SECRET}
       - BB_ALLOW_SIGNUP=${BB_ALLOW_SIGNUP}
+      - BB_ALLOW_DEV_TOKEN=${BB_ALLOW_DEV_TOKEN}
       - BB_ADMIN_EMAIL=${BB_ADMIN_EMAIL}
       - BB_ADMIN_PASSWORD=${BB_ADMIN_PASSWORD}
       - BB_ADMIN_NAME=${BB_ADMIN_NAME}
