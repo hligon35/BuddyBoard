@@ -51,6 +51,8 @@ Optional:
 
 API server (SQLite) settings:
 - `BB_DATA_DIR` — host directory where BuddyBoard stores its SQLite DB (defaults to `./.data`).
+- Uploads are stored under `${BB_DATA_DIR}/uploads` and served at `/uploads/*` from the API.
+- `BB_PUBLIC_BASE_URL` — optional; forces the base URL used in uploaded media links (useful behind a reverse proxy/HTTPS).
 - `BB_JWT_SECRET` — required for real logins; set a long random value.
 - `BB_ADMIN_EMAIL` / `BB_ADMIN_PASSWORD` / `BB_ADMIN_NAME` — optional admin seed on first run.
 - `BB_ALLOW_SIGNUP=1` (or `true`) — optional; enables `/api/auth/signup`.
@@ -71,6 +73,31 @@ BB_ADMIN_NAME=Admin
 ```
 
 After changing `.env`, restart the `expo` service so Metro rebundles with the new values.
+
+Production HTTPS (recommended)
+------------------------------
+For App Store / Play Store builds (and iOS reliability), use a stable HTTPS domain.
+
+This repo includes a minimal Caddy reverse-proxy setup:
+- [Caddyfile](Caddyfile) proxies `https://buddyboard.getsparqd.com` to the `api` service.
+- [docker-compose.prod.yml](docker-compose.prod.yml) runs Caddy and prevents exposing the API port directly.
+
+DNS / networking requirements:
+- Create a DNS A record for `buddyboard.getsparqd.com` pointing to your *public/WAN* IPv4 address (not the server's `10.x.x.x` LAN IP).
+- Forward ports `80` and `443` on your router/firewall to the server.
+
+Add these to your server `.env`:
+
+```env
+EXPO_PUBLIC_API_BASE_URL=https://buddyboard.getsparqd.com
+BB_PUBLIC_BASE_URL=https://buddyboard.getsparqd.com
+```
+
+Start production services:
+
+```sh
+docker compose -f docker-compose.yml -f docker-compose.prod.yml up -d --build api caddy
+```
 # BuddyBoard (React Native scaffold)
 
 This folder contains a scaffolded React Native (Expo) version of the BuddyBoard web app. It's an approximate, hybrid-native shell with placeholder screens and navigation mirroring the web app structure. This scaffold is not installed — run the included `setup.sh` or `setup.ps1` scripts after moving the directory to your target machine to install dependencies and initialize the project.

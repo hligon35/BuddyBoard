@@ -8,11 +8,13 @@ const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const Database = require('better-sqlite3');
+const multer = require('multer');
 
 const PORT = Number(process.env.PORT || 3005);
 const DB_PATH = process.env.BB_DB_PATH || path.join(process.cwd(), '.data', 'buddyboard.sqlite');
 const JWT_SECRET = process.env.BB_JWT_SECRET || '';
 const NODE_ENV = String(process.env.NODE_ENV || '').trim().toLowerCase();
+const PUBLIC_BASE_URL = (process.env.BB_PUBLIC_BASE_URL || '').trim();
 
 function envFlag(value, defaultValue = false) {
   if (value == null) return defaultValue;
@@ -47,6 +49,12 @@ function nanoId() {
 
 ensureDir(path.dirname(DB_PATH));
 const db = new Database(DB_PATH);
+
+const UPLOAD_DIR = process.env.BB_UPLOAD_DIR
+  ? String(process.env.BB_UPLOAD_DIR)
+  : path.join(path.dirname(DB_PATH), 'uploads');
+
+ensureDir(UPLOAD_DIR);
 
 db.pragma('journal_mode = WAL');
 
@@ -179,6 +187,30 @@ try {
 const app = express();
 app.use(cors());
 app.use(bodyParser.json({ limit: '2mb' }));
+
+// Serve uploaded media. Files are stored under the same host-mounted .data dir.
+app.use('/uploads', express.static(UPLOAD_DIR));
+
+function buildPublicUrl(req, pathname) {
+  const p = pathname.startsWith('/') ? pathname : `/${pathname}`;
+  if (PUBLIC_BASE_URL) return `${PUBLIC_BASE_URL.replace(/\/$/, '')}${p}`;
+  const proto = (req.headers['x-forwarded-proto'] ? String(req.headers['x-forwarded-proto']).split(',')[0].trim() : '') || req.protocol;
+  const host = (req.headers['x-forwarded-host'] ? String(req.headers['x-forwarded-host']).split(',')[0].trim() : '') || req.get('host');
+  return `${proto}://${host}${p}`;
+}
+
+const upload = multer({
+  storage: multer.diskStorage({
+    destination: (req, file, cb) => cb(null, UPLOAD_DIR),
+    filename: (req, file, cb) => {
+      const orig = (file && file.originalname) ? String(file.originalname) : 'upload';
+      const ext = path.extname(orig).slice(0, 12);
+      const safeBase = path.basename(orig, ext).replace(/[^a-zA-Z0-9._-]/g, '_').slice(0, 80) || 'file';
+      cb(null, `${nanoId()}_${safeBase}${ext}`);
+    },
+  }),
+  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB
+});
 
 function authMiddleware(req, res, next) {
   const header = req.headers.authorization || req.headers.Authorization || '';
@@ -500,6 +532,25 @@ app.post('/api/media/sign', authMiddleware, (req, res) => {
 app.get('/api/link/preview', authMiddleware, (req, res) => {
   const url = (req.query && req.query.url) ? String(req.query.url) : '';
   res.json({ ok: true, url, title: url, description: '', image: '' });
+});
+
+// Media upload (local disk). The mobile app uses this when attaching an image to a post.
+// Expects multipart/form-data with a `file` field.
+app.post('/api/media/upload', authMiddleware, upload.single('file'), (req, res) => {
+  const f = req.file;
+  if (!f) return res.status(400).json({ ok: false, error: 'file required' });
+
+  const relPath = `/uploads/${encodeURIComponent(f.filename)}`;
+  const url = buildPublicUrl(req, relPath);
+
+  res.status(201).json({
+    ok: true,
+    url,
+    path: relPath,
+    filename: f.filename,
+    mimetype: f.mimetype,
+    size: f.size,
+  });
 });
 
 app.listen(PORT, '0.0.0.0', () => {

@@ -1,0 +1,28 @@
+version: "3.8"
+
+services:
+  # Production reverse proxy (HTTPS) for the API.
+  # Requires ports 80/443 reachable from the internet for Let's Encrypt.
+  caddy:
+    image: caddy:2
+    container_name: buddyboard_caddy
+    restart: unless-stopped
+    depends_on:
+      - api
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./Caddyfile:/etc/caddy/Caddyfile:ro
+      - caddy_data:/data
+      - caddy_config:/config
+
+  # API should not be exposed directly in production; it is reachable only to caddy.
+  api:
+    ports: []
+    environment:
+      - BB_PUBLIC_BASE_URL=${BB_PUBLIC_BASE_URL}
+
+volumes:
+  caddy_data:
+  caddy_config:
