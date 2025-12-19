@@ -15,6 +15,10 @@ let urgentMemos = [];
 let timeChangeProposals = [];
 let pushTokens = []; // { token, userId, platform, enabled, preferences, updatedAt }
 
+function nanoId() {
+  return `id_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
 app.get('/api/health', (req, res) => res.json({ ok: true, uptime: process.uptime() }));
 
 app.get('/api/board', (req, res) => res.json(posts));
@@ -42,8 +46,30 @@ app.post('/api/messages', (req, res) => {
 
 app.get('/api/urgent-memos', (req, res) => res.json(urgentMemos));
 app.post('/api/urgent-memos', (req, res) => {
-  const id = urgentMemos.length ? urgentMemos[urgentMemos.length-1].id + 1 : 1;
-  const m = { id, title: req.body.title || 'Urgent', body: req.body.body || '', date: new Date().toISOString(), ack: false };
+  const p = req.body || {};
+  const type = p.type || 'urgent_memo';
+  const createdAt = new Date().toISOString();
+  const m = {
+    id: nanoId(),
+    type,
+    status: p.status || (type === 'time_update' || type === 'arrival_alert' ? 'pending' : 'sent'),
+    proposerId: p.proposerId || null,
+    actorRole: p.actorRole || p.role || null,
+    childId: p.childId || null,
+    updateType: p.updateType || null,
+    proposedISO: p.proposedISO || null,
+    note: p.note || '',
+    subject: p.subject || '',
+    title: p.title || (type === 'arrival_alert' ? 'Arrival' : (type === 'admin_memo' ? (p.subject || 'Admin Memo') : 'Urgent')),
+    body: p.body || p.note || '',
+    recipients: Array.isArray(p.recipients) ? p.recipients : [],
+    meta: (p.meta && typeof p.meta === 'object') ? p.meta : {},
+    ack: false,
+    respondedAt: null,
+    date: createdAt,
+    createdAt,
+    updatedAt: createdAt,
+  };
   urgentMemos.unshift(m);
   res.status(201).json(m);
 });
@@ -51,6 +77,57 @@ app.post('/api/urgent-memos', (req, res) => {
 app.post('/api/urgent-memos/read', (req, res) => {
   const ids = Array.isArray(req.body.memoIds) ? req.body.memoIds : [];
   urgentMemos.forEach(u => { if (ids.includes(u.id)) u.ack = true; });
+  res.json({ ok: true });
+});
+
+// Admin responds to a memo/alert
+app.post('/api/urgent-memos/respond', (req, res) => {
+  const memoId = req.body && req.body.memoId ? String(req.body.memoId) : '';
+  const action = req.body && req.body.action ? String(req.body.action) : '';
+  if (!memoId || !action) return res.status(400).json({ ok: false, error: 'memoId and action required' });
+  const idx = urgentMemos.findIndex((m) => String(m.id) === memoId);
+  if (idx === -1) return res.status(404).json({ ok: false, error: 'not found' });
+  const t = new Date().toISOString();
+  urgentMemos[idx] = { ...urgentMemos[idx], status: action, respondedAt: t, updatedAt: t };
+  res.json({ ok: true, id: memoId, status: action, respondedAt: t, updatedAt: t });
+});
+
+// Arrival ping: store an arrival alert for admins (deduped)
+app.post('/api/arrival/ping', (req, res) => {
+  const p = req.body || {};
+  const role = (p.role || '').toString().toLowerCase();
+  if (role !== 'parent' && role !== 'therapist') return res.json({ ok: true });
+  const actorId = p.userId ? String(p.userId) : 'unknown';
+  const childId = p.childId != null ? String(p.childId) : null;
+
+  const recent = urgentMemos.find((m) => m.type === 'arrival_alert' && m.proposerId === actorId && String(m.childId || '') === String(childId || '') && (Date.now() - new Date(m.createdAt).getTime()) < 10 * 60 * 1000);
+  if (!recent) {
+    const createdAt = new Date().toISOString();
+    urgentMemos.unshift({
+      id: nanoId(),
+      type: 'arrival_alert',
+      status: 'pending',
+      proposerId: actorId,
+      actorRole: role,
+      childId,
+      title: role === 'therapist' ? 'Therapist Arrival' : 'Parent Arrival',
+      body: '',
+      note: '',
+      meta: {
+        lat: p.lat != null ? Number(p.lat) : null,
+        lng: p.lng != null ? Number(p.lng) : null,
+        distanceMiles: p.distanceMiles != null ? Number(p.distanceMiles) : null,
+        dropZoneMiles: p.dropZoneMiles != null ? Number(p.dropZoneMiles) : null,
+        when: p.when || createdAt,
+      },
+      recipients: [],
+      ack: false,
+      respondedAt: null,
+      date: createdAt,
+      createdAt,
+      updatedAt: createdAt,
+    });
+  }
   res.json({ ok: true });
 });
 

@@ -171,6 +171,18 @@ export async function ackUrgentMemo(memoIds) {
   return res.data;
 }
 
+// Generic alert/memo creation (time_update, admin_memo, urgent_memo)
+export async function sendUrgentMemo(payload) {
+  const res = await client.post('/api/urgent-memos', payload);
+  return res.data;
+}
+
+// Admin-only response to an alert
+export async function respondUrgentMemo(memoId, action) {
+  const res = await client.post('/api/urgent-memos/respond', { memoId, action });
+  return res.data;
+}
+
 export async function getMessages() {
   try {
     const res = await client.get('/api/messages');
@@ -274,6 +286,8 @@ export default {
   getLinkPreview,
   getUrgentMemos,
   ackUrgentMemo,
+  sendUrgentMemo,
+  respondUrgentMemo,
   getMessages,
   sendMessage,
   sharePost,

@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Api from './Api';
 import { setDebugContext, logger } from './utils/logger';
+import { DISABLE_DEV_AUTOLOGIN } from './config';
 
 const TOKEN_KEY = 'auth_token';
 
@@ -50,7 +51,7 @@ export function AuthProvider({ children }) {
 
   // Dev auto-login for local testing (non-persistent)
   useEffect(() => {
-    if (__DEV__ && !loading && !token) {
+    if (__DEV__ && !DISABLE_DEV_AUTOLOGIN && !loading && !token) {
       const devToken = 'dev-token';
       setToken(devToken);
       Api.setAuthToken(devToken);

@@ -18,6 +18,11 @@ export default function UrgentMemoOverlay() {
         const data = await Api.getUrgentMemos();
         let list = Array.isArray(data) ? data : (data?.memos || []);
         if (!Array.isArray(list)) list = [];
+        // Only show broadcast-style urgent memos in this overlay.
+        list = list.filter((m) => {
+          const t = (m && m.type) ? String(m.type).toLowerCase() : 'urgent_memo';
+          return t === 'urgent_memo' || (!m.type && (m.title || m.body));
+        });
         // Dev helper: if no memos returned in development and dev tools enabled, show a demo memo so overlay is visible for testing
         if (__DEV__ && devToolsVisible && (!Array.isArray(list) || list.length === 0)) {
           list = [

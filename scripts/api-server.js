@@ -93,10 +93,23 @@ CREATE TABLE IF NOT EXISTS messages (
 
 CREATE TABLE IF NOT EXISTS urgent_memos (
   id TEXT PRIMARY KEY,
+  type TEXT,
+  status TEXT,
+  proposer_id TEXT,
+  actor_role TEXT,
+  child_id TEXT,
+  update_type TEXT,
+  proposed_iso TEXT,
+  note TEXT,
+  subject TEXT,
   title TEXT,
   body TEXT,
+  recipients_json TEXT,
+  meta_json TEXT,
   ack INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL
+  responded_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS time_change_proposals (
@@ -132,6 +145,30 @@ CREATE TABLE IF NOT EXISTS arrival_pings (
 );
 `);
 
+// Lightweight migrations for existing SQLite DBs.
+// SQLite doesn't support ADD COLUMN IF NOT EXISTS everywhere, so we do best-effort adds.
+function ensureColumn(table, columnDef) {
+  try {
+    db.prepare(`ALTER TABLE ${table} ADD COLUMN ${columnDef}`).run();
+  } catch (_) {
+    // ignore (already exists or cannot alter)
+  }
+}
+
+ensureColumn('urgent_memos', 'type TEXT');
+ensureColumn('urgent_memos', 'status TEXT');
+ensureColumn('urgent_memos', 'proposer_id TEXT');
+ensureColumn('urgent_memos', 'actor_role TEXT');
+ensureColumn('urgent_memos', 'child_id TEXT');
+ensureColumn('urgent_memos', 'update_type TEXT');
+ensureColumn('urgent_memos', 'proposed_iso TEXT');
+ensureColumn('urgent_memos', 'note TEXT');
+ensureColumn('urgent_memos', 'subject TEXT');
+ensureColumn('urgent_memos', 'recipients_json TEXT');
+ensureColumn('urgent_memos', 'meta_json TEXT');
+ensureColumn('urgent_memos', 'responded_at TEXT');
+ensureColumn('urgent_memos', 'updated_at TEXT');
+
 function safeJsonParse(text, fallback) {
   try {
     if (!text) return fallback;
@@ -139,6 +176,166 @@ function safeJsonParse(text, fallback) {
   } catch (_) {
     return fallback;
   }
+}
+
+function roleLower(u) {
+  try { return String(u && u.role ? u.role : '').trim().toLowerCase(); } catch (_) { return ''; }
+}
+
+function isAdminUser(u) {
+  const r = roleLower(u);
+  return r === 'admin' || r === 'administrator';
+}
+
+function safeString(v) {
+  try {
+    if (v == null) return '';
+    return String(v);
+  } catch (_) {
+    return '';
+  }
+}
+
+function hasExpoPushToken(token) {
+  const t = safeString(token).trim();
+  return t.startsWith('ExponentPushToken[') || t.startsWith('ExpoPushToken[');
+}
+
+function pushPrefAllows(preferences, kind) {
+  // Preferences are opt-in toggles stored by the mobile Settings screen.
+  // If preferences are missing/empty, default to allowing pushes.
+  if (!preferences || typeof preferences !== 'object') return true;
+  const keys = Object.keys(preferences);
+  if (!keys.length) return true;
+  if (kind === 'updates') return Boolean(preferences.updates ?? preferences.other ?? true);
+  if (kind === 'other') return Boolean(preferences.other ?? preferences.updates ?? true);
+  // fallback
+  return true;
+}
+
+async function sendExpoPush(tokens, { title, body, data } = {}) {
+  try {
+    if (!Array.isArray(tokens) || !tokens.length) return { ok: true, skipped: true, reason: 'no-tokens' };
+    if (typeof fetch !== 'function') {
+      console.warn('[api] fetch() not available; skipping push send');
+      return { ok: false, skipped: true, reason: 'no-fetch' };
+    }
+
+    const unique = Array.from(new Set(tokens.map((t) => safeString(t).trim()))).filter(hasExpoPushToken);
+    if (!unique.length) return { ok: true, skipped: true, reason: 'no-valid-tokens' };
+
+    const messages = unique.map((to) => ({
+      to,
+      title: safeString(title || 'BuddyBoard'),
+      body: safeString(body || ''),
+      data: (data && typeof data === 'object') ? data : {},
+      sound: 'default',
+    }));
+
+    const resp = await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(messages),
+    });
+
+    const json = await resp.json().catch(() => null);
+
+    // Best-effort cleanup for invalid/unregistered tokens.
+    // Expo returns tickets in the same order as the messages array.
+    try {
+      const tickets = json && Array.isArray(json.data) ? json.data : null;
+      if (resp.ok && tickets && tickets.length === messages.length) {
+        const tokensToDelete = [];
+        for (let i = 0; i < tickets.length; i += 1) {
+          if (shouldDeleteTokenForExpoError(tickets[i])) tokensToDelete.push(messages[i].to);
+        }
+        const deleted = deletePushTokens(tokensToDelete);
+        if (deleted) console.log(`[api] push cleanup: deleted ${deleted} invalid token(s)`);
+      }
+    } catch (_) {
+      // ignore cleanup failures
+    }
+
+    return { ok: resp.ok, status: resp.status, expo: json };
+  } catch (e) {
+    console.warn('[api] push send failed', e && e.message ? e.message : String(e));
+    return { ok: false, error: e && e.message ? e.message : String(e) };
+  }
+}
+
+function getAdminUserIds() {
+  try {
+    const rows = db.prepare('SELECT id, role FROM users').all();
+    const ids = [];
+    for (const r of rows) {
+      const role = safeString(r.role).trim().toLowerCase();
+      if (role === 'admin' || role === 'administrator') ids.push(String(r.id));
+    }
+    // Dev convenience: allow dev-token users to receive admin pushes.
+    ids.push('dev');
+    return Array.from(new Set(ids.filter(Boolean)));
+  } catch (_) {
+    return ['dev'];
+  }
+}
+
+function getPushTokensForUsers(userIds, { kind } = {}) {
+  try {
+    if (!Array.isArray(userIds) || !userIds.length) return [];
+    const placeholders = userIds.map(() => '?').join(',');
+    const rows = db.prepare(
+      `SELECT token, enabled, preferences_json FROM push_tokens WHERE enabled = 1 AND user_id IN (${placeholders})`
+    ).all(...userIds.map(String));
+
+    const out = [];
+    for (const row of rows) {
+      const token = safeString(row.token).trim();
+      if (!token) continue;
+      const prefs = safeJsonParse(row.preferences_json, {});
+      if (kind && !pushPrefAllows(prefs, kind)) continue;
+      out.push(token);
+    }
+    return Array.from(new Set(out));
+  } catch (_) {
+    return [];
+  }
+}
+
+function deletePushTokens(tokens) {
+  try {
+    if (!Array.isArray(tokens) || !tokens.length) return 0;
+    const unique = Array.from(new Set(tokens.map((t) => safeString(t).trim()))).filter(Boolean);
+    if (!unique.length) return 0;
+    const placeholders = unique.map(() => '?').join(',');
+    const info = db.prepare(`DELETE FROM push_tokens WHERE token IN (${placeholders})`).run(...unique);
+    return Number(info && typeof info.changes === 'number' ? info.changes : 0);
+  } catch (_) {
+    return 0;
+  }
+}
+
+function shouldDeleteTokenForExpoError(expoTicket) {
+  // Expo ticket format: { status: 'error', message, details: { error: 'DeviceNotRegistered' | ... } }
+  try {
+    if (!expoTicket || expoTicket.status !== 'error') return false;
+    const details = expoTicket.details && typeof expoTicket.details === 'object' ? expoTicket.details : {};
+    const code = safeString(details.error).trim();
+    // Only delete for terminal token problems.
+    return code === 'DeviceNotRegistered' || code === 'InvalidExpoPushToken';
+  } catch (_) {
+    return false;
+  }
+}
+
+function normalizeRecipients(input) {
+  if (!Array.isArray(input)) return [];
+  const ids = [];
+  for (const item of input) {
+    if (!item) continue;
+    if (typeof item === 'string' || typeof item === 'number') ids.push(String(item));
+    else if (typeof item === 'object' && item.id != null) ids.push(String(item.id));
+  }
+  return Array.from(new Set(ids.filter(Boolean)));
 }
 
 function userToClient(row) {
@@ -399,23 +596,187 @@ app.post('/api/messages', authMiddleware, (req, res) => {
 // Urgent memos
 app.get('/api/urgent-memos', authMiddleware, (req, res) => {
   const rows = db.prepare('SELECT * FROM urgent_memos ORDER BY datetime(created_at) DESC').all();
-  res.json(rows.map((r) => ({
+  const list = rows.map((r) => ({
     id: r.id,
+    type: r.type || 'urgent_memo',
+    status: r.status || null,
+    proposerId: r.proposer_id || null,
+    actorRole: r.actor_role || null,
+    childId: r.child_id || null,
+    updateType: r.update_type || null,
+    proposedISO: r.proposed_iso || null,
+    note: r.note || '',
+    subject: r.subject || '',
     title: r.title || '',
     body: r.body || '',
+    recipients: safeJsonParse(r.recipients_json, []),
+    meta: safeJsonParse(r.meta_json, {}),
     ack: Boolean(r.ack),
+    respondedAt: r.responded_at || null,
     date: r.created_at,
     createdAt: r.created_at,
-  })));
+    updatedAt: r.updated_at || r.created_at,
+  }));
+
+  // Basic visibility rules:
+  // - Admins: see all alerts.
+  // - Non-admins: see broadcast urgent memos; see their own time_update requests; see admin_memos when targeted.
+  if (isAdminUser(req.user)) return res.json(list);
+
+  const userId = req.user ? String(req.user.id) : '';
+  const filtered = list.filter((m) => {
+    const type = String(m.type || '').toLowerCase();
+    if (type === 'arrival_alert') return false;
+    if (type === 'time_update') return Boolean(userId) && m.proposerId === userId;
+    if (type === 'admin_memo') {
+      const recips = Array.isArray(m.recipients) ? m.recipients.map(String) : [];
+      return recips.length === 0 || recips.includes(userId);
+    }
+    // urgent_memo and everything else defaults to visible
+    return true;
+  });
+  return res.json(filtered);
 });
 
 app.post('/api/urgent-memos', authMiddleware, (req, res) => {
-  const title = (req.body && req.body.title) ? String(req.body.title) : 'Urgent';
-  const body = (req.body && req.body.body) ? String(req.body.body) : '';
-  const id = nanoId();
+  const p = req.body || {};
   const t = nowISO();
-  db.prepare('INSERT INTO urgent_memos (id, title, body, ack, created_at) VALUES (?,?,?,?,?)').run(id, title, body, 0, t);
-  res.status(201).json({ id, title, body, ack: false, date: t, createdAt: t });
+  const id = nanoId();
+
+  const type = p.type ? String(p.type) : 'urgent_memo';
+  const lowerType = type.trim().toLowerCase();
+  const proposerId = p.proposerId != null ? String(p.proposerId) : (req.user ? String(req.user.id) : null);
+  const actorRole = p.actorRole ? String(p.actorRole) : (p.role ? String(p.role) : (req.user ? String(req.user.role) : null));
+  const childId = p.childId != null ? String(p.childId) : null;
+  const updateType = p.updateType ? String(p.updateType) : null;
+  const proposedISO = p.proposedISO ? String(p.proposedISO) : null;
+  const note = p.note ? String(p.note) : '';
+  const subject = p.subject ? String(p.subject) : '';
+  const recipients = normalizeRecipients(p.recipients);
+
+  // Authorization: only admins can broadcast urgent memos / admin memos.
+  if ((lowerType === 'urgent_memo' || lowerType === 'admin_memo') && !isAdminUser(req.user)) {
+    return res.status(403).json({ ok: false, error: 'admin only' });
+  }
+  // arrival_alert is written by the server from /api/arrival/ping to prevent spoofing.
+  if (lowerType === 'arrival_alert' && !isAdminUser(req.user)) {
+    return res.status(403).json({ ok: false, error: 'arrival alerts are server-generated' });
+  }
+
+  // Title/body fallbacks so legacy callers keep working.
+  const title = p.title ? String(p.title) : (lowerType === 'time_update' ? 'Time Update Request' : (lowerType === 'admin_memo' ? (subject || 'Admin Memo') : 'Urgent'));
+  const body = p.body ? String(p.body) : (note || '');
+  const status = p.status ? String(p.status) : (lowerType === 'time_update' || lowerType === 'arrival_alert' ? 'pending' : 'sent');
+  const meta = (p.meta && typeof p.meta === 'object') ? p.meta : {};
+
+  db.prepare(`
+    INSERT INTO urgent_memos (
+      id, type, status, proposer_id, actor_role, child_id, update_type, proposed_iso, note, subject,
+      title, body, recipients_json, meta_json, ack, responded_at, created_at, updated_at
+    ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)
+  `).run(
+    id,
+    type,
+    status,
+    proposerId,
+    actorRole,
+    childId,
+    updateType,
+    proposedISO,
+    note,
+    subject,
+    title,
+    body,
+    JSON.stringify(recipients),
+    JSON.stringify(meta),
+    0,
+    null,
+    t,
+    t
+  );
+
+  // Push notifications
+  try {
+    const pushKind = (lowerType === 'admin_memo') ? 'other' : 'updates';
+    if (lowerType === 'time_update') {
+      const adminIds = getAdminUserIds();
+      const tokens = getPushTokensForUsers(adminIds, { kind: pushKind });
+      setTimeout(() => {
+        sendExpoPush(tokens, {
+          title: 'Time Update Request',
+          body: 'A parent submitted a time update request. Open Alerts.',
+          data: { kind: 'time_update', memoId: id, childId },
+        }).catch(() => {});
+      }, 0);
+    } else if (lowerType === 'admin_memo') {
+      const tokens = recipients.length
+        ? getPushTokensForUsers(recipients, { kind: pushKind })
+        : getPushTokensForUsers(db.prepare('SELECT DISTINCT user_id as id FROM push_tokens WHERE enabled = 1').all().map((r) => String(r.id)), { kind: pushKind });
+      setTimeout(() => {
+        sendExpoPush(tokens, {
+          title: subject || 'Admin Memo',
+          body: (body || '').slice(0, 120) || 'You have a new admin message.',
+          data: { kind: 'admin_memo', memoId: id, childId },
+        }).catch(() => {});
+      }, 0);
+    }
+  } catch (_) {
+    // ignore push failures
+  }
+
+  res.status(201).json({
+    id,
+    type,
+    status,
+    proposerId,
+    actorRole,
+    childId,
+    updateType,
+    proposedISO,
+    note,
+    subject,
+    title,
+    body,
+    recipients,
+    meta,
+    ack: false,
+    respondedAt: null,
+    date: t,
+    createdAt: t,
+    updatedAt: t,
+  });
+});
+
+// Admin responds to an alert (time_update accept/deny/opened, arrival/opened, etc.)
+app.post('/api/urgent-memos/respond', authMiddleware, (req, res) => {
+  if (!isAdminUser(req.user)) return res.status(403).json({ ok: false, error: 'admin only' });
+  const memoId = (req.body && req.body.memoId) ? String(req.body.memoId) : '';
+  const action = (req.body && req.body.action) ? String(req.body.action) : '';
+  if (!memoId || !action) return res.status(400).json({ ok: false, error: 'memoId and action required' });
+  const t = nowISO();
+  db.prepare('UPDATE urgent_memos SET status = ?, responded_at = ?, updated_at = ? WHERE id = ?').run(action, t, t, memoId);
+
+  // Notify proposer for time_update decisions
+  try {
+    const row = db.prepare('SELECT id, type, proposer_id, update_type, child_id FROM urgent_memos WHERE id = ?').get(memoId);
+    const type = row && row.type ? String(row.type).trim().toLowerCase() : '';
+    const proposerId = row && row.proposer_id ? String(row.proposer_id) : '';
+    if (type === 'time_update' && proposerId) {
+      const tokens = getPushTokensForUsers([proposerId], { kind: 'updates' });
+      const upd = row && row.update_type ? String(row.update_type) : '';
+      setTimeout(() => {
+        sendExpoPush(tokens, {
+          title: 'Time Update',
+          body: `Your ${upd || 'time'} request was ${action}.`,
+          data: { kind: 'time_update_response', memoId, status: action, childId: row.child_id || null },
+        }).catch(() => {});
+      }, 0);
+    }
+  } catch (_) {
+    // ignore
+  }
+
+  res.json({ ok: true, id: memoId, status: action, respondedAt: t, updatedAt: t });
 });
 
 app.post('/api/urgent-memos/read', authMiddleware, (req, res) => {
@@ -445,6 +806,87 @@ app.post('/api/arrival/ping', authMiddleware, (req, res) => {
       payload.when ? String(payload.when) : null,
       createdAt
     );
+
+  // Generate an admin-facing arrival alert (deduped) when a parent/therapist arrives.
+  // Client already enforces schedule window and drop-zone check; the server stores a single alert
+  // per user/child/shift within a short window to avoid spamming.
+  try {
+    const r = String(payload.role || (req.user ? req.user.role : '') || '').trim().toLowerCase();
+    if (r === 'parent' || r === 'therapist') {
+      const actorId = payload.userId ? String(payload.userId) : (req.user ? String(req.user.id) : '');
+      const childId = payload.childId != null ? String(payload.childId) : null;
+      const shiftId = payload.shiftId != null ? String(payload.shiftId) : null;
+      const withinMins = 10;
+
+      const recent = db.prepare(`
+        SELECT id FROM urgent_memos
+        WHERE type = 'arrival_alert'
+          AND proposer_id = ?
+          AND (child_id IS ? OR child_id = ?)
+          AND (json_extract(meta_json, '$.shiftId') IS ? OR json_extract(meta_json, '$.shiftId') = ?)
+          AND datetime(created_at) > datetime('now', ?)
+        LIMIT 1
+      `).get(
+        actorId,
+        childId, childId,
+        shiftId, shiftId,
+        `-${withinMins} minutes`
+      );
+
+      if (!recent) {
+        const alertId = nanoId();
+        const t = nowISO();
+        const meta = {
+          lat: Number.isFinite(Number(payload.lat)) ? Number(payload.lat) : null,
+          lng: Number.isFinite(Number(payload.lng)) ? Number(payload.lng) : null,
+          distanceMiles: payload.distanceMiles != null ? Number(payload.distanceMiles) : null,
+          dropZoneMiles: payload.dropZoneMiles != null ? Number(payload.dropZoneMiles) : null,
+          eventId: payload.eventId ? String(payload.eventId) : null,
+          shiftId: shiftId,
+          when: payload.when ? String(payload.when) : null,
+        };
+        const title = r === 'therapist' ? 'Therapist Arrival' : 'Parent Arrival';
+        const note = ''; // UI can derive display copy
+        db.prepare(`
+          INSERT INTO urgent_memos (
+            id, type, status, proposer_id, actor_role, child_id, title, body, note, meta_json, ack, created_at, updated_at
+          ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+        `).run(
+          alertId,
+          'arrival_alert',
+          'pending',
+          actorId,
+          r,
+          childId,
+          title,
+          '',
+          note,
+          JSON.stringify(meta),
+          0,
+          t,
+          t
+        );
+
+        // Push notify admins
+        try {
+          const adminIds = getAdminUserIds();
+          const tokens = getPushTokensForUsers(adminIds, { kind: 'updates' });
+          setTimeout(() => {
+            sendExpoPush(tokens, {
+              title,
+              body: 'Arrival detected. Open Alerts.',
+              data: { kind: 'arrival_alert', memoId: alertId, actorId, actorRole: r, childId },
+            }).catch(() => {});
+          }, 0);
+        } catch (_) {
+          // ignore
+        }
+      }
+    }
+  } catch (_) {
+    // ignore alert generation failures
+  }
+
   res.json({ ok: true });
 });
 
