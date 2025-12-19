@@ -124,6 +124,34 @@ After updating caddy-central's config, reload it and verify:
 ```sh
 curl -i https://buddyboard.getsparqd.com/api/health
 ```
+
+Server deploy: always match GitHub
+-------------------------------
+If you want the server checkout to **always match GitHub** (no local edits), use the server compose overrides in [docker-compose.server.yml](docker-compose.server.yml).
+
+This avoids bind-mounting the repo into containers (which can otherwise mutate `package-lock.json` on the server).
+
+On the server:
+
+```sh
+cd /srv/apps/BuddyBoard
+git fetch origin
+git checkout master || git checkout -b master origin/master
+git reset --hard origin/master
+git clean -fd
+docker compose -f docker-compose.yml -f docker-compose.server.yml up -d --build BuddyBoardApp api
+```
+
+GitHub Actions auto-deploy (push-to-master)
+------------------------------------------
+This repo includes a workflow [deploy-server.yml](.github/workflows/deploy-server.yml) that can deploy on every push to `master`.
+
+Add these repository secrets:
+- `DEPLOY_HOST` (example: `1.2.3.4`)
+- `DEPLOY_USER` (example: `creator`)
+- `DEPLOY_SSH_KEY` (private key for SSH)
+- `DEPLOY_PATH` (example: `/srv/apps/BuddyBoard`)
+- `DEPLOY_PORT` (optional; default is 22)
 # BuddyBoard (React Native scaffold)
 
 This folder contains a scaffolded React Native (Expo) version of the BuddyBoard web app. It's an approximate, hybrid-native shell with placeholder screens and navigation mirroring the web app structure. This scaffold is not installed — run the included `setup.sh` or `setup.ps1` scripts after moving the directory to your target machine to install dependencies and initialize the project.
