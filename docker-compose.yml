@@ -18,8 +18,8 @@ services:
       - ./:/usr/src/app:rw
       - node_modules:/usr/src/app/node_modules
       # Keep built web assets out of the git working tree and persist them across container recreates
-      - web_dist:/usr/src/app/dist
-    command: sh -c "npm install --no-audit --no-fund && if [ ! -f dist/index.html ]; then CI=1 EXPO_NO_TELEMETRY=1 npx expo export -p web --output-dir dist --non-interactive; fi && npx serve dist -l tcp://0.0.0.0:3000"
+      - web_dist:/usr/src/app/.web-dist
+    command: sh -c "npm install --no-audit --no-fund && if [ ! -f .web-dist/out/index.html ]; then CI=1 EXPO_NO_TELEMETRY=1 npx expo export -p web --output-dir .web-dist/out; fi && npx serve .web-dist/out -l tcp://0.0.0.0:3000"
     restart: on-failure
 
   expo:
