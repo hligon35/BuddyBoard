@@ -13,12 +13,16 @@ import BottomNav from './src/components/BottomNav';
 import DevRoleSwitcher from './src/components/DevRoleSwitcher';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import ArrivalDetector from './src/components/ArrivalDetector';
+import { logger, setDebugContext } from './src/utils/logger';
+import { registerGlobalDebugHandlers } from './src/utils/registerDebugHandlers';
+import { configureNotificationHandling } from './src/utils/pushNotifications';
 // navigation ref used by the global bottom nav
 const navigationRef = createNavigationContainerRef();
 
 import HomeScreen from './src/screens/HomeScreen';
 import ChatsScreen from './src/screens/ChatsScreen';
 import ChatThreadScreen from './src/screens/ChatThreadScreen';
+import NewThreadScreen from './src/screens/NewThreadScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
 import HelpScreen from './src/screens/HelpScreen';
 import MyClassScreen from './src/screens/MyClassScreen';
@@ -38,8 +42,10 @@ import ExportDataScreen from './src/screens/ExportDataScreen';
 import { HelpButton, LogoutButton, BackButton } from './src/components/TopButtons';
 import { View, Text } from 'react-native';
 import LogoTitle from './src/components/LogoTitle';
+import LoginScreen from './screens/LoginScreen';
 
 const RootStack = createNativeStackNavigator();
+const AppStack = createNativeStackNavigator();
 
 const MyClassStackNav = createNativeStackNavigator();
 function MyClassStack() {
@@ -135,6 +141,7 @@ function ChatsStack() {
       })}
     >
       <ChatsStackNav.Screen name="ChatsList" component={ChatsScreen} options={{ title: 'Chats' }} />
+      <ChatsStackNav.Screen name="NewThread" component={NewThreadScreen} options={{ title: 'New Message' }} />
       <ChatsStackNav.Screen name="ChatThread" component={ChatThreadScreen} options={{ title: 'Thread' }} />
     </ChatsStackNav.Navigator>
   );
@@ -187,9 +194,17 @@ function MainRoutes() {
 
 export default function App() {
   const [problem, setProblem] = useState(null);
-  const [currentRoute, setCurrentRoute] = useState('Home');
+  const [currentRoute, setCurrentRoute] = useState('Login');
 
   useEffect(() => {
+    try {
+      configureNotificationHandling();
+      registerGlobalDebugHandlers();
+      logger.debug('app', 'Registered global debug handlers');
+    } catch (e) {
+      // ignore
+    }
+
     const missing = [];
     if (!HomeScreen) missing.push('HomeScreen');
     if (!ChatsScreen) missing.push('ChatsScreen');
@@ -201,7 +216,15 @@ export default function App() {
     if (missing.length) setProblem(missing);
     else setProblem(null);
     // log for Metro/console
-    console.log('App imports:', { HomeScreen, ChatsScreen, ChatThreadScreen, SettingsScreen, AuthProvider, DataProvider, UrgentMemoOverlay });
+    logger.info('app', 'App imports', {
+      HomeScreen: !!HomeScreen,
+      ChatsScreen: !!ChatsScreen,
+      ChatThreadScreen: !!ChatThreadScreen,
+      SettingsScreen: !!SettingsScreen,
+      AuthProvider: !!AuthProvider,
+      DataProvider: !!DataProvider,
+      UrgentMemoOverlay: !!UrgentMemoOverlay,
+    });
   }, []);
 
   if (problem && problem.length) {
@@ -229,29 +252,42 @@ export default function App() {
                 if (r && r.name) {
                   // Map nested route names back to top-level stack keys so BottomNav highlights correctly
                   const map = {
+                    Main: 'Home',
                     CommunityMain: 'Home',
                     PostThread: 'Home',
                     ChatsList: 'Chats',
                     ChatThread: 'Chats',
+                    NewThread: 'Chats',
                     MyChildMain: 'MyChild',
                     SettingsMain: 'Settings',
                     MyClassMain: 'MyClass',
                     ControlsMain: 'Controls',
                   };
-                  setCurrentRoute(map[r.name] || r.name);
+                  const next = map[r.name] || r.name;
+                  setCurrentRoute(next);
+                  setDebugContext({ route: next });
+                  logger.debug('nav', 'Route change', { route: next });
                 }
               } catch (e) {
                 // ignore
               }
             }}
           >
-            {/* Use a root Stack that hosts per-screen stacks (keeps headers centered in nested stacks) */}
-            <MainRoutes />
+            <AppStack.Navigator screenOptions={{ headerShown: false }} initialRouteName="Login">
+              <AppStack.Screen name="Login">
+                {(props) => <LoginScreen {...props} suppressAutoRedirect={true} />}
+              </AppStack.Screen>
+              <AppStack.Screen name="Main" component={MainRoutes} />
+            </AppStack.Navigator>
           </NavigationContainer>
-          <BottomNav navigationRef={navigationRef} currentRoute={currentRoute} />
-          <DevRoleSwitcher />
-          <UrgentMemoOverlay />
-          <ArrivalDetector />
+          {currentRoute !== 'Login' && (
+            <>
+              <BottomNav navigationRef={navigationRef} currentRoute={currentRoute} />
+              <DevRoleSwitcher />
+              <UrgentMemoOverlay />
+              <ArrivalDetector />
+            </>
+          )}
         </DataProvider>
       </AuthProvider>
       </SafeAreaProvider>

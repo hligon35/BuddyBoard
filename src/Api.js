@@ -1,6 +1,7 @@
 import axios from 'axios';
 import { BASE_URL, EMULATOR_HOST } from './config';
 import { Platform } from 'react-native';
+import { logger } from './utils/logger';
 
 // Support Android emulator host mapping: if BASE_URL points to localhost
 // convert it to the emulator host (10.0.2.2) so requests from the
@@ -10,7 +11,7 @@ let effectiveBase = BASE_URL;
 try {
   if (Platform.OS === 'android' && BASE_URL && BASE_URL.includes('localhost')) {
     effectiveBase = BASE_URL.replace('localhost', EMULATOR_HOST);
-    console.log('Api: Rewriting BASE_URL for Android emulator ->', effectiveBase);
+    logger.info('api', 'Rewriting BASE_URL for Android emulator', { baseURL: effectiveBase });
   }
 } catch (e) {
   // ignore
@@ -22,11 +23,84 @@ const client = axios.create({
   headers: { Accept: 'application/json' },
 });
 
+// Debugging interceptors: log requests and responses to help diagnose 401/404s
+client.interceptors.request.use((req) => {
+  try {
+    const auth = req.headers && (req.headers.Authorization || req.headers.authorization);
+    const base = req.baseURL || client.defaults.baseURL || '';
+    const full = base + (req.url || '');
+    console.log('[Api] Request:', req.method && req.method.toUpperCase(), full, auth ? '[auth]' : '[no-auth]');
+  } catch (e) {}
+  return req;
+}, (err) => {
+  console.warn('[Api] Request error', err && err.message);
+  return Promise.reject(err);
+});
+
+client.interceptors.response.use((res) => {
+  try { console.log('[Api] Response:', res.status, res.config && res.config.url); } catch (e) {}
+  return res;
+}, (err) => {
+    try {
+      if (err && err.response) {
+        const base = err.response.config && (err.response.config.baseURL || client.defaults.baseURL) || '';
+        const url = (err.response.config && err.response.config.url) || '';
+        console.warn('[Api] Response error:', err.response.status, base + url, err.response.data);
+      } else {
+        console.warn('[Api] Network or other error:', err && err.message);
+      }
+    } catch (e) {}
+  return Promise.reject(err);
+});
+// Request/response instrumentation (dev-friendly; redacts auth)
+try {
+  client.interceptors.request.use((config) => {
+    const startedAt = Date.now();
+    config.metadata = { startedAt };
+    const method = (config.method || 'get').toUpperCase();
+    const url = config.url || '';
+    logger.debug('api', 'HTTP request', { method, url });
+    return config;
+  });
+
+  client.interceptors.response.use(
+    (response) => {
+      const cfg = response.config || {};
+      const method = (cfg.method || 'get').toUpperCase();
+      const url = cfg.url || '';
+      const ms = cfg.metadata?.startedAt ? (Date.now() - cfg.metadata.startedAt) : undefined;
+      logger.debug('api', 'HTTP response', { method, url, status: response.status, ms });
+      return response;
+    },
+    (error) => {
+      const cfg = error?.config || {};
+      const method = (cfg.method || 'get').toUpperCase();
+      const url = cfg.url || '';
+      const ms = cfg.metadata?.startedAt ? (Date.now() - cfg.metadata.startedAt) : undefined;
+      const status = error?.response?.status;
+      const dataType = error?.response?.data ? typeof error.response.data : undefined;
+      logger.error('api', 'HTTP error', {
+        method,
+        url,
+        status,
+        ms,
+        message: error?.message,
+        responseType: dataType,
+      });
+      return Promise.reject(error);
+    }
+  );
+} catch (e) {
+  // ignore
+}
+
 export function setAuthToken(token) {
   if (token) {
     client.defaults.headers.common['Authorization'] = `Bearer ${token}`;
+    try { console.log('[Api] Auth token set:', (token || '').toString().slice(0,8) + '...'); } catch (e) {}
   } else {
     delete client.defaults.headers.common['Authorization'];
+    console.log('[Api] Auth token cleared');
   }
 }
 
@@ -47,7 +121,10 @@ export async function getPosts() {
 }
 
 export async function createPost(payload) {
-  const res = await client.post('/api/board', payload);
+  const send = { ...(payload || {}) };
+  // Some dev backends (api-mock) expect `text` instead of `body`.
+  if (send.body && !send.text) send.text = send.body;
+  const res = await client.post('/api/board', send);
   return res.data;
 }
 
@@ -83,14 +160,26 @@ export async function getUrgentMemos() {
   return res.data;
 }
 
+// Convenience health check to verify API availability and help debug 404s
+export async function health() {
+  const res = await client.get('/api/health');
+  return res.data;
+}
+
 export async function ackUrgentMemo(memoIds) {
   const res = await client.post('/api/urgent-memos/read', { memoIds });
   return res.data;
 }
 
 export async function getMessages() {
-  const res = await client.get('/api/messages');
-  return res.data;
+  try {
+    const res = await client.get('/api/messages');
+    return res.data;
+  } catch (err) {
+    // Treat 401 as empty messages for dev/test clients that use a fake token
+    if (err && err.response && err.response.status === 401) return [];
+    throw err;
+  }
 }
 
 export async function sendMessage(payload) {
@@ -112,8 +201,14 @@ export async function proposeTimeChange(payload) {
 }
 
 export async function getTimeChangeProposals() {
-  const res = await client.get('/api/children/time-change-proposals');
-  return res.data;
+  try {
+    const res = await client.get('/api/children/time-change-proposals');
+    return res.data;
+  } catch (err) {
+    // If the backend doesn't implement this route yet, treat as empty list
+    if (err && err.response && err.response.status === 404) return [];
+    throw err;
+  }
 }
 
 export async function respondTimeChange(proposalId, action) {
@@ -125,6 +220,29 @@ export async function respondTimeChange(proposalId, action) {
 export async function sharePost(postId) {
   const res = await client.post('/api/board/share', { postId });
   return res.data;
+}
+
+// Push notifications
+// Server should store the Expo push token and user preferences.
+export async function registerPushToken(payload) {
+  try {
+    const res = await client.post('/api/push/register', payload);
+    return res.data;
+  } catch (err) {
+    // Allow older backends to function without push support.
+    if (err && err.response && err.response.status === 404) return { ok: false, skipped: true };
+    throw err;
+  }
+}
+
+export async function unregisterPushToken(payload) {
+  try {
+    const res = await client.post('/api/push/unregister', payload);
+    return res.data;
+  } catch (err) {
+    if (err && err.response && err.response.status === 404) return { ok: false, skipped: true };
+    throw err;
+  }
 }
 
 // Backwards-compatible wrappers used by some components
@@ -158,6 +276,9 @@ export default {
   ackUrgentMemo,
   getMessages,
   sendMessage,
+  sharePost,
+  registerPushToken,
+  unregisterPushToken,
   // legacy
   sendMessageApi,
   createUrgentMemoApi,

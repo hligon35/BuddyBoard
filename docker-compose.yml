@@ -1,4 +1,4 @@
-version: '3.8'
+version: "3.8"
 services:
   BuddyBoardApp:
     build:
@@ -10,12 +10,86 @@ services:
     environment:
       - NODE_ENV=development
       - CHOKIDAR_USEPOLLING=true
+      - EXPO_DEVTOOLS_LISTEN_ADDRESS=0.0.0.0
+      # Pass through Expo public config for web/dev tooling if needed
+      - EXPO_PUBLIC_API_BASE_URL=${EXPO_PUBLIC_API_BASE_URL}
+      - EXPO_PUBLIC_GOOGLE_PLACES_API_KEY=${EXPO_PUBLIC_GOOGLE_PLACES_API_KEY}
     volumes:
-      - ./:/app:rw
-      - node_modules:/app/node_modules
-    command: npm start
+      - ./:/usr/src/app:rw
+      - node_modules:/usr/src/app/node_modules
+      # Keep built web assets out of the git working tree and persist them across container recreates
+      - web_dist:/usr/src/app/.web-dist
+    command: sh -c "npm install --no-audit --no-fund && if [ ! -f .web-dist/out/index.html ]; then CI=1 EXPO_NO_TELEMETRY=1 npx expo export -p web --output-dir .web-dist/out; fi && npx serve .web-dist/out -l tcp://0.0.0.0:3000"
     restart: on-failure
+
+  expo:
+    image: buddyboard-app:dev
+    working_dir: /usr/src/app
+    volumes:
+      - ./:/usr/src/app:rw
+      - node_modules:/usr/src/app/node_modules
+    ports:
+      - '19000:19000'
+      - '19001:19001'
+      - '19002:19002'
+      - '8081:8081'
+    environment:
+      - EXPO_DEVTOOLS_LISTEN_ADDRESS=0.0.0.0
+      # IMPORTANT: When using --tunnel on a physical device, set EXPO_PUBLIC_API_BASE_URL
+      # to a host reachable from the device (e.g. your LAN IP or a public URL).
+      - EXPO_PUBLIC_API_BASE_URL=${EXPO_PUBLIC_API_BASE_URL}
+      - EXPO_PUBLIC_GOOGLE_PLACES_API_KEY=${EXPO_PUBLIC_GOOGLE_PLACES_API_KEY}
+    command: sh -c "npm install --no-audit --no-fund && npm install --no-audit --no-fund @expo/ngrok --no-save && CI=1 npx expo start --tunnel"
+    restart: always
+
+  dev-clear:
+    image: node:18-alpine
+    working_dir: /usr/src/app
+    volumes:
+      - ./:/usr/src/app:rw
+      - node_modules:/usr/src/app/node_modules
+    ports:
+      - '4001:4001'
+    command: sh -c "npm install --no-audit --no-fund express body-parser --no-save && node ./scripts/dev-clear-server.js"
+    restart: unless-stopped
+
+  api:
+    image: buddyboard-app:dev
+    working_dir: /usr/src/app
+    volumes:
+      - ./:/usr/src/app:rw
+      - node_modules:/usr/src/app/node_modules
+      # Persist API DB/data on the host. Set BB_DATA_DIR to point at your 1TB drive mount.
+      - ${BB_DATA_DIR:-./.data}:/usr/src/app/.data
+    ports:
+      - '3005:3005'
+    environment:
+      - NODE_ENV=production
+      - PORT=3005
+      - BB_DB_PATH=/usr/src/app/.data/buddyboard.sqlite
+      - BB_PUBLIC_BASE_URL=${BB_PUBLIC_BASE_URL}
+      - BB_JWT_SECRET=${BB_JWT_SECRET}
+      - BB_ALLOW_SIGNUP=${BB_ALLOW_SIGNUP}
+      - BB_ALLOW_DEV_TOKEN=${BB_ALLOW_DEV_TOKEN}
+      - BB_ADMIN_EMAIL=${BB_ADMIN_EMAIL}
+      - BB_ADMIN_PASSWORD=${BB_ADMIN_PASSWORD}
+      - BB_ADMIN_NAME=${BB_ADMIN_NAME}
+    command: sh -c "npm install --no-audit --no-fund && node ./scripts/api-server.js"
+    restart: unless-stopped
+
+  api-mock:
+    image: node:18-alpine
+    working_dir: /usr/src/app
+    volumes:
+      - ./:/usr/src/app:rw
+      - node_modules:/usr/src/app/node_modules
+    ports:
+      - '3005:3005'
+    command: sh -c "npm install --no-audit --no-fund express body-parser cors --no-save && node ./scripts/api-mock.js"
+    restart: unless-stopped
 
 volumes:
   node_modules:
     name: buddyboard_node_modules
+  web_dist:
+    name: buddyboard_web_dist

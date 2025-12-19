@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Api from './Api';
+import { setDebugContext, logger } from './utils/logger';
 
 const TOKEN_KEY = 'auth_token';
 
@@ -35,6 +36,18 @@ export function AuthProvider({ children }) {
     return () => { mounted = false; };
   }, []);
 
+  useEffect(() => {
+    try {
+      setDebugContext({
+        userId: user?.id,
+        role: user?.role,
+        hasToken: !!token,
+      });
+    } catch (e) {
+      // ignore
+    }
+  }, [user, token]);
+
   // Dev auto-login for local testing (non-persistent)
   useEffect(() => {
     if (__DEV__ && !loading && !token) {
@@ -42,7 +55,7 @@ export function AuthProvider({ children }) {
       setToken(devToken);
       Api.setAuthToken(devToken);
       setUser({ id: 'dev', name: 'Developer', email: 'dev@example.com', role: 'ADMIN' });
-      console.log('AuthContext: dev auto-login enabled');
+      logger.info('auth', 'Dev auto-login enabled');
     }
   }, [loading]);
 
@@ -77,8 +90,29 @@ export function AuthProvider({ children }) {
     setUser(next);
   }
 
+  // Dev helper to programmatically set auth (only exposed in dev builds)
+  async function devSetAuth({ token: t, user: u }) {
+    if (!__DEV__) return;
+    try {
+      if (t) {
+        await AsyncStorage.setItem(TOKEN_KEY, t);
+        setToken(t);
+        Api.setAuthToken(t);
+      }
+      if (u) {
+        await AsyncStorage.setItem('auth_user', JSON.stringify(u));
+        setUser(u);
+      }
+    } catch (e) {
+      console.warn('devSetAuth failed', e);
+    }
+  }
+
+  const value = { token, user, loading, login, logout, setRole };
+  if (__DEV__) value.devSetAuth = devSetAuth;
+
   return (
-    <AuthContext.Provider value={{ token, user, loading, login, logout, setRole }}>
+    <AuthContext.Provider value={value}>
       {children}
     </AuthContext.Provider>
   );

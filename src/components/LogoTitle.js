@@ -1,10 +1,10 @@
 import React from 'react';
 import { View, Text, StyleSheet, Image } from 'react-native';
 
-export default function LogoTitle() {
+export default function LogoTitle({ width = 120, height = 36, style }) {
   return (
     <View style={styles.wrap}>
-      <Image source={require('../../assets/TitleLogo.png')} style={{ width: 120, height: 36, resizeMode: 'contain' }} />
+      <Image source={require('../../assets/TitleLogo.png')} style={[{ width, height, resizeMode: 'contain' }, style]} />
     </View>
   );
 }

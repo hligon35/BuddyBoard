@@ -4,6 +4,7 @@ import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Ionicons } from '@expo/vector-icons';
 import * as Api from '../Api';
+import { logPress } from '../utils/logger';
 
 function detectFirstUrl(text) {
   const re = /(https?:\/\/[^\s]+)/i;
@@ -37,7 +38,7 @@ export default function PostCard({ post, onLike, onComment, onShare, onAvatarPre
   return (
     <View style={pcStyles.card}>
       <View style={pcStyles.header}>
-        <TouchableOpacity onPress={() => onAvatarPress && onAvatarPress(post.author)}>
+        <TouchableOpacity onPress={() => { logPress('PostCard:Avatar', { postId: post?.id, authorId: post?.author?.id }); onAvatarPress && onAvatarPress(post.author); }}>
           <Image source={{ uri: post.author?.avatar || 'https://i.pravatar.cc/100' }} style={pcStyles.avatar} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
@@ -60,7 +61,7 @@ export default function PostCard({ post, onLike, onComment, onShare, onAvatarPre
 
       <View style={pcStyles.actions}>
         <Pressable
-          onPress={() => onLike && onLike(post)}
+          onPress={() => { logPress('PostCard:Like', { postId: post?.id }); onLike && onLike(post); }}
           android_ripple={{ color: '#e6eef6' }}
           style={({ pressed }) => [pcStyles.actionBtn, pressed && pcStyles.actionBtnPressed]}
         >
@@ -68,7 +69,7 @@ export default function PostCard({ post, onLike, onComment, onShare, onAvatarPre
           <Text style={pcStyles.actionText}> {post.likes || 0}</Text>
         </Pressable>
         <Pressable
-          onPress={() => onComment && onComment(post)}
+          onPress={() => { logPress('PostCard:Comment', { postId: post?.id }); onComment && onComment(post); }}
           android_ripple={{ color: '#e6eef6' }}
           style={({ pressed }) => [pcStyles.actionBtn, pressed && pcStyles.actionBtnPressed]}
         >

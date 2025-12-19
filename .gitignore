@@ -1,4 +1,29 @@
 node_modules
 /.expo
+
+# Local database / server data
+/.data
+*.sqlite
+
+# Expo prebuild outputs (recommended: keep generated native projects out of git)
+/android
+/ios
+
+# Local env files (never commit)
+.env
+.env.*
+
+# Signing keys / certs (never commit)
+*.key
+*.p8
+*.pem
+*.cer
+*.crt
+*.mobileprovision
+*.keystore
+*.jks
+
+# Store/CI credential artifacts (generated locally or in CI)
 google-play-service-account.json
+appstore_connect.json
 

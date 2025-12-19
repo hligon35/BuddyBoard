@@ -1,12 +1,15 @@
 import React, { useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, StyleSheet, Animated } from 'react-native';
+import { View, Text, TouchableOpacity, StyleSheet, Animated, Platform } from 'react-native';
 import { MaterialCommunityIcons } from '@expo/vector-icons';
 import { MaterialIcons } from '@expo/vector-icons';
 import { Ionicons } from '@expo/vector-icons';
 import { useAuth } from '../AuthContext';
 import { useData } from '../DataContext';
+import { logPress } from '../utils/logger';
 
 export default function BottomNav({ navigationRef, currentRoute }) {
+  // don't show mobile bottom nav on web
+  if (Platform.OS === 'web') return null;
   const { user } = useAuth();
   const { urgentMemos = [] } = useData();
   const role = (user && user.role) ? (user.role || '').toString().toLowerCase() : 'parent';
@@ -28,6 +31,7 @@ export default function BottomNav({ navigationRef, currentRoute }) {
   }
   tabs.push({ key: 'Settings', label: 'Settings', icon: (active) => (<Ionicons name={active ? 'settings' : 'settings-outline'} size={22} color={active ? '#0066FF' : '#444'} />) });
   function go(name) {
+    logPress('BottomNav:tab', { to: name, from: currentRoute });
     if (navigationRef && navigationRef.current && navigationRef.current.navigate) {
       navigationRef.current.navigate(name);
     }

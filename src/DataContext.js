@@ -1,5 +1,5 @@
 import React, { createContext, useContext, useEffect, useState } from 'react';
-import { InteractionManager } from 'react-native';
+import { InteractionManager, NativeModules } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Api from './Api';
 import { Share } from 'react-native';
@@ -94,7 +94,7 @@ const THERAPISTS_KEY = 'bbs_therapists_v1';
 // Directory seed data is provided from `src/seed/directorySeed.js` (imported above)
 
 export function DataProvider({ children: reactChildren }) {
-  const { user } = useAuth();
+  const { user, loading } = useAuth();
   const [posts, setPosts] = useState([]);
   const [messages, setMessages] = useState([]);
   const [urgentMemos, setUrgentMemos] = useState([]);
@@ -177,16 +177,8 @@ export function DataProvider({ children: reactChildren }) {
       } catch (e) {
         console.warn('hydrate failed', e.message);
       }
-      // Defer the network / sync work until after initial interactions/render
-      try {
-        InteractionManager.runAfterInteractions(() => {
-          console.log('DataProvider: running fetchAndSync after interactions', new Date().toISOString());
-          fetchAndSync().catch((e) => console.warn('fetchAndSync deferred failed', e?.message || e));
-        });
-      } catch (e) {
-        // fallback to immediate call
-        await fetchAndSync();
-      }
+      // NOTE: network sync will be triggered by a separate effect
+      // after auth finishes loading to ensure requests include auth token.
     })();
     return () => { mounted = false; };
   }, [user]);
@@ -260,11 +252,52 @@ export function DataProvider({ children: reactChildren }) {
     return () => { mounted = false; unsub(); };
   }, []);
 
+  // Dev: poll a dev-clear server running on the packager host to trigger clearing persisted data
+  useEffect(() => {
+    if (!__DEV__) return undefined;
+    let mounted = true;
+    const port = process.env.DEV_CLEAR_PORT || 4001;
+    // derive packager host from scriptURL
+    let host = 'localhost';
+    try {
+      const scriptURL = NativeModules?.SourceCode?.scriptURL || '';
+      const m = scriptURL.match(/https?:\/\/([^:\/]+)/);
+      if (m && m[1]) host = m[1];
+    } catch (e) {}
+
+    const base = `http://${host}:${port}`;
+    const iv = setInterval(async () => {
+      try {
+        const res = await fetch(`${base}/clear-status`);
+        if (!res.ok) return;
+        const json = await res.json();
+        if (json && json.clear) {
+          await clearAllData();
+          await fetch(`${base}/ack`, { method: 'POST' }).catch(() => {});
+        }
+      } catch (e) {
+        // ignore
+      }
+    }, 3000);
+    return () => { mounted = false; clearInterval(iv); };
+  }, []);
+
   async function fetchAndSync() {
     
     try {
       const remotePosts = await Api.getPosts();
-      if (Array.isArray(remotePosts)) setPosts(remotePosts);
+      if (Array.isArray(remotePosts)) {
+        const norm = remotePosts.map((p) => {
+          const out = { ...(p || {}) };
+          if (out.text && !out.body) out.body = out.text;
+          if (out.author && typeof out.author === 'string') out.author = { id: null, name: out.author, avatar: null };
+          if (!Array.isArray(out.comments)) out.comments = [];
+          if (typeof out.likes !== 'number') out.likes = Number(out.likes) || 0;
+          if (!out.createdAt) out.createdAt = new Date().toISOString();
+          return out;
+        });
+        setPosts(norm);
+      }
     } catch (e) { console.warn('getPosts failed', e.message); }
     try {
       const remoteMessages = await Api.getMessages();
@@ -277,14 +310,42 @@ export function DataProvider({ children: reactChildren }) {
     try {
       const proposals = await Api.getTimeChangeProposals();
       setTimeChangeProposals(Array.isArray(proposals) ? proposals : (proposals?.proposals || []));
-    } catch (e) { console.warn('getUrgentMemos failed', e.message); }
+    } catch (e) { console.warn('getTimeChangeProposals failed', e.message); }
   }
+
+  // Trigger network fetch once auth has finished loading so API calls include auth token
+  useEffect(() => {
+    let mounted = true;
+    if (loading) return () => { mounted = false; };
+    try {
+      InteractionManager.runAfterInteractions(() => {
+        if (!mounted) return;
+        console.log('DataProvider: running fetchAndSync after auth ready', new Date().toISOString());
+        fetchAndSync().catch((e) => console.warn('fetchAndSync after auth failed', e?.message || e));
+      });
+    } catch (e) {
+      // fallback
+      fetchAndSync().catch(() => {});
+    }
+    return () => { mounted = false; };
+  }, [loading, user]);
 
   async function createPost(payload) {
     const temp = { ...payload, id: `temp-${Date.now()}`, createdAt: new Date().toISOString(), pending: true };
     setPosts((s) => [temp, ...s]);
     try {
       const created = await Api.createPost(payload);
+      // normalize backend field names (mock may return `text`)
+      if (created && created.text && !created.body) created.body = created.text;
+      // normalize author shape: mock may return a string
+      if (created && created.author && typeof created.author === 'string') {
+        created.author = { id: null, name: created.author, avatar: null };
+      }
+      // ensure arrays and fields exist
+      if (created && !Array.isArray(created.comments)) created.comments = [];
+      if (created && typeof created.likes !== 'number') created.likes = Number(created.likes) || 0;
+      if (created && !created.createdAt) created.createdAt = new Date().toISOString();
+      console.log('DataProvider: created post from API', created && created.id, created && (created.body || created.text || created.title));
       setPosts((s) => [created, ...s.filter((p) => p.id !== temp.id)]);
       return created;
     } catch (e) {
@@ -688,6 +749,23 @@ export function DataProvider({ children: reactChildren }) {
     }
   }
 
+  async function clearAllData() {
+    try {
+      const keys = [POSTS_KEY, MESSAGES_KEY, MEMOS_KEY, ARCHIVED_KEY, CHILDREN_KEY, PARENTS_KEY, THERAPISTS_KEY, BLOCKED_KEY];
+      await AsyncStorage.multiRemove(keys);
+      setPosts([]);
+      setMessages([]);
+      setArchivedThreads([]);
+      setUrgentMemos([]);
+      setChildren([]);
+      setParents([]);
+      setTherapists([]);
+      setBlockedUserIds([]);
+    } catch (e) {
+      console.warn('clearAllData failed', e?.message || e);
+    }
+  }
+
   function blockUser(userId) {
     try {
       if (!userId) return;
@@ -719,6 +797,13 @@ export function DataProvider({ children: reactChildren }) {
     } catch (e) {
       console.warn('unblockUser failed', e?.message || e);
     }
+  }
+
+  // Expose a dev-only helper for clearing all persisted app data
+  if (__DEV__) {
+    try {
+      global.clearBuddyBoardData = clearAllData;
+    } catch (e) {}
   }
 
   return (
@@ -757,6 +842,7 @@ export function DataProvider({ children: reactChildren }) {
       blockedUserIds,
       blockUser,
       unblockUser,
+      clearAllData,
       // time change proposals
       timeChangeProposals,
       proposeTimeChange,

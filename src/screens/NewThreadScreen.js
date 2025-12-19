@@ -1,0 +1,225 @@
+import React, { useMemo, useState } from 'react';
+import { View, Text, TouchableOpacity } from 'react-native';
+import { MaterialIcons } from '@expo/vector-icons';
+import { ScreenWrapper, CenteredContainer } from '../components/ScreenWrapper';
+import { useAuth } from '../AuthContext';
+import { useData } from '../DataContext';
+import { logPress } from '../utils/logger';
+
+function normalizeName(s) {
+  return (s || '').toString().trim();
+}
+
+function fullNameFromParent(p) {
+  const n = normalizeName(p?.name);
+  if (n) return n;
+  return normalizeName(`${p?.firstName || ''} ${p?.lastName || ''}`);
+}
+
+function sameName(a, b) {
+  if (!a || !b) return false;
+  return normalizeName(a).toLowerCase() === normalizeName(b).toLowerCase();
+}
+
+function RoleSection({ title, items, selectedId, onPick }) {
+  if (!items || items.length === 0) return null;
+
+  return (
+    <View style={{ marginTop: 16 }}>
+      <Text style={{ fontSize: 13, fontWeight: '700', color: '#6b7280', marginBottom: 8 }}>{title}</Text>
+      <View style={{ borderWidth: 1, borderColor: '#eef2f7', borderRadius: 12, overflow: 'hidden' }}>
+        {items.map((u, idx) => {
+          const selected = selectedId === u.id;
+          const top = idx === 0;
+          return (
+            <TouchableOpacity
+              key={u.id}
+              onPress={() => onPick(u)}
+              style={{
+                paddingVertical: 12,
+                paddingHorizontal: 12,
+                flexDirection: 'row',
+                alignItems: 'center',
+                borderTopWidth: top ? 0 : 1,
+                borderTopColor: '#eef2f7',
+                backgroundColor: selected ? '#eff6ff' : '#fff',
+              }}
+              accessibilityLabel={`Select ${u.name}`}
+            >
+              <View style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#f3f4f6', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                <Text style={{ fontWeight: '800', color: '#111827' }}>{(u.name || '?').slice(0, 1).toUpperCase()}</Text>
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ fontWeight: '800', color: '#111827' }}>{u.name}</Text>
+                {u.subtitle ? <Text style={{ color: '#6b7280', marginTop: 2 }}>{u.subtitle}</Text> : null}
+              </View>
+              <MaterialIcons name={selected ? 'radio-button-checked' : 'radio-button-unchecked'} size={22} color={selected ? '#2563eb' : '#9ca3af'} />
+            </TouchableOpacity>
+          );
+        })}
+      </View>
+    </View>
+  );
+}
+
+export default function NewThreadScreen({ navigation }) {
+  const { user } = useAuth();
+  const { parents = [], therapists = [], children = [] } = useData();
+  const [selected, setSelected] = useState(null);
+
+  const role = (user?.role || '').toString().toLowerCase();
+  const isAdmin = role === 'admin' || role === 'administrator' || role === 'admin';
+  const isTherapist = role === 'therapist';
+  const isParent = role === 'parent';
+
+  const { admins, connectedTherapists, connectedParents, note } = useMemo(() => {
+    const adminContacts = [{ id: 'admin-1', name: 'Office Admin', subtitle: 'Admin' }];
+
+    const normalizedTherapists = (therapists || [])
+      .map((t) => ({ id: t.id, name: normalizeName(t.name), subtitle: normalizeName(t.role) || 'Therapist' }))
+      .filter((t) => t.id && t.name);
+
+    const normalizedParents = (parents || [])
+      .map((p) => ({ id: p.id, name: fullNameFromParent(p), subtitle: 'Parent', familyId: p.familyId }))
+      .filter((p) => p.id && p.name);
+
+    // ADMIN can message everyone.
+    if (isAdmin) {
+      return {
+        admins: adminContacts.filter((a) => a.id !== user?.id),
+        connectedTherapists: normalizedTherapists,
+        connectedParents: normalizedParents,
+        note: null,
+      };
+    }
+
+    // Parent connections: family parents + child therapists.
+    if (isParent) {
+      const me = normalizedParents.find((p) => p.id === user?.id) || normalizedParents.find((p) => sameName(p.name, user?.name));
+      if (!me) {
+        return {
+          admins: adminContacts,
+          connectedTherapists: normalizedTherapists,
+          connectedParents: normalizedParents,
+          note: 'Your account is not linked to a parent record yet; showing all contacts.',
+        };
+      }
+
+      const myChildren = (children || []).filter((c) => (c.parents || []).some((pp) => pp?.id === me.id));
+      const therapistIds = new Set();
+      myChildren.forEach((c) => {
+        const candidates = [c.amTherapist, c.pmTherapist, c.bcaTherapist];
+        candidates.forEach((t) => {
+          if (t?.id) therapistIds.add(t.id);
+        });
+        const assigned = c.assignedABA || c.assigned_ABA || [];
+        (assigned || []).forEach((tid) => therapistIds.add(tid));
+      });
+
+      const familyParents = normalizedParents
+        .filter((p) => p.familyId && p.familyId === me.familyId)
+        .filter((p) => p.id !== me.id);
+
+      const myTherapists = normalizedTherapists.filter((t) => therapistIds.has(t.id));
+
+      return {
+        admins: adminContacts,
+        connectedTherapists: myTherapists,
+        connectedParents: familyParents,
+        note: null,
+      };
+    }
+
+    // Therapist connections: parents of assigned children + therapist supervisor/team.
+    if (isTherapist) {
+      const me = normalizedTherapists.find((t) => t.id === user?.id) || normalizedTherapists.find((t) => sameName(t.name, user?.name));
+      if (!me) {
+        return {
+          admins: adminContacts,
+          connectedTherapists: normalizedTherapists,
+          connectedParents: normalizedParents,
+          note: 'Your account is not linked to a therapist record yet; showing all contacts.',
+        };
+      }
+
+      const assignedChildren = (children || []).filter((c) => {
+        const assigned = c.assignedABA || c.assigned_ABA || [];
+        const direct = (assigned || []).includes(me.id);
+        const attached = [c.amTherapist?.id, c.pmTherapist?.id, c.bcaTherapist?.id].filter(Boolean);
+        const indirect = attached.includes(me.id);
+        return direct || indirect;
+      });
+
+      const parentIds = new Set();
+      assignedChildren.forEach((c) => (c.parents || []).forEach((p) => { if (p?.id) parentIds.add(p.id); }));
+      const myParents = normalizedParents.filter((p) => parentIds.has(p.id));
+
+      // Build therapist connections: if ABA -> include supervisor BCBA; if BCBA -> include ABAs supervised by them.
+      const rawMe = (therapists || []).find((t) => t.id === me.id);
+      const therapistIdSet = new Set();
+      if (rawMe?.supervisedBy) therapistIdSet.add(rawMe.supervisedBy);
+      (therapists || []).forEach((t) => {
+        if (t?.supervisedBy && t.supervisedBy === rawMe?.id) therapistIdSet.add(t.id);
+      });
+
+      const myTeam = normalizedTherapists
+        .filter((t) => therapistIdSet.has(t.id))
+        .filter((t) => t.id !== me.id);
+
+      return {
+        admins: adminContacts,
+        connectedTherapists: myTeam,
+        connectedParents: myParents,
+        note: null,
+      };
+    }
+
+    // Fallback: show everyone
+    return {
+      admins: adminContacts,
+      connectedTherapists: normalizedTherapists,
+      connectedParents: normalizedParents,
+      note: null,
+    };
+  }, [parents, therapists, children, isAdmin, isParent, isTherapist, user?.id, user?.name]);
+
+  const pick = (u) => {
+    logPress('NewThread:PickRecipient', { id: u.id, name: u.name });
+    setSelected(u);
+  };
+
+  const start = () => {
+    if (!selected) return;
+    const threadId = `t-${Date.now()}`;
+    logPress('NewThread:Start', { threadId, to: selected.id });
+    navigation.navigate('ChatThread', { threadId, isNew: true, to: [{ id: selected.id, name: selected.name }] });
+  };
+
+  return (
+    <ScreenWrapper bannerTitle="New Message" bannerShowBack>
+      <CenteredContainer>
+        <Text style={{ fontSize: 16, fontWeight: '800', color: '#111827' }}>Choose who to message</Text>
+        {note ? <Text style={{ marginTop: 8, color: '#6b7280' }}>{note}</Text> : null}
+
+        <RoleSection title="Admin" items={admins} selectedId={selected?.id} onPick={pick} />
+        <RoleSection title="Therapists" items={connectedTherapists} selectedId={selected?.id} onPick={pick} />
+        <RoleSection title="Parents" items={connectedParents} selectedId={selected?.id} onPick={pick} />
+
+        <TouchableOpacity
+          onPress={start}
+          disabled={!selected}
+          style={{
+            marginTop: 18,
+            paddingVertical: 12,
+            borderRadius: 10,
+            alignItems: 'center',
+            backgroundColor: selected ? '#2563eb' : '#9ca3af',
+          }}
+          accessibilityLabel="Start new message"
+        >
+          <Text style={{ color: '#fff', fontWeight: '800' }}>{selected ? `Message ${selected.name}` : 'Select a recipient'}</Text>
+        </TouchableOpacity>
+      </CenteredContainer>
+    </ScreenWrapper>
+  );
+}

@@ -7,6 +7,7 @@ import { useAuth } from '../AuthContext';
 
 const ARRIVAL_KEY = 'settings_arrival_enabled_v1';
 const BUSINESS_ADDR_KEY = 'business_address_v1';
+const ORG_ARRIVAL_KEY = 'settings_arrival_org_enabled_v1';
 
 // Default window (minutes) to check around scheduled times
 const DEFAULT_WINDOW_MIN = 30; // start 30 minutes before
@@ -23,46 +24,76 @@ function isWithinWindow(targetDate, now = new Date(), before = DEFAULT_WINDOW_MI
   return now >= start && now <= end;
 }
 
+function toRadians(deg) {
+  return (deg * Math.PI) / 180;
+}
+
+function haversineMiles(a, b) {
+  // a,b: { lat, lng }
+  if (!a || !b) return null;
+  if (!Number.isFinite(a.lat) || !Number.isFinite(a.lng) || !Number.isFinite(b.lat) || !Number.isFinite(b.lng)) return null;
+  const R = 3958.7613; // Earth radius in miles
+  const dLat = toRadians(b.lat - a.lat);
+  const dLng = toRadians(b.lng - a.lng);
+  const lat1 = toRadians(a.lat);
+  const lat2 = toRadians(b.lat);
+  const sinDLat = Math.sin(dLat / 2);
+  const sinDLng = Math.sin(dLng / 2);
+  const aa = sinDLat * sinDLat + Math.cos(lat1) * Math.cos(lat2) * sinDLng * sinDLng;
+  const c = 2 * Math.atan2(Math.sqrt(aa), Math.sqrt(1 - aa));
+  return R * c;
+}
+
 export default function useArrivalDetector() {
   const { children, fetchAndSync } = useData();
   const { user } = useAuth();
   const intervalRef = useRef(null);
   const appState = useRef(AppState.currentState);
   const [enabled, setEnabled] = useState(false);
+  const [orgEnabled, setOrgEnabled] = useState(true);
   const [business, setBusiness] = useState(null);
 
   useEffect(() => {
     let mounted = true;
-    (async () => {
+    async function refreshFromStorage() {
       try {
         const a = await AsyncStorage.getItem(ARRIVAL_KEY);
+        const o = await AsyncStorage.getItem(ORG_ARRIVAL_KEY);
+        const bRaw = await AsyncStorage.getItem(BUSINESS_ADDR_KEY);
         if (!mounted) return;
         setEnabled(a === '1');
-        const bRaw = await AsyncStorage.getItem(BUSINESS_ADDR_KEY);
+        // default to enabled when not set
+        setOrgEnabled(o !== '0');
         if (bRaw) setBusiness(JSON.parse(bRaw));
       } catch (e) {
         // ignore
       }
-    })();
+    }
 
-    const sub = AppState.addEventListener ? AppState.addEventListener('change', _handleAppState) : null;
+    refreshFromStorage();
+
+    const sub = AppState.addEventListener ? AppState.addEventListener('change', (next) => _handleAppState(next, refreshFromStorage)) : null;
     return () => { mounted = false; if (sub && sub.remove) sub.remove(); };
   }, []);
 
   useEffect(() => {
-    if (!enabled) {
+    const effectiveEnabled = enabled && orgEnabled;
+    if (!effectiveEnabled) {
       _stopInterval();
       return;
     }
     // start checking periodically when enabled
     _evaluateAndSchedule();
     return () => { _stopInterval(); };
-  }, [enabled, children, user, business]);
+  }, [enabled, orgEnabled, children, user, business]);
 
-  function _handleAppState(next) {
+  function _handleAppState(next, refreshFromStorage) {
     appState.current = next;
     // If app becomes active, evaluate windows immediately
-    if (next === 'active') _evaluateAndSchedule();
+    if (next === 'active') {
+      try { if (typeof refreshFromStorage === 'function') refreshFromStorage(); } catch (e) {}
+      _evaluateAndSchedule();
+    }
   }
 
   function _stopInterval() {
@@ -87,8 +118,25 @@ export default function useArrivalDetector() {
     try { await Api.pingArrival(payload); } catch (e) { console.warn('arrival ping failed', e?.message || e); }
   }
 
+  function _getDropZoneConfig() {
+    const lat = Number(business?.lat);
+    const lng = Number(business?.lng);
+    const miles = Number(business?.dropZoneMiles);
+    const hasLocation = Number.isFinite(lat) && Number.isFinite(lng);
+    const hasMiles = Number.isFinite(miles) && miles > 0;
+    return {
+      hasConfig: hasLocation && hasMiles,
+      org: hasLocation ? { lat, lng } : null,
+      dropZoneMiles: hasMiles ? miles : null,
+    };
+  }
+
   async function _evaluateAndSchedule() {
     try {
+      if (!enabled || !orgEnabled) {
+        _stopInterval();
+        return;
+      }
       // find schedule windows for this user
       const now = new Date();
       let shouldPoll = false;
@@ -108,7 +156,23 @@ export default function useArrivalDetector() {
               // send immediate ping once and continue polling
               _getLocation().then((loc) => {
                 if (!loc) return;
-                _ping({ lat: loc.lat, lng: loc.lng, userId: user.id, role, childId: ch.id, eventId: ev.id, when: t.toISOString() });
+                const dz = _getDropZoneConfig();
+                const dist = dz.hasConfig ? haversineMiles({ lat: loc.lat, lng: loc.lng }, dz.org) : null;
+                const within = dz.hasConfig ? (dist !== null && dist <= dz.dropZoneMiles) : true;
+                if (!within) return;
+                _ping({
+                  lat: loc.lat,
+                  lng: loc.lng,
+                  userId: user.id,
+                  role,
+                  childId: ch.id,
+                  eventId: ev.id,
+                  when: t.toISOString(),
+                  orgLat: dz.org?.lat,
+                  orgLng: dz.org?.lng,
+                  dropZoneMiles: dz.dropZoneMiles,
+                  distanceMiles: dist,
+                });
               }).catch(() => {});
             }
           }
@@ -127,7 +191,22 @@ export default function useArrivalDetector() {
               shouldPoll = true;
               _getLocation().then((loc) => {
                 if (!loc) return;
-                _ping({ lat: loc.lat, lng: loc.lng, userId: user.id, role, shiftId: s.id, when: now.toISOString() });
+                const dz = _getDropZoneConfig();
+                const dist = dz.hasConfig ? haversineMiles({ lat: loc.lat, lng: loc.lng }, dz.org) : null;
+                const within = dz.hasConfig ? (dist !== null && dist <= dz.dropZoneMiles) : true;
+                if (!within) return;
+                _ping({
+                  lat: loc.lat,
+                  lng: loc.lng,
+                  userId: user.id,
+                  role,
+                  shiftId: s.id,
+                  when: now.toISOString(),
+                  orgLat: dz.org?.lat,
+                  orgLng: dz.org?.lng,
+                  dropZoneMiles: dz.dropZoneMiles,
+                  distanceMiles: dist,
+                });
               }).catch(() => {});
             }
           }
@@ -141,7 +220,21 @@ export default function useArrivalDetector() {
             if (appState.current !== 'active') return; // only when active
             const loc = await _getLocation();
             if (!loc) return;
-            await _ping({ lat: loc.lat, lng: loc.lng, userId: user.id, role, when: new Date().toISOString() });
+            const dz = _getDropZoneConfig();
+            const dist = dz.hasConfig ? haversineMiles({ lat: loc.lat, lng: loc.lng }, dz.org) : null;
+            const within = dz.hasConfig ? (dist !== null && dist <= dz.dropZoneMiles) : true;
+            if (!within) return;
+            await _ping({
+              lat: loc.lat,
+              lng: loc.lng,
+              userId: user.id,
+              role,
+              when: new Date().toISOString(),
+              orgLat: dz.org?.lat,
+              orgLng: dz.org?.lng,
+              dropZoneMiles: dz.dropZoneMiles,
+              distanceMiles: dist,
+            });
           }, 60 * 1000);
         }
       } else {

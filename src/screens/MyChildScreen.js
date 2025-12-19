@@ -43,6 +43,14 @@ export default function MyChildScreen() {
   const [timeAlertType, setTimeAlertType] = useState('pickup');
   const [timeAlertDate, setTimeAlertDate] = useState(new Date());
 
+  function clamp(n, min, max) {
+    return Math.max(min, Math.min(max, n));
+  }
+
+  const moodScore = clamp(Number(child?.moodScore ?? child?.mood ?? 10) || 10, 1, 15);
+  const moodPct = ((moodScore - 1) / 14) * 100;
+  const moodColor = moodScore <= 4 ? '#ef4444' : moodScore <= 8 ? '#F59E0B' : moodScore <= 12 ? '#FBBF24' : '#10B981';
+
   async function submitProposal(offsetMillis) {
     try {
       let proposedISO;
@@ -114,6 +122,25 @@ export default function MyChildScreen() {
         </View>
       </View>
 
+      <View style={styles.halfRow}>
+        <View style={[styles.section, styles.halfTile, styles.needsTile]}>
+          <Text style={styles.sectionTitle}>Your child needs...</Text>
+          <Text style={styles.sectionText}>{child.notes || 'No notes available.'}</Text>
+        </View>
+
+        <View style={[styles.section, styles.halfTile, styles.moodTile]}>
+          <Text style={styles.sectionTitle}>Mood</Text>
+          <Text style={[styles.sectionText, { marginBottom: 8 }]}>Score: {moodScore} / 15</Text>
+          <View style={styles.moodMeterOuter}>
+            <View style={[styles.moodMeterFill, { width: `${moodPct}%`, backgroundColor: moodColor }]} />
+          </View>
+          <View style={styles.moodMeterLabels}>
+            <Text style={styles.moodLabel}>1 (bad)</Text>
+            <Text style={styles.moodLabel}>15 (awesome)</Text>
+          </View>
+        </View>
+      </View>
+
       {/* Propose modal */}
       {showProposeModal && (
         <Modal transparent visible animationType="fade">
@@ -167,49 +194,114 @@ export default function MyChildScreen() {
         </Modal>
       )}
 
-      <View style={[styles.section, { marginTop: 12 }]}> 
-        <Text style={styles.sectionTitle}>Schedule</Text>
-        <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
-          {/* Drop-off container */}
-          <TouchableOpacity onPress={() => { setTimeAlertType('dropoff'); setTimeAlertDate(new Date(child.dropoffTimeISO || Date.now())); setShowTimeAlertModal(true); }} style={styles.scheduleTile}>
-            <Text style={styles.scheduleLabel}>Drop-off</Text>
-            <View style={styles.scheduleDivider} />
-            <Text style={styles.scheduleTime}>{formatISO(child.dropoffTimeISO)}</Text>
-            {/* status indicator */}
-            {(() => {
-              const memo = (urgentMemos || []).find((m) => m.childId === child.id && m.type === 'time_update' && m.updateType === 'dropoff');
-              if (!memo) return null;
-              const color = memo.status === 'accepted' ? '#10B981' : memo.status === 'denied' ? '#ef4444' : '#F59E0B';
-              return <View style={[styles.statusDot, { backgroundColor: color }]} />;
-            })()}
-            {(() => {
-              const memo = (urgentMemos || []).find((m) => m.childId === child.id && m.type === 'time_update' && m.updateType === 'dropoff');
-              if (memo && memo.status === 'denied') {
-                return <Text style={styles.callBanner}>Please call</Text>;
-              }
-              return null;
-            })()}
-          </TouchableOpacity>
+      <View style={styles.scheduleWrap}>
+        <Text style={styles.scheduleGroupTitle}>Schedule</Text>
 
-          {/* Pick-up container */}
-          <TouchableOpacity onPress={() => { setTimeAlertType('pickup'); setTimeAlertDate(new Date(child.pickupTimeISO || Date.now())); setShowTimeAlertModal(true); }} style={styles.scheduleTile}>
-            <Text style={styles.scheduleLabel}>Pick-up</Text>
-            <View style={styles.scheduleDivider} />
-            <Text style={styles.scheduleTime}>{formatISO(child.pickupTimeISO)}</Text>
-            {(() => {
-              const memo = (urgentMemos || []).find((m) => m.childId === child.id && m.type === 'time_update' && m.updateType === 'pickup');
-              if (!memo) return null;
-              const color = memo.status === 'accepted' ? '#10B981' : memo.status === 'denied' ? '#ef4444' : '#F59E0B';
-              return <View style={[styles.statusDot, { backgroundColor: color }]} />;
-            })()}
-            {(() => {
-              const memo = (urgentMemos || []).find((m) => m.childId === child.id && m.type === 'time_update' && m.updateType === 'pickup');
-              if (memo && memo.status === 'denied') {
-                return <Text style={styles.callBanner}>Please call</Text>;
-              }
-              return null;
-            })()}
-          </TouchableOpacity>
+        <View style={[styles.section, { marginTop: 8 }]}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
+            {/* Drop-off container */}
+            <TouchableOpacity onPress={() => { setTimeAlertType('dropoff'); setTimeAlertDate(new Date(child.dropoffTimeISO || Date.now())); setShowTimeAlertModal(true); }} style={styles.scheduleTile}>
+              <Text style={styles.scheduleLabel}>Drop-off</Text>
+              <View style={styles.scheduleDivider} />
+              <Text style={styles.scheduleTime}>{formatISO(child.dropoffTimeISO)}</Text>
+              {/* status indicator */}
+              {(() => {
+                const memo = (urgentMemos || []).find((m) => m.childId === child.id && m.type === 'time_update' && m.updateType === 'dropoff');
+                if (!memo) return null;
+                const color = memo.status === 'accepted' ? '#10B981' : memo.status === 'denied' ? '#ef4444' : '#F59E0B';
+                return <View style={[styles.statusDot, { backgroundColor: color }]} />;
+              })()}
+              {(() => {
+                const memo = (urgentMemos || []).find((m) => m.childId === child.id && m.type === 'time_update' && m.updateType === 'dropoff');
+                if (memo && memo.status === 'denied') {
+                  return <Text style={styles.callBanner}>Please call</Text>;
+                }
+                return null;
+              })()}
+            </TouchableOpacity>
+
+            {/* Pick-up container */}
+            <TouchableOpacity onPress={() => { setTimeAlertType('pickup'); setTimeAlertDate(new Date(child.pickupTimeISO || Date.now())); setShowTimeAlertModal(true); }} style={styles.scheduleTile}>
+              <Text style={styles.scheduleLabel}>Pick-up</Text>
+              <View style={styles.scheduleDivider} />
+              <Text style={styles.scheduleTime}>{formatISO(child.pickupTimeISO)}</Text>
+              {(() => {
+                const memo = (urgentMemos || []).find((m) => m.childId === child.id && m.type === 'time_update' && m.updateType === 'pickup');
+                if (!memo) return null;
+                const color = memo.status === 'accepted' ? '#10B981' : memo.status === 'denied' ? '#ef4444' : '#F59E0B';
+                return <View style={[styles.statusDot, { backgroundColor: color }]} />;
+              })()}
+              {(() => {
+                const memo = (urgentMemos || []).find((m) => m.childId === child.id && m.type === 'time_update' && m.updateType === 'pickup');
+                if (memo && memo.status === 'denied') {
+                  return <Text style={styles.callBanner}>Please call</Text>;
+                }
+                return null;
+              })()}
+            </TouchableOpacity>
+          </View>
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Pending Notifications</Text>
+          {(() => {
+            const memoRequests = (urgentMemos || []).filter((m) => m.childId === child.id && m.type === 'time_update' && (!m.status || m.status === 'pending'));
+            const proposalRequests = (timeChangeProposals || []).filter((p) => p.childId === child.id);
+            const combined = [
+              ...proposalRequests.map((p) => ({ ...p, _source: 'proposal', status: p.status || 'pending' })),
+              ...memoRequests.map((m) => ({ id: m.id, type: m.updateType, proposedISO: m.proposedISO, note: m.note, proposerName: m.proposerId, _source: 'memo', status: m.status || 'pending' }))
+            ];
+            if (!combined.length) return <Text style={styles.sectionText}>No pending notifications.</Text>;
+            return combined.map((p) => (
+              <View key={p.id} style={{ paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
+                <Text style={{ fontWeight: '700' }}>{p.type === 'pickup' ? 'Pickup' : 'Drop-off'} notification</Text>
+                <Text style={{ color: '#374151' }}>Requested: {formatISO(p.proposedISO)}</Text>
+                <Text style={{ color: '#6b7280', fontSize: 12 }}>{p.note || ''}</Text>
+                <Text style={{ fontSize: 12, color: '#6b7280' }}>By: {p.proposerName || p.proposerId}</Text>
+                {user && (user.role === 'admin' || user.role === 'administrator') ? (
+                  <View style={{ flexDirection: 'row', marginTop: 8 }}>
+                    {p._source === 'proposal' ? (
+                      <>
+                        <TouchableOpacity onPress={async () => { const res = await respondToProposal(p.id, 'accept'); if (res) Alert.alert('Accepted'); }} style={{ marginRight: 8, padding: 8, backgroundColor: '#10B981', borderRadius: 8 }}>
+                          <Text style={{ color: '#fff' }}>Accept</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={async () => { const res = await respondToProposal(p.id, 'reject'); if (res) Alert.alert('Rejected'); }} style={{ padding: 8, backgroundColor: '#ef4444', borderRadius: 8 }}>
+                          <Text style={{ color: '#fff' }}>Reject</Text>
+                        </TouchableOpacity>
+                      </>
+                    ) : (
+                      <>
+                        <TouchableOpacity onPress={async () => { const ok = await respondToUrgentMemo(p.id, 'accepted'); if (ok) Alert.alert('Accepted'); }} style={{ marginRight: 8, padding: 8, backgroundColor: '#10B981', borderRadius: 8 }}>
+                          <Text style={{ color: '#fff' }}>Accept</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity onPress={async () => { const ok = await respondToUrgentMemo(p.id, 'denied'); if (ok) Alert.alert('Denied'); }} style={{ padding: 8, backgroundColor: '#ef4444', borderRadius: 8 }}>
+                          <Text style={{ color: '#fff' }}>Deny</Text>
+                        </TouchableOpacity>
+                      </>
+                    )}
+                  </View>
+                ) : (
+                  <Text style={{ marginTop: 8, color: '#6b7280' }}>Waiting for admin response</Text>
+                )}
+              </View>
+            ));
+          })()}
+        </View>
+
+        <View style={styles.section}>
+          <Text style={styles.sectionTitle}>Meeting with BCBA</Text>
+          {((child.upcoming || []).filter((u) => u.type === 'parent-aba')).length ? (
+            (child.upcoming || []).filter((u) => u.type === 'parent-aba').map((u) => (
+              <View key={u.id} style={{ marginBottom: 8 }}>
+                <Text style={styles.sectionText}>• {u.when} — {u.title}</Text>
+                {u.organizer ? (
+                  <Text style={[styles.sectionText, { marginTop: 4 }]}>Organizer: {u.organizer.name} • {u.organizer.phone} • {u.organizer.email}</Text>
+                ) : null}
+              </View>
+            ))
+          ) : (
+            <Text style={styles.sectionText}>No meeting scheduled yet.</Text>
+          )}
         </View>
       </View>
 
@@ -246,106 +338,63 @@ export default function MyChildScreen() {
         </Modal>
       )}
 
-      {/* Proposals list */}
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Pending Requests</Text>
-        {(() => {
-          const memoRequests = (urgentMemos || []).filter((m) => m.childId === child.id && m.type === 'time_update' && (!m.status || m.status === 'pending'));
-          const proposalRequests = (timeChangeProposals || []).filter((p) => p.childId === child.id);
-          const combined = [
-            ...proposalRequests.map((p) => ({ ...p, _source: 'proposal', status: p.status || 'pending' })),
-            ...memoRequests.map((m) => ({ id: m.id, type: m.updateType, proposedISO: m.proposedISO, note: m.note, proposerName: m.proposerId, _source: 'memo', status: m.status || 'pending' }))
-          ];
-          if (!combined.length) return <Text style={styles.sectionText}>No pending requests.</Text>;
-          return combined.map((p) => (
-            <View key={p.id} style={{ paddingVertical: 8, borderBottomWidth: 1, borderBottomColor: '#f3f4f6' }}>
-              <Text style={{ fontWeight: '700' }}>{p.type === 'pickup' ? 'Pickup' : 'Drop-off'} request</Text>
-              <Text style={{ color: '#374151' }}>Requested: {formatISO(p.proposedISO)}</Text>
-              <Text style={{ color: '#6b7280', fontSize: 12 }}>{p.note || ''}</Text>
-              <Text style={{ fontSize: 12, color: '#6b7280' }}>By: {p.proposerName || p.proposerId}</Text>
-              {user && (user.role === 'admin' || user.role === 'administrator') ? (
-                <View style={{ flexDirection: 'row', marginTop: 8 }}>
-                  {p._source === 'proposal' ? (
-                    <>
-                      <TouchableOpacity onPress={async () => { const res = await respondToProposal(p.id, 'accept'); if (res) Alert.alert('Accepted'); }} style={{ marginRight: 8, padding: 8, backgroundColor: '#10B981', borderRadius: 8 }}>
-                        <Text style={{ color: '#fff' }}>Accept</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={async () => { const res = await respondToProposal(p.id, 'reject'); if (res) Alert.alert('Rejected'); }} style={{ padding: 8, backgroundColor: '#ef4444', borderRadius: 8 }}>
-                        <Text style={{ color: '#fff' }}>Reject</Text>
-                      </TouchableOpacity>
-                    </>
-                  ) : (
-                    <>
-                      <TouchableOpacity onPress={async () => { const ok = await respondToUrgentMemo(p.id, 'accepted'); if (ok) Alert.alert('Accepted'); }} style={{ marginRight: 8, padding: 8, backgroundColor: '#10B981', borderRadius: 8 }}>
-                        <Text style={{ color: '#fff' }}>Accept</Text>
-                      </TouchableOpacity>
-                      <TouchableOpacity onPress={async () => { const ok = await respondToUrgentMemo(p.id, 'denied'); if (ok) Alert.alert('Denied'); }} style={{ padding: 8, backgroundColor: '#ef4444', borderRadius: 8 }}>
-                        <Text style={{ color: '#fff' }}>Deny</Text>
-                      </TouchableOpacity>
-                    </>
-                  )}
-                </View>
-              ) : (
-                <Text style={{ marginTop: 8, color: '#6b7280' }}>Waiting for admin response</Text>
-              )}
-            </View>
-          ));
-        })()}
-      </View>
+      {/* Care team */}
+      <View style={styles.careTeamWrap}>
+        <Text style={styles.careTeamTitle}>Care Team</Text>
 
-      {/* BCA therapist tile (always render; show placeholder when not assigned) */}
-      <View style={[styles.card, { marginTop: 12, alignItems: 'center' }]}>
-        {child.bcaTherapist ? (
-          <>
-            <Image source={{ uri: child.bcaTherapist.avatar }} style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: '#eee' }} />
-            <View style={{ flex: 1, marginLeft: 12 }}>
-              <Text style={styles.name}>{shortName(child.bcaTherapist.name, 20)}</Text>
-              <Text style={styles.meta}>{child.bcaTherapist.role}</Text>
-            </View>
-            <View style={{ alignItems: 'flex-end' }}>
-              <TouchableOpacity onPress={() => openPhone(child.bcaTherapist.phone)} style={{ paddingVertical: 6 }} accessibilityLabel="Call BCA therapist">
-                <MaterialIcons name="call" size={20} color="#2563eb" />
-              </TouchableOpacity>
-              <TouchableOpacity onPress={() => openEmail(child.bcaTherapist.email)} style={{ paddingVertical: 6 }} accessibilityLabel="Email BCA therapist">
-                <MaterialIcons name="email" size={20} color="#2563eb" />
-              </TouchableOpacity>
-            </View>
-          </>
-        ) : (
-          <View style={{ flex: 1, marginLeft: 12 }}>
-            <Text style={styles.name}>BCA Therapist</Text>
-            <Text style={styles.meta}>No BCA therapist assigned.</Text>
-          </View>
-        )}
-      </View>
-
-      <View style={styles.row}>
-        <View style={[styles.therapistBlock, { marginRight: 8 }]}>
-          <Text style={styles.therapistTitle}>AM Therapist</Text>
-          {child.amTherapist ? (
-            <View style={styles.therapistInner}>
-              <Image source={{ uri: child.amTherapist.avatar }} style={styles.therapistAvatar} />
-              <View style={{ flex: 1, marginLeft: 8, alignItems: 'center' }}>
-                <Text style={styles.therapistName}>{shortName(child.amTherapist.name, 18)}</Text>
-                <Text style={styles.therapistRole}>{child.amTherapist.role}</Text>
-                <View style={styles.amIconRow}>
-                  <TouchableOpacity onPress={() => openPhone(child.amTherapist.phone)} style={styles.iconTouch} accessibilityLabel="Call AM therapist">
-                    <MaterialIcons name="call" size={22} color="#2563eb" />
-                  </TouchableOpacity>
-                  <TouchableOpacity onPress={() => openEmail(child.amTherapist.email)} style={styles.iconTouch} accessibilityLabel="Email AM therapist">
-                    <MaterialIcons name="email" size={22} color="#2563eb" />
-                  </TouchableOpacity>
-                </View>
+        {/* BCA therapist tile (always render; show placeholder when not assigned) */}
+        <View style={[styles.card, { marginTop: 8, alignItems: 'center' }]}>
+          {child.bcaTherapist ? (
+            <>
+              <Image source={{ uri: child.bcaTherapist.avatar }} style={{ width: 56, height: 56, borderRadius: 28, backgroundColor: '#eee' }} />
+              <View style={{ flex: 1, marginLeft: 12 }}>
+                <Text style={styles.name}>{shortName(child.bcaTherapist.name, 20)}</Text>
+                <Text style={styles.meta}>{child.bcaTherapist.role}</Text>
               </View>
-            </View>
+              <View style={{ alignItems: 'flex-end' }}>
+                <TouchableOpacity onPress={() => openPhone(child.bcaTherapist.phone)} style={{ paddingVertical: 6 }} accessibilityLabel="Call BCA therapist">
+                  <MaterialIcons name="call" size={20} color="#2563eb" />
+                </TouchableOpacity>
+                <TouchableOpacity onPress={() => openEmail(child.bcaTherapist.email)} style={{ paddingVertical: 6 }} accessibilityLabel="Email BCA therapist">
+                  <MaterialIcons name="email" size={20} color="#2563eb" />
+                </TouchableOpacity>
+              </View>
+            </>
           ) : (
-            <Text style={styles.sectionText}>No AM therapist assigned.</Text>
+            <View style={{ flex: 1, marginLeft: 12 }}>
+              <Text style={styles.name}>BCA Therapist</Text>
+              <Text style={styles.meta}>No BCA therapist assigned.</Text>
+            </View>
           )}
         </View>
 
-        <View style={[styles.therapistBlock, { marginLeft: 8 }]}>
-          <Text style={styles.therapistTitle}>PM Therapist</Text>
-          {child.pmTherapist ? (
+        <View style={[styles.row, { marginTop: 12 }]}> 
+          <View style={[styles.therapistBlock, { marginRight: 8 }]}>
+            <Text style={styles.therapistTitle}>AM Therapist</Text>
+            {child.amTherapist ? (
+              <View style={styles.therapistInner}>
+                <Image source={{ uri: child.amTherapist.avatar }} style={styles.therapistAvatar} />
+                <View style={{ flex: 1, marginLeft: 8, alignItems: 'center' }}>
+                  <Text style={styles.therapistName}>{shortName(child.amTherapist.name, 18)}</Text>
+                  <Text style={styles.therapistRole}>{child.amTherapist.role}</Text>
+                  <View style={styles.amIconRow}>
+                    <TouchableOpacity onPress={() => openPhone(child.amTherapist.phone)} style={styles.iconTouch} accessibilityLabel="Call AM therapist">
+                      <MaterialIcons name="call" size={22} color="#2563eb" />
+                    </TouchableOpacity>
+                    <TouchableOpacity onPress={() => openEmail(child.amTherapist.email)} style={styles.iconTouch} accessibilityLabel="Email AM therapist">
+                      <MaterialIcons name="email" size={22} color="#2563eb" />
+                    </TouchableOpacity>
+                  </View>
+                </View>
+              </View>
+            ) : (
+              <Text style={styles.sectionText}>No AM therapist assigned.</Text>
+            )}
+          </View>
+
+          <View style={[styles.therapistBlock, { marginLeft: 8 }]}>
+            <Text style={styles.therapistTitle}>PM Therapist</Text>
+            {child.pmTherapist ? (
               <View style={styles.therapistInner}>
                 <Image source={{ uri: child.pmTherapist.avatar }} style={styles.therapistAvatar} />
                 <View style={{ flex: 1, marginLeft: 8, alignItems: 'center' }}>
@@ -361,37 +410,20 @@ export default function MyChildScreen() {
                   </View>
                 </View>
               </View>
-          ) : (
-            <Text style={styles.sectionText}>No PM therapist assigned.</Text>
-          )}
+            ) : (
+              <Text style={styles.sectionText}>No PM therapist assigned.</Text>
+            )}
+          </View>
+        </View>
+
+        <View style={[styles.card, { marginTop: 12 }]}>
+          <View style={{ flex: 1 }}>
+            <Text style={styles.sectionTitle}>Care Plan</Text>
+            <Text style={styles.sectionText}>{child.carePlan || "Sam's goals: fine motor, communication prompts, and independent dressing."}</Text>
+          </View>
         </View>
       </View>
 
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Care Plan</Text>
-        <Text style={styles.sectionText}>{child.carePlan || "Sam's goals: fine motor, communication prompts, and independent dressing."}</Text>
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Meeting with BCA</Text>
-        {((child.upcoming || []).filter((u) => u.type === 'parent-aba')).length ? (
-          (child.upcoming || []).filter((u) => u.type === 'parent-aba').map((u) => (
-            <View key={u.id} style={{ marginBottom: 8 }}>
-              <Text style={styles.sectionText}>• {u.when} — {u.title}</Text>
-              {u.organizer ? (
-                <Text style={[styles.sectionText, { marginTop: 4 }]}>Organizer: {u.organizer.name} • {u.organizer.phone} • {u.organizer.email}</Text>
-              ) : null}
-            </View>
-          ))
-        ) : (
-          <Text style={styles.sectionText}>No meeting scheduled yet.</Text>
-        )}
-      </View>
-
-      <View style={styles.section}>
-        <Text style={styles.sectionTitle}>Notes</Text>
-        <Text style={styles.sectionText}>{child.notes || 'No notes available.'}</Text>
-      </View>
       </ScrollView>
     </ScreenWrapper>
   );
@@ -405,7 +437,7 @@ const styles = StyleSheet.create({
   section: { marginTop: 12, backgroundColor: '#fff', padding: 12, borderRadius: 8 },
   sectionTitle: { fontWeight: '700', marginBottom: 6 },
   sectionText: { color: '#374151' },
-  scheduleTile: { flex: 1, backgroundColor: '#fff', padding: 12, marginHorizontal: 6, borderRadius: 8, alignItems: 'center', justifyContent: 'center', position: 'relative' },
+  scheduleTile: { flex: 1, backgroundColor: '#fff', padding: 12, marginHorizontal: 6, borderRadius: 8, borderWidth: 1, borderColor: '#e5e7eb', alignItems: 'center', justifyContent: 'center', position: 'relative' },
   scheduleLabel: { fontWeight: '700', marginBottom: 6 },
   scheduleDivider: { height: 1, width: '60%', backgroundColor: '#e6e7ea', marginVertical: 6 },
   scheduleTime: { color: '#374151', textAlign: 'center' },
@@ -427,4 +459,16 @@ const styles = StyleSheet.create({
   amIconRow: { flexDirection: 'row', marginTop: 8, justifyContent: 'center' },
   iconTouch: { marginHorizontal: 12 },
   demoButton: { backgroundColor: '#2563eb', padding: 10, borderRadius: 8, alignItems: 'center', marginBottom: 8 },
+  careTeamWrap: { marginTop: 12, backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 12, padding: 12 },
+  careTeamTitle: { textAlign: 'center', fontWeight: '800', fontSize: 16, color: '#111827' },
+  scheduleWrap: { marginTop: 12, backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 12, padding: 12 },
+  scheduleGroupTitle: { textAlign: 'center', fontWeight: '800', fontSize: 16, color: '#111827' },
+  halfRow: { flexDirection: 'row', marginTop: 12 },
+  halfTile: { flex: 1 },
+  needsTile: { minHeight: 160, marginRight: 8 },
+  moodTile: { minHeight: 160, marginLeft: 8 },
+  moodMeterOuter: { height: 14, borderRadius: 999, backgroundColor: '#e5e7eb', overflow: 'hidden', borderWidth: 1, borderColor: '#d1d5db' },
+  moodMeterFill: { height: '100%', borderRadius: 999 },
+  moodMeterLabels: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 },
+  moodLabel: { fontSize: 12, color: '#6b7280' },
 });

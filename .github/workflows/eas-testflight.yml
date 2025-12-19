@@ -1,8 +1,16 @@
 name: Build and submit iOS to TestFlight
 
 on:
-  push: {}
-  workflow_dispatch: {}
+  push:
+    branches:
+      - master
+      - test
+  workflow_dispatch:
+    inputs:
+      submit:
+        description: 'Set to "true" to submit to TestFlight when manually dispatching'
+        required: false
+        default: 'false'
 
 jobs:
   build-and-submit:
@@ -51,6 +59,7 @@ jobs:
           eas build --platform ios --profile production --non-interactive
 
       - name: Submit to TestFlight
+        if: ${{ github.ref == 'refs/heads/master' || (github.event_name == 'workflow_dispatch' && github.event.inputs.submit == 'true') }}
         env:
           EXPO_TOKEN: ${{ secrets.EXPO_TOKEN }}
         run: |
