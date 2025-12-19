@@ -17,7 +17,7 @@ services:
     volumes:
       - ./:/usr/src/app:rw
       - node_modules:/usr/src/app/node_modules
-    command: sh -c "npm install --no-audit --no-fund && npx expo export -p web --output-dir dist && npx serve dist -l 3000"
+    command: sh -c "npm install --no-audit --no-fund && CI=1 EXPO_NO_TELEMETRY=1 npx expo export -p web --output-dir dist --non-interactive && npx serve dist -l tcp://0.0.0.0:3000"
     restart: on-failure
 
   expo:
