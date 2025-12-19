@@ -15,7 +15,7 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
     setBusy(true);
     try{
       await auth.login(email, password);
-      navigation.replace('Home');
+      navigation.replace('Main');
     }catch(e){
       Alert.alert('Login failed', e.message || 'Please check credentials');
     }finally{ setBusy(false); }
@@ -27,7 +27,7 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
   useEffect(() => {
     if (suppressAutoRedirect) return;
     if (!auth.loading && auth.token) {
-      navigation.replace('Home');
+      navigation.replace('Main');
     }
   }, [auth.loading, auth.token, suppressAutoRedirect]);
 

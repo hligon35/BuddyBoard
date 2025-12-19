@@ -42,8 +42,10 @@ import ExportDataScreen from './src/screens/ExportDataScreen';
 import { HelpButton, LogoutButton, BackButton } from './src/components/TopButtons';
 import { View, Text } from 'react-native';
 import LogoTitle from './src/components/LogoTitle';
+import LoginScreen from './screens/LoginScreen';
 
 const RootStack = createNativeStackNavigator();
+const AppStack = createNativeStackNavigator();
 
 const MyClassStackNav = createNativeStackNavigator();
 function MyClassStack() {
@@ -192,7 +194,7 @@ function MainRoutes() {
 
 export default function App() {
   const [problem, setProblem] = useState(null);
-  const [currentRoute, setCurrentRoute] = useState('Home');
+  const [currentRoute, setCurrentRoute] = useState('Login');
 
   useEffect(() => {
     try {
@@ -250,6 +252,7 @@ export default function App() {
                 if (r && r.name) {
                   // Map nested route names back to top-level stack keys so BottomNav highlights correctly
                   const map = {
+                    Main: 'Home',
                     CommunityMain: 'Home',
                     PostThread: 'Home',
                     ChatsList: 'Chats',
@@ -270,13 +273,21 @@ export default function App() {
               }
             }}
           >
-            {/* Use a root Stack that hosts per-screen stacks (keeps headers centered in nested stacks) */}
-            <MainRoutes />
+            <AppStack.Navigator screenOptions={{ headerShown: false }} initialRouteName="Login">
+              <AppStack.Screen name="Login">
+                {(props) => <LoginScreen {...props} suppressAutoRedirect={true} />}
+              </AppStack.Screen>
+              <AppStack.Screen name="Main" component={MainRoutes} />
+            </AppStack.Navigator>
           </NavigationContainer>
-          <BottomNav navigationRef={navigationRef} currentRoute={currentRoute} />
-          <DevRoleSwitcher />
-          <UrgentMemoOverlay />
-          <ArrivalDetector />
+          {currentRoute !== 'Login' && (
+            <>
+              <BottomNav navigationRef={navigationRef} currentRoute={currentRoute} />
+              <DevRoleSwitcher />
+              <UrgentMemoOverlay />
+              <ArrivalDetector />
+            </>
+          )}
         </DataProvider>
       </AuthProvider>
       </SafeAreaProvider>
