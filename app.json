@@ -9,6 +9,7 @@
       "buildNumber": "1.0.4",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
+        "NSFaceIDUsageDescription": "BuddyBoard uses Face ID / Touch ID to help you securely sign in on this device.",
         "NSLocationWhenInUseUsageDescription": "BuddyBoard uses your location to support arrival detection and location-based features.",
         "NSCameraUsageDescription": "BuddyBoard needs camera access to let you capture photos for posts and messages.",
         "NSPhotoLibraryUsageDescription": "BuddyBoard needs photo library access to let you choose images for posts and messages.",
