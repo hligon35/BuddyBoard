@@ -32,7 +32,12 @@ jobs:
             git fetch origin
             git checkout master || git checkout -b master origin/master
             git reset --hard origin/master
-            git clean -fd
+            # Keep server-local runtime config and persisted data (not committed)
+            git clean -fd \
+              -e .env \
+              -e .env.* \
+              -e .data \
+              -e .data/**
 
             # Rebuild + restart the app/API using server-safe compose overrides
             docker compose -f docker-compose.yml -f docker-compose.server.yml up -d --build BuddyBoardApp api
