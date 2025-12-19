@@ -17,7 +17,9 @@ services:
     volumes:
       - ./:/usr/src/app:rw
       - node_modules:/usr/src/app/node_modules
-    command: sh -c "npm install --no-audit --no-fund && CI=1 EXPO_NO_TELEMETRY=1 npx expo export -p web --output-dir dist --non-interactive && npx serve dist -l tcp://0.0.0.0:3000"
+      # Keep built web assets out of the git working tree and persist them across container recreates
+      - web_dist:/usr/src/app/dist
+    command: sh -c "npm install --no-audit --no-fund && if [ ! -f dist/index.html ]; then CI=1 EXPO_NO_TELEMETRY=1 npx expo export -p web --output-dir dist --non-interactive; fi && npx serve dist -l tcp://0.0.0.0:3000"
     restart: on-failure
 
   expo:
@@ -89,3 +91,5 @@ services:
 volumes:
   node_modules:
     name: buddyboard_node_modules
+  web_dist:
+    name: buddyboard_web_dist
