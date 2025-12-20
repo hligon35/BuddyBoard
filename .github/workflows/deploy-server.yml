@@ -13,20 +13,17 @@ concurrency:
 
 jobs:
   deploy:
-    runs-on: ubuntu-latest
+    runs-on: self-hosted
 
     steps:
       - name: Validate deploy secrets
         shell: bash
         env:
-          DEPLOY_HOST: ${{ secrets.DEPLOY_HOST }}
-          DEPLOY_USER: ${{ secrets.DEPLOY_USER }}
-          DEPLOY_SSH_KEY: ${{ secrets.DEPLOY_SSH_KEY }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         run: |
           set -euo pipefail
           missing=0
-          for v in DEPLOY_HOST DEPLOY_USER DEPLOY_SSH_KEY DEPLOY_PATH; do
+          for v in DEPLOY_PATH; do
             if [ -z "${!v:-}" ]; then
               echo "::error::Missing required secret: $v"
               missing=1
@@ -37,31 +34,28 @@ jobs:
             exit 1
           fi
 
-      - name: Deploy via SSH
-        uses: appleboy/ssh-action@v1.0.3
-        with:
-          host: ${{ secrets.DEPLOY_HOST }}
-          username: ${{ secrets.DEPLOY_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: ${{ secrets.DEPLOY_PORT || '22' }}
-          script_stop: true
-          script: |
-            set -e
-            cd "${{ secrets.DEPLOY_PATH }}"
+      - name: Deploy (self-hosted runner)
+        shell: bash
+        env:
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        run: |
+          set -euo pipefail
 
-            # Always match GitHub
-            git fetch origin
-            git checkout master || git checkout -b master origin/master
-            git reset --hard origin/master
-            # Keep server-local runtime config and persisted data (not committed)
-            git clean -fd \
-              -e .env \
-              -e .env.* \
-              -e .data \
-              -e .data/**
+          cd "$DEPLOY_PATH"
 
-            # Rebuild + restart the app/API using server-safe compose overrides
-            docker compose -f docker-compose.yml -f docker-compose.server.yml up -d --build BuddyBoardApp api
+          # Always match GitHub
+          git fetch origin
+          git checkout master || git checkout -b master origin/master
+          git reset --hard origin/master
+          # Keep server-local runtime config and persisted data (not committed)
+          git clean -fd \
+            -e .env \
+            -e .env.* \
+            -e .data \
+            -e .data/**
 
-            # Optional sanity check
-            docker compose ps
+          # Rebuild + restart the app/API using server-safe compose overrides
+          docker compose -f docker-compose.yml -f docker-compose.server.yml up -d --build BuddyBoardApp api
+
+          # Optional sanity check
+          docker compose ps
