@@ -1,6 +1,18 @@
 node_modules
 /.expo
 
+# Logs / local outputs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+adb_log.txt
+make_output.txt
+
+# Local image sets (generated / not for repo)
+set*.png
+
 # Local database / server data
 /.data
 *.sqlite
@@ -8,6 +20,9 @@ node_modules
 # Expo prebuild outputs (recommended: keep generated native projects out of git)
 /android
 /ios
+
+# Build outputs
+/build
 
 # Local env files (never commit)
 .env
@@ -26,4 +41,7 @@ node_modules
 # Store/CI credential artifacts (generated locally or in CI)
 google-play-service-account.json
 appstore_connect.json
+
+# Local Caddy state
+caddy-central.buddyboard.getsparqd.com.caddy
 

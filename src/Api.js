@@ -36,25 +36,37 @@ client.interceptors.request.use((req) => {
     const auth = req.headers && (req.headers.Authorization || req.headers.authorization);
     const base = req.baseURL || client.defaults.baseURL || '';
     const full = base + (req.url || '');
-    console.log('[Api] Request:', req.method && req.method.toUpperCase(), full, auth ? '[auth]' : '[no-auth]');
+    logger.debug('api', 'Request', {
+      method: req.method && req.method.toUpperCase(),
+      url: full,
+      auth: !!auth,
+    });
   } catch (e) {}
   return req;
 }, (err) => {
-  console.warn('[Api] Request error', err && err.message);
+  logger.warn('api', 'Request error', { message: err && err.message });
   return Promise.reject(err);
 });
 
 client.interceptors.response.use((res) => {
-  try { console.log('[Api] Response:', res.status, res.config && res.config.url); } catch (e) {}
+  try {
+    logger.debug('api', 'Response', {
+      status: res.status,
+      url: res.config && res.config.url,
+    });
+  } catch (e) {}
   return res;
 }, (err) => {
     try {
       if (err && err.response) {
         const base = err.response.config && (err.response.config.baseURL || client.defaults.baseURL) || '';
         const url = (err.response.config && err.response.config.url) || '';
-        console.warn('[Api] Response error:', err.response.status, base + url, err.response.data);
+        logger.warn('api', 'Response error', {
+          status: err.response.status,
+          url: base + url,
+        });
       } else {
-        console.warn('[Api] Network or other error:', err && err.message);
+        logger.warn('api', 'Network or other error', { message: err && err.message });
       }
     } catch (e) {}
   return Promise.reject(err);
@@ -118,16 +130,31 @@ try {
 export function setAuthToken(token) {
   if (token) {
     client.defaults.headers.common['Authorization'] = `Bearer ${token}`;
-    try { console.log('[Api] Auth token set:', (token || '').toString().slice(0,8) + '...'); } catch (e) {}
+    try { logger.info('auth', 'Auth token set', { hasToken: true }); } catch (e) {}
   } else {
     delete client.defaults.headers.common['Authorization'];
-    console.log('[Api] Auth token cleared');
+    logger.info('auth', 'Auth token cleared', { hasToken: false });
   }
 }
 
 // Official axios-backed methods
 export async function login(email, password) {
   const res = await client.post('/api/auth/login', { email, password });
+  return res.data;
+}
+
+export async function signup(payload) {
+  const res = await client.post('/api/auth/signup', payload);
+  return res.data;
+}
+
+export async function verify2fa(payload) {
+  const res = await client.post('/api/auth/2fa/verify', payload);
+  return res.data;
+}
+
+export async function resend2fa(payload) {
+  const res = await client.post('/api/auth/2fa/resend', payload);
   return res.data;
 }
 
@@ -156,6 +183,12 @@ export async function likePost(postId) {
 
 export async function commentPost(postId, comment) {
   const res = await client.post('/api/board/comments', { postId, comment });
+  return res.data;
+}
+
+export async function reactComment(postId, commentId, emoji) {
+  const normalizedEmoji = (emoji && typeof emoji === 'object') ? (emoji.emoji || emoji.reaction || emoji.value) : emoji;
+  const res = await client.post('/api/board/comments/react', { postId, commentId, emoji: normalizedEmoji });
   return res.data;
 }
 
@@ -192,13 +225,11 @@ export async function ackUrgentMemo(memoIds) {
   return res.data;
 }
 
-// Generic alert/memo creation (time_update, admin_memo, urgent_memo)
-export async function sendUrgentMemo(payload) {
-  const res = await client.post('/api/urgent-memos', payload);
+export async function sendUrgentMemo(memo) {
+  const res = await client.post('/api/urgent-memos', memo);
   return res.data;
 }
 
-// Admin-only response to an alert
 export async function respondUrgentMemo(memoId, action) {
   const res = await client.post('/api/urgent-memos/respond', { memoId, action });
   return res.data;
@@ -297,6 +328,8 @@ export async function ackUrgentMemoApi(id) {
 export default {
   setAuthToken,
   login,
+  signup,
+  verify2fa,
   me,
   getPosts,
   createPost,

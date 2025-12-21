@@ -4,6 +4,7 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import SignUpScreen from './SignUpScreen';
 import { useAuth } from '../src/AuthContext';
 import LogoTitle from '../src/components/LogoTitle';
+import { logger } from '../src/utils/logger';
 
 export default function LoginScreen({ navigation, suppressAutoRedirect = false }) {
   const [email, setEmail] = useState('');
@@ -18,9 +19,11 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
   async function doLogin(){
     setBusy(true);
     try{
+      logger.debug('auth', 'Login submit', { hasEmail: !!email });
       await auth.login(email, password);
       navigation.replace('Main');
     }catch(e){
+      logger.warn('auth', 'Login failed', { message: e?.message || String(e) });
       Alert.alert('Login failed', e.message || 'Please check credentials');
     }finally{ setBusy(false); }
   }
