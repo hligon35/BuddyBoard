@@ -6,7 +6,7 @@
     "sdkVersion": "54.0.0",
     "ios": {
       "bundleIdentifier": "com.azlabs.buddyboard",
-      "buildNumber": "1.0.4",
+      "buildNumber": "1.0.7",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSFaceIDUsageDescription": "BuddyBoard uses Face ID / Touch ID to help you securely sign in on this device.",
@@ -35,7 +35,7 @@
     },
     "android": {
       "package": "com.azlabs.buddyboard",
-      "versionCode": 2,
+      "versionCode": 7,
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
