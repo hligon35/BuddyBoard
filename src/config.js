@@ -48,6 +48,10 @@ export const DEBUG_LOG_COLORS = (typeof __DEV__ !== 'undefined' ? __DEV__ : fals
 // Default: 'debug' in dev, 'info' otherwise.
 export const DEBUG_LOG_LEVEL = (typeof __DEV__ !== 'undefined' && __DEV__) ? 'debug' : 'info';
 
+// Dev-only convenience: auto-authenticate on startup.
+// Set EXPO_PUBLIC_DEV_AUTO_LOGIN=true to enable.
+export const DEV_AUTO_LOGIN = (getExpoPublicEnv('EXPO_PUBLIC_DEV_AUTO_LOGIN') || '').toLowerCase() === 'true';
+
 export default {
   BASE_URL,
   EMULATOR_HOST,
@@ -55,4 +59,5 @@ export default {
   DEBUG_LOGS,
   DEBUG_LOG_COLORS,
   DEBUG_LOG_LEVEL,
+  DEV_AUTO_LOGIN,
 };

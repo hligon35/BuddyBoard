@@ -34,6 +34,65 @@ Notes
 - Link previews use `/api/link/preview?url=`.
 - Urgent memos are fetched on app start and acknowledged via `/api/urgent-memos/read`.
 
+Local API + smoke tests (Windows)
+-------------------------------
+
+This repo includes two backends you can run locally:
+
+- Real API server: `scripts/api-server.js` (SQLite) — default port `3005`
+- Mock API server: `scripts/api-mock.js` (in-memory) — default port `3006`
+
+The end-to-end smoke runner calls auth → posts/comments/reactions → urgent memos → time changes → link preview → push/arrival → media upload and prints a color-coded PASS/FAIL summary.
+
+### Mock API (fastest)
+
+Terminal 1:
+
+```powershell
+npm run api:mock
+```
+
+Terminal 2:
+
+```powershell
+npm run smoke:mock
+```
+
+### Real API server (SQLite)
+
+Terminal 1 (enable signup + return a dev 2FA code so the smoke test can complete automatically):
+
+```powershell
+$env:PORT='3005'
+$env:BB_JWT_SECRET='dev-secret'
+$env:BB_ALLOW_SIGNUP='1'
+$env:BB_REQUIRE_2FA_ON_SIGNUP='1'
+$env:BB_DEBUG_2FA_RETURN_CODE='1'
+npm run api:server
+```
+
+Terminal 2:
+
+```powershell
+npm run smoke:server
+```
+
+### Point the Expo app at your local API
+
+For the real server:
+
+```powershell
+$env:EXPO_PUBLIC_API_BASE_URL='http://127.0.0.1:3005'
+npm start
+```
+
+For the mock server:
+
+```powershell
+$env:EXPO_PUBLIC_API_BASE_URL='http://127.0.0.1:3006'
+npm start
+```
+
 Docker note
 
 - The `expo` service in `docker-compose.yml` installs project dependencies at container startup. If you customize the image/compose, keep that install step or Expo plugins (like `expo-notifications`) may fail to resolve.
@@ -56,7 +115,16 @@ API server (SQLite) settings:
 - `BB_JWT_SECRET` — required for real logins; set a long random value.
 - `BB_ADMIN_EMAIL` / `BB_ADMIN_PASSWORD` / `BB_ADMIN_NAME` — optional admin seed on first run.
 - `BB_ALLOW_SIGNUP=1` (or `true`) — optional; enables `/api/auth/signup`.
+- `BB_REQUIRE_2FA_ON_SIGNUP=1` (default) — requires 2FA for signup.
+- `BB_DEBUG_2FA_RETURN_CODE=1` — DEV ONLY; returns `devCode` in the signup response and logs it server-side.
 - `BB_ALLOW_DEV_TOKEN=1` (or `true`) — optional; enables accepting `Bearer dev-token` for local/dev only. Default is enabled when `NODE_ENV` is not `production`.
+
+2FA SMS delivery (required for production/TestFlight if signup is enabled):
+- `BB_TWILIO_ACCOUNT_SID`
+- `BB_TWILIO_AUTH_TOKEN`
+- Either `BB_TWILIO_FROM` (a Twilio phone number in E.164 format) or `BB_TWILIO_MESSAGING_SERVICE_SID`
+
+If `BB_ALLOW_SIGNUP=1` and `BB_REQUIRE_2FA_ON_SIGNUP=1`, and you do NOT set `BB_DEBUG_2FA_RETURN_CODE=1`, signup will fail unless Twilio SMS is configured.
 
 Example `.env`:
 
@@ -66,7 +134,13 @@ EXPO_PUBLIC_GOOGLE_PLACES_API_KEY=
 BB_DATA_DIR=/mnt/bigdrive/buddyboard
 BB_JWT_SECRET=replace-with-long-random
 BB_ALLOW_SIGNUP=0
+BB_REQUIRE_2FA_ON_SIGNUP=1
+BB_DEBUG_2FA_RETURN_CODE=0
 BB_ALLOW_DEV_TOKEN=0
+BB_TWILIO_ACCOUNT_SID=
+BB_TWILIO_AUTH_TOKEN=
+BB_TWILIO_FROM=
+BB_TWILIO_MESSAGING_SERVICE_SID=
 BB_ADMIN_EMAIL=
 BB_ADMIN_PASSWORD=
 BB_ADMIN_NAME=Admin

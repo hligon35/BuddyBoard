@@ -2,6 +2,7 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Api from './Api';
 import { setDebugContext, logger } from './utils/logger';
+import { DEV_AUTO_LOGIN } from './config';
 
 const TOKEN_KEY = 'auth_token';
 
@@ -50,7 +51,7 @@ export function AuthProvider({ children }) {
 
   // Dev auto-login for local testing (non-persistent)
   useEffect(() => {
-    if (__DEV__ && !loading && !token) {
+    if (__DEV__ && DEV_AUTO_LOGIN && !loading && !token) {
       const devToken = 'dev-token';
       setToken(devToken);
       Api.setAuthToken(devToken);
@@ -59,14 +60,19 @@ export function AuthProvider({ children }) {
     }
   }, [loading]);
 
+  async function setAuth({ token: nextToken, user: nextUser }) {
+    if (!nextToken) throw new Error('Missing token');
+    await AsyncStorage.setItem(TOKEN_KEY, nextToken);
+    if (nextUser) await AsyncStorage.setItem('auth_user', JSON.stringify(nextUser));
+    setToken(nextToken);
+    Api.setAuthToken(nextToken);
+    if (nextUser) setUser(nextUser);
+  }
+
   async function login(email, password) {
     const res = await Api.login(email, password);
     if (!res || !res.token) throw new Error('Invalid login response');
-    await AsyncStorage.setItem(TOKEN_KEY, res.token);
-    if (res.user) await AsyncStorage.setItem('auth_user', JSON.stringify(res.user));
-    setToken(res.token);
-    Api.setAuthToken(res.token);
-    if (res.user) setUser(res.user);
+    await setAuth({ token: res.token, user: res.user });
     return res;
   }
 
@@ -110,6 +116,7 @@ export function AuthProvider({ children }) {
 
   const value = { token, user, loading, login, logout, setRole };
   if (__DEV__) value.devSetAuth = devSetAuth;
+  value.setAuth = setAuth;
 
   return (
     <AuthContext.Provider value={value}>

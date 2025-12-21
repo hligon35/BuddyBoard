@@ -70,10 +70,16 @@ services:
       - BB_PUBLIC_BASE_URL=${BB_PUBLIC_BASE_URL}
       - BB_JWT_SECRET=${BB_JWT_SECRET}
       - BB_ALLOW_SIGNUP=${BB_ALLOW_SIGNUP}
+      - BB_REQUIRE_2FA_ON_SIGNUP=${BB_REQUIRE_2FA_ON_SIGNUP}
+      - BB_DEBUG_2FA_RETURN_CODE=${BB_DEBUG_2FA_RETURN_CODE}
       - BB_ALLOW_DEV_TOKEN=${BB_ALLOW_DEV_TOKEN}
       - BB_ADMIN_EMAIL=${BB_ADMIN_EMAIL}
       - BB_ADMIN_PASSWORD=${BB_ADMIN_PASSWORD}
       - BB_ADMIN_NAME=${BB_ADMIN_NAME}
+      - BB_TWILIO_ACCOUNT_SID=${BB_TWILIO_ACCOUNT_SID}
+      - BB_TWILIO_AUTH_TOKEN=${BB_TWILIO_AUTH_TOKEN}
+      - BB_TWILIO_FROM=${BB_TWILIO_FROM}
+      - BB_TWILIO_MESSAGING_SERVICE_SID=${BB_TWILIO_MESSAGING_SERVICE_SID}
     command: sh -c "npm install --no-audit --no-fund && node ./scripts/api-server.js"
     restart: unless-stopped
 
@@ -84,8 +90,10 @@ services:
       - ./:/usr/src/app:rw
       - node_modules:/usr/src/app/node_modules
     ports:
-      - '3005:3005'
-    command: sh -c "npm install --no-audit --no-fund express body-parser cors --no-save && node ./scripts/api-mock.js"
+      - '3006:3006'
+    environment:
+      - PORT=3006
+    command: sh -c "npm install --no-audit --no-fund express body-parser cors multer --no-save && node ./scripts/api-mock.js"
     restart: unless-stopped
 
 volumes:

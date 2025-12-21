@@ -9,6 +9,7 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const Database = require('better-sqlite3');
 const multer = require('multer');
+const twilio = require('twilio');
 
 const PORT = Number(process.env.PORT || 3005);
 const DB_PATH = process.env.BB_DB_PATH || path.join(process.cwd(), '.data', 'buddyboard.sqlite');
@@ -26,6 +27,126 @@ function envFlag(value, defaultValue = false) {
 }
 
 const ALLOW_SIGNUP = envFlag(process.env.BB_ALLOW_SIGNUP, false);
+const REQUIRE_2FA_ON_SIGNUP = envFlag(process.env.BB_REQUIRE_2FA_ON_SIGNUP, true);
+const DEBUG_2FA_RETURN_CODE = envFlag(process.env.BB_DEBUG_2FA_RETURN_CODE, false);
+const LOG_REQUESTS = envFlag(process.env.BB_DEBUG_REQUESTS, true);
+
+// 2FA delivery (SMS only).
+// Configure Twilio in production/TestFlight:
+// - BB_TWILIO_ACCOUNT_SID
+// - BB_TWILIO_AUTH_TOKEN
+// - BB_TWILIO_FROM (E.164, e.g. +15551234567) OR BB_TWILIO_MESSAGING_SERVICE_SID
+const TWILIO_ACCOUNT_SID = (process.env.BB_TWILIO_ACCOUNT_SID || '').trim();
+const TWILIO_AUTH_TOKEN = (process.env.BB_TWILIO_AUTH_TOKEN || '').trim();
+const TWILIO_FROM = (process.env.BB_TWILIO_FROM || '').trim();
+const TWILIO_MESSAGING_SERVICE_SID = (process.env.BB_TWILIO_MESSAGING_SERVICE_SID || '').trim();
+
+const slog = require('./logger');
+
+function twilioEnabled() {
+  if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) return false;
+  if (TWILIO_MESSAGING_SERVICE_SID) return true;
+  return !!TWILIO_FROM;
+}
+
+let twilioClient = null;
+function getTwilioClient() {
+  if (!twilioEnabled()) return null;
+  if (twilioClient) return twilioClient;
+  twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
+  return twilioClient;
+}
+
+function normalizeE164Phone(input) {
+  const raw = String(input || '').trim();
+  if (!raw) return '';
+  // allow spaces/dashes/parentheses; require leading + for international safety
+  const cleaned = raw.replace(/[\s\-().]/g, '');
+  if (!cleaned.startsWith('+')) return '';
+  const digits = cleaned.slice(1).replace(/\D/g, '');
+  const out = `+${digits}`;
+  if (!/^\+\d{10,15}$/.test(out)) return '';
+  return out;
+}
+
+async function send2faCodeSms({ to, code }) {
+  const client = getTwilioClient();
+  if (!client) {
+    throw new Error('2FA SMS delivery is not configured (set BB_TWILIO_ACCOUNT_SID/BB_TWILIO_AUTH_TOKEN and BB_TWILIO_FROM or BB_TWILIO_MESSAGING_SERVICE_SID)');
+  }
+
+  const body = `BuddyBoard verification code: ${code}. Expires in 10 minutes.`;
+  const msg = {
+    to,
+    body,
+  };
+  if (TWILIO_MESSAGING_SERVICE_SID) msg.messagingServiceSid = TWILIO_MESSAGING_SERVICE_SID;
+  else msg.from = TWILIO_FROM;
+
+  await client.messages.create(msg);
+}
+
+// Ephemeral 2FA challenges for dev/testing.
+// NOTE: This is in-memory and resets when the server restarts.
+const twoFaChallenges = new Map();
+
+function nanoIdShort() {
+  // nanoId() exists in this file; keep challenge IDs short/unique.
+  // Avoid external deps to keep scripts self-contained.
+  return `ch_${nanoId().slice(-10)}`;
+}
+
+function maskDest(method, value) {
+  const v = String(value || '');
+  if (!v) return '';
+  if (method === 'sms') {
+    const last = v.replace(/\D/g, '').slice(-4);
+    return last ? `***-***-${last}` : '***';
+  }
+  // email
+  const at = v.indexOf('@');
+  if (at <= 1) return '***';
+  return `${v[0]}***${v.slice(at)}`;
+}
+
+function maskEmail(email) {
+  const v = String(email || '').trim().toLowerCase();
+  const at = v.indexOf('@');
+  if (at <= 1) return '***';
+  return `${v[0]}***${v.slice(at)}`;
+}
+
+function newOtpCode() {
+  // 6-digit numeric code.
+  return String(Math.floor(100000 + Math.random() * 900000));
+}
+
+function create2faChallenge({ userId, method, destination }) {
+  const challengeId = nanoIdShort();
+  const code = newOtpCode();
+  const expiresAt = Date.now() + 10 * 60 * 1000;
+  twoFaChallenges.set(challengeId, { userId, method, destination, code, expiresAt, attempts: 0 });
+  return { challengeId, code, expiresAt };
+}
+
+function consume2faChallenge(challengeId, code) {
+  const ch = twoFaChallenges.get(challengeId);
+  if (!ch) return { ok: false, error: 'invalid challenge' };
+  if (Date.now() > ch.expiresAt) {
+    twoFaChallenges.delete(challengeId);
+    return { ok: false, error: 'challenge expired' };
+  }
+  ch.attempts += 1;
+  if (ch.attempts > 10) {
+    twoFaChallenges.delete(challengeId);
+    return { ok: false, error: 'too many attempts' };
+  }
+  if (String(code || '').trim() !== String(ch.code)) {
+    return { ok: false, error: 'invalid code' };
+  }
+  twoFaChallenges.delete(challengeId);
+  return { ok: true, userId: ch.userId, method: ch.method };
+}
 // Dev compatibility: allow the mobile app's __DEV__ auto-login token.
 // Default: enabled outside production, disabled in production.
 const ALLOW_DEV_TOKEN = envFlag(process.env.BB_ALLOW_DEV_TOKEN, NODE_ENV !== 'production');
@@ -95,6 +216,9 @@ CREATE TABLE IF NOT EXISTS urgent_memos (
   id TEXT PRIMARY KEY,
   title TEXT,
   body TEXT,
+  memo_json TEXT,
+  status TEXT,
+  responded_at TEXT,
   ack INTEGER NOT NULL DEFAULT 0,
   created_at TEXT NOT NULL
 );
@@ -131,6 +255,17 @@ CREATE TABLE IF NOT EXISTS arrival_pings (
   created_at TEXT NOT NULL
 );
 `);
+
+// Lightweight migrations for older databases.
+try {
+  const cols = db.prepare("PRAGMA table_info('urgent_memos')").all().map((c) => String(c.name));
+  const ensureCol = (name, ddl) => { if (!cols.includes(name)) db.exec(ddl); };
+  ensureCol('memo_json', "ALTER TABLE urgent_memos ADD COLUMN memo_json TEXT");
+  ensureCol('status', "ALTER TABLE urgent_memos ADD COLUMN status TEXT");
+  ensureCol('responded_at', "ALTER TABLE urgent_memos ADD COLUMN responded_at TEXT");
+} catch (e) {
+  slog.warn('db', 'urgent_memos migration skipped', { message: e?.message || String(e) });
+}
 
 function safeJsonParse(text, fallback) {
   try {
@@ -242,11 +377,31 @@ app.get('/api/health', (req, res) => {
   res.json({ ok: true, uptime: process.uptime() });
 });
 
+// Request logging (dev-friendly)
+if (LOG_REQUESTS) {
+  app.use((req, res, next) => {
+    const startedAt = Date.now();
+    const path = req.originalUrl || req.url;
+    const method = (req.method || 'GET').toUpperCase();
+
+    slog.debug('req', `${method} ${path}`, { hasAuth: !!(req.headers && req.headers.authorization) });
+
+    res.on('finish', () => {
+      const ms = Date.now() - startedAt;
+      slog.info('req', `${method} ${path} -> ${res.statusCode} (${ms}ms)`);
+    });
+
+    next();
+  });
+}
+
 // Auth
 app.post('/api/auth/login', (req, res) => {
   const email = (req.body && req.body.email) ? String(req.body.email).trim().toLowerCase() : '';
   const password = (req.body && req.body.password) ? String(req.body.password) : '';
   if (!email || !password) return res.status(400).json({ ok: false, error: 'email and password required' });
+
+  slog.debug('auth', 'Login attempt', { email: maskEmail(email) });
 
   const row = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
   if (!row) return res.status(401).json({ ok: false, error: 'invalid credentials' });
@@ -257,6 +412,7 @@ app.post('/api/auth/login', (req, res) => {
 
   const user = userToClient(row);
   const token = signToken(user);
+  slog.info('auth', 'Login success', { userId: user?.id, email: maskEmail(email) });
   res.json({ token, user });
 });
 
@@ -265,13 +421,15 @@ app.get('/api/auth/me', authMiddleware, (req, res) => {
 });
 
 // Optional signup (off by default)
-app.post('/api/auth/signup', (req, res) => {
+app.post('/api/auth/signup', async (req, res) => {
   if (!ALLOW_SIGNUP) return res.status(403).json({ ok: false, error: 'signup disabled' });
 
   const email = (req.body && req.body.email) ? String(req.body.email).trim().toLowerCase() : '';
   const password = (req.body && req.body.password) ? String(req.body.password) : '';
   const name = (req.body && req.body.name) ? String(req.body.name).trim() : '';
   const role = (req.body && req.body.role) ? String(req.body.role).trim() : 'parent';
+  const twoFaMethod = (req.body && req.body.twoFaMethod) ? String(req.body.twoFaMethod).trim().toLowerCase() : 'sms';
+  const phone = (req.body && req.body.phone) ? String(req.body.phone).trim() : '';
 
   if (!email || !password || !name) return res.status(400).json({ ok: false, error: 'name, email, password required' });
   if (!JWT_SECRET) return res.status(500).json({ ok: false, error: 'server missing BB_JWT_SECRET' });
@@ -286,8 +444,71 @@ app.post('/api/auth/signup', (req, res) => {
     .run(id, email, hash, name, role, t, t);
 
   const user = { id, email, name, role };
+
+  // For end-to-end testing, default to requiring 2FA on signup.
+  if (REQUIRE_2FA_ON_SIGNUP) {
+    if (twoFaMethod && twoFaMethod !== 'sms') {
+      return res.status(400).json({ ok: false, error: 'Only SMS 2FA is supported' });
+    }
+
+    const method = 'sms';
+    const destination = normalizeE164Phone(phone);
+    if (!destination) {
+      return res.status(400).json({ ok: false, error: 'phone required for sms 2fa (E.164 format, e.g. +15551234567)' });
+    }
+
+    const ch = create2faChallenge({ userId: id, method, destination });
+    slog.info('auth', '2FA challenge created (signup)', { method, to: maskDest(method, destination), userId: id });
+
+    // Deliver the code (production/TestFlight). Only log/return the code when explicitly enabled.
+    if (DEBUG_2FA_RETURN_CODE) {
+      slog.debug('auth', '2FA code (dev)', { challengeId: ch.challengeId, code: ch.code });
+    } else {
+      try {
+        await send2faCodeSms({ to: destination, code: ch.code });
+        slog.info('auth', '2FA code delivered', { method, to: maskDest(method, destination), challengeId: ch.challengeId });
+      } catch (e) {
+        // Roll back created user on delivery failure to avoid orphan accounts.
+        try { db.prepare('DELETE FROM users WHERE id = ?').run(id); } catch (_) {}
+        try { twoFaChallenges.delete(ch.challengeId); } catch (_) {}
+        slog.error('auth', '2FA delivery failed', { method, to: maskDest(method, destination), message: e?.message || String(e) });
+        return res.status(500).json({ ok: false, error: '2FA delivery failed; contact support' });
+      }
+    }
+
+    const payload = {
+      ok: true,
+      user,
+      requires2fa: true,
+      method,
+      to: maskDest(method, destination),
+      challengeId: ch.challengeId,
+    };
+    if (DEBUG_2FA_RETURN_CODE) payload.devCode = ch.code;
+    return res.status(201).json(payload);
+  }
+
   const token = signToken(user);
-  res.status(201).json({ token, user });
+  return res.status(201).json({ token, user, requires2fa: false });
+});
+
+// Verify 2FA challenge and mint an auth token.
+app.post('/api/auth/2fa/verify', (req, res) => {
+  const challengeId = (req.body && req.body.challengeId) ? String(req.body.challengeId).trim() : '';
+  const code = (req.body && req.body.code) ? String(req.body.code).trim() : '';
+  if (!challengeId || !code) return res.status(400).json({ ok: false, error: 'challengeId and code required' });
+
+  const result = consume2faChallenge(challengeId, code);
+  if (!result.ok) return res.status(401).json({ ok: false, error: result.error || 'verification failed' });
+
+  const row = db.prepare('SELECT * FROM users WHERE id = ?').get(result.userId);
+  if (!row) return res.status(404).json({ ok: false, error: 'user not found' });
+  if (!JWT_SECRET) return res.status(500).json({ ok: false, error: 'server missing BB_JWT_SECRET' });
+
+  const user = userToClient(row);
+  const token = signToken(user);
+  slog.info('auth', '2FA verified; token issued', { userId: user?.id, method: result.method });
+  return res.json({ ok: true, token, user });
 });
 
 // Board / Posts
@@ -341,29 +562,116 @@ app.post('/api/board/like', authMiddleware, (req, res) => {
   const postId = (req.body && req.body.postId) ? String(req.body.postId) : '';
   if (!postId) return res.status(400).json({ ok: false, error: 'postId required' });
   db.prepare('UPDATE posts SET likes = likes + 1, updated_at = ? WHERE id = ?').run(nowISO(), postId);
-  res.json({ ok: true });
+  const row = db.prepare('SELECT likes, shares FROM posts WHERE id = ?').get(postId);
+  return res.json({ id: postId, likes: Number(row?.likes) || 0, shares: Number(row?.shares) || 0 });
 });
 
 app.post('/api/board/share', authMiddleware, (req, res) => {
   const postId = (req.body && req.body.postId) ? String(req.body.postId) : '';
   if (!postId) return res.status(400).json({ ok: false, error: 'postId required' });
   db.prepare('UPDATE posts SET shares = shares + 1, updated_at = ? WHERE id = ?').run(nowISO(), postId);
-  res.json({ ok: true });
+  const row = db.prepare('SELECT likes, shares FROM posts WHERE id = ?').get(postId);
+  return res.json({ id: postId, likes: Number(row?.likes) || 0, shares: Number(row?.shares) || 0 });
 });
 
 app.post('/api/board/comments', authMiddleware, (req, res) => {
   const postId = (req.body && req.body.postId) ? String(req.body.postId) : '';
-  const comment = (req.body && req.body.comment) ? String(req.body.comment) : '';
-  if (!postId || !comment) return res.status(400).json({ ok: false, error: 'postId and comment required' });
+  const raw = (req.body && req.body.comment) ? req.body.comment : null;
+  if (!postId || raw == null) return res.status(400).json({ ok: false, error: 'postId and comment required' });
 
   const row = db.prepare('SELECT comments_json FROM posts WHERE id = ?').get(postId);
   if (!row) return res.status(404).json({ ok: false, error: 'post not found' });
 
   const comments = safeJsonParse(row.comments_json, []);
-  comments.push({ id: nanoId(), body: comment, author: { id: req.user.id, name: req.user.name }, createdAt: nowISO() });
-  db.prepare('UPDATE posts SET comments_json = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(comments), nowISO(), postId);
 
-  res.json({ ok: true, comments });
+  const author = { id: req.user.id, name: req.user.name };
+  const createdAt = nowISO();
+
+  let body = '';
+  let parentId = null;
+  let clientId = null;
+  if (typeof raw === 'string') {
+    body = raw;
+  } else if (raw && typeof raw === 'object') {
+    if (raw.body != null) body = String(raw.body);
+    else if (raw.text != null) body = String(raw.text);
+    parentId = raw.parentId ? String(raw.parentId) : null;
+    clientId = raw.id ? String(raw.id) : null;
+  }
+  if (!body) return res.status(400).json({ ok: false, error: 'comment body required' });
+
+  const makeBase = (id) => ({
+    id,
+    body,
+    author,
+    createdAt,
+    reactions: {},
+    userReactions: {},
+  });
+
+  let created = null;
+  if (!parentId) {
+    const id = clientId || nanoId();
+    created = { ...makeBase(id), replies: [] };
+    comments.push(created);
+  } else {
+    const parent = comments.find((c) => c && String(c.id) === String(parentId));
+    if (!parent) return res.status(404).json({ ok: false, error: 'parent comment not found' });
+    const id = clientId || nanoId();
+    created = makeBase(id);
+    parent.replies = Array.isArray(parent.replies) ? parent.replies : [];
+    parent.replies.push(created);
+  }
+
+  db.prepare('UPDATE posts SET comments_json = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(comments), nowISO(), postId);
+  slog.debug('api', 'Comment created', { postId, parentId: parentId || undefined, commentId: created?.id });
+  return res.status(201).json(created);
+});
+
+// React to a comment (toggle per-user reactions)
+app.post('/api/board/comments/react', authMiddleware, (req, res) => {
+  const postId = (req.body && req.body.postId) ? String(req.body.postId) : '';
+  const commentId = (req.body && req.body.commentId) ? String(req.body.commentId) : '';
+  const emoji = (req.body && req.body.emoji) ? String(req.body.emoji) : '';
+  if (!postId || !commentId || !emoji) return res.status(400).json({ ok: false, error: 'postId, commentId, emoji required' });
+
+  const row = db.prepare('SELECT comments_json FROM posts WHERE id = ?').get(postId);
+  if (!row) return res.status(404).json({ ok: false, error: 'post not found' });
+
+  const comments = safeJsonParse(row.comments_json, []);
+  const uid = req.user?.id ? String(req.user.id) : 'anonymous';
+
+  const applyReaction = (c) => {
+    if (!c || String(c.id) !== String(commentId)) return false;
+    c.reactions = (c.reactions && typeof c.reactions === 'object') ? c.reactions : {};
+    c.userReactions = (c.userReactions && typeof c.userReactions === 'object') ? c.userReactions : {};
+    const prev = c.userReactions[uid];
+    if (prev === emoji) {
+      c.reactions[emoji] = Math.max(0, Number(c.reactions[emoji] || 1) - 1);
+      delete c.userReactions[uid];
+    } else {
+      if (prev) c.reactions[prev] = Math.max(0, Number(c.reactions[prev] || 1) - 1);
+      c.reactions[emoji] = Number(c.reactions[emoji] || 0) + 1;
+      c.userReactions[uid] = emoji;
+    }
+    return true;
+  };
+
+  let updated = null;
+  for (const c of comments) {
+    if (applyReaction(c)) { updated = c; break; }
+    if (Array.isArray(c?.replies)) {
+      for (const r of c.replies) {
+        if (applyReaction(r)) { updated = r; break; }
+      }
+      if (updated) break;
+    }
+  }
+  if (!updated) return res.status(404).json({ ok: false, error: 'comment not found' });
+
+  db.prepare('UPDATE posts SET comments_json = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(comments), nowISO(), postId);
+  slog.debug('api', 'Comment reacted', { postId, commentId, emoji });
+  return res.json(updated);
 });
 
 // Messages / Chats
@@ -399,23 +707,58 @@ app.post('/api/messages', authMiddleware, (req, res) => {
 // Urgent memos
 app.get('/api/urgent-memos', authMiddleware, (req, res) => {
   const rows = db.prepare('SELECT * FROM urgent_memos ORDER BY datetime(created_at) DESC').all();
-  res.json(rows.map((r) => ({
-    id: r.id,
-    title: r.title || '',
-    body: r.body || '',
-    ack: Boolean(r.ack),
-    date: r.created_at,
-    createdAt: r.created_at,
-  })));
+  res.json(rows.map((r) => {
+    const memo = safeJsonParse(r.memo_json, null);
+    const base = (memo && typeof memo === 'object') ? memo : {};
+    const createdAt = r.created_at;
+    const title = r.title || base.title || base.subject || 'Urgent';
+    const body = r.body || base.body || base.note || '';
+    return {
+      ...base,
+      id: r.id,
+      title,
+      body,
+      ack: Boolean(r.ack),
+      status: r.status || base.status || undefined,
+      respondedAt: r.responded_at || base.respondedAt || undefined,
+      date: base.date || createdAt,
+      createdAt,
+    };
+  }));
 });
 
 app.post('/api/urgent-memos', authMiddleware, (req, res) => {
-  const title = (req.body && req.body.title) ? String(req.body.title) : 'Urgent';
-  const body = (req.body && req.body.body) ? String(req.body.body) : '';
-  const id = nanoId();
+  const payload = (req.body && typeof req.body === 'object') ? req.body : {};
+  const id = payload.id ? String(payload.id) : nanoId();
   const t = nowISO();
-  db.prepare('INSERT INTO urgent_memos (id, title, body, ack, created_at) VALUES (?,?,?,?,?)').run(id, title, body, 0, t);
-  res.status(201).json({ id, title, body, ack: false, date: t, createdAt: t });
+  const title = payload.title ? String(payload.title) : (payload.subject ? String(payload.subject) : 'Urgent');
+  const body = payload.body ? String(payload.body) : (payload.note ? String(payload.note) : '');
+  const status = payload.status ? String(payload.status) : (payload.type === 'time_update' ? 'pending' : (payload.type ? 'sent' : null));
+  const memoObj = { ...payload, id, title, body, createdAt: t, date: t, status: status || payload.status };
+
+  db.prepare('INSERT OR REPLACE INTO urgent_memos (id, title, body, memo_json, status, responded_at, ack, created_at) VALUES (?,?,?,?,?,?,?,?)')
+    .run(id, title, body, JSON.stringify(memoObj), status, null, 0, t);
+  slog.info('api', 'Urgent memo created', { memoId: id, type: memoObj.type, status: status || undefined });
+  res.status(201).json(memoObj);
+});
+
+app.post('/api/urgent-memos/respond', authMiddleware, (req, res) => {
+  const memoId = (req.body && (req.body.memoId || req.body.id)) ? String(req.body.memoId || req.body.id) : '';
+  const action = (req.body && (req.body.action || req.body.status)) ? String(req.body.action || req.body.status) : '';
+  if (!memoId || !action) return res.status(400).json({ ok: false, error: 'memoId and action required' });
+
+  const row = db.prepare('SELECT * FROM urgent_memos WHERE id = ?').get(memoId);
+  if (!row) return res.status(404).json({ ok: false, error: 'memo not found' });
+
+  const t = nowISO();
+  const memo = safeJsonParse(row.memo_json, null);
+  const base = (memo && typeof memo === 'object') ? memo : {};
+  const next = { ...base, id: memoId, status: action, respondedAt: t };
+
+  db.prepare('UPDATE urgent_memos SET status = ?, responded_at = ?, memo_json = ? WHERE id = ?')
+    .run(action, t, JSON.stringify(next), memoId);
+  slog.info('api', 'Urgent memo responded', { memoId, action });
+  return res.json({ ok: true, memo: next });
 });
 
 app.post('/api/urgent-memos/read', authMiddleware, (req, res) => {
@@ -488,7 +831,19 @@ app.post('/api/children/respond-time-change', authMiddleware, (req, res) => {
   db.prepare('UPDATE time_change_proposals SET action = ? WHERE id = ?').run(action, proposalId);
   const row = db.prepare('SELECT * FROM time_change_proposals WHERE id = ?').get(proposalId);
   if (!row) return res.status(404).json({ ok: false, error: 'not found' });
-  res.json({ ok: true, item: row });
+  res.json({
+    ok: true,
+    item: {
+      id: row.id,
+      childId: row.child_id,
+      type: row.type,
+      proposedISO: row.proposed_iso,
+      note: row.note,
+      proposerId: row.proposer_id,
+      action: row.action,
+      createdAt: row.created_at,
+    },
+  });
 });
 
 // Push tokens
