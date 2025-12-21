@@ -242,13 +242,24 @@ CREATE TABLE IF NOT EXISTS messages (
 
 CREATE TABLE IF NOT EXISTS urgent_memos (
   id TEXT PRIMARY KEY,
+  type TEXT,
+  status TEXT,
+  proposer_id TEXT,
+  actor_role TEXT,
+  child_id TEXT,
+  update_type TEXT,
+  proposed_iso TEXT,
+  note TEXT,
+  subject TEXT,
   title TEXT,
   body TEXT,
   memo_json TEXT,
   status TEXT,
   responded_at TEXT,
   ack INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL
+  responded_at TEXT,
+  created_at TEXT NOT NULL,
+  updated_at TEXT
 );
 
 CREATE TABLE IF NOT EXISTS time_change_proposals (
@@ -302,6 +313,166 @@ function safeJsonParse(text, fallback) {
   } catch (_) {
     return fallback;
   }
+}
+
+function roleLower(u) {
+  try { return String(u && u.role ? u.role : '').trim().toLowerCase(); } catch (_) { return ''; }
+}
+
+function isAdminUser(u) {
+  const r = roleLower(u);
+  return r === 'admin' || r === 'administrator';
+}
+
+function safeString(v) {
+  try {
+    if (v == null) return '';
+    return String(v);
+  } catch (_) {
+    return '';
+  }
+}
+
+function hasExpoPushToken(token) {
+  const t = safeString(token).trim();
+  return t.startsWith('ExponentPushToken[') || t.startsWith('ExpoPushToken[');
+}
+
+function pushPrefAllows(preferences, kind) {
+  // Preferences are opt-in toggles stored by the mobile Settings screen.
+  // If preferences are missing/empty, default to allowing pushes.
+  if (!preferences || typeof preferences !== 'object') return true;
+  const keys = Object.keys(preferences);
+  if (!keys.length) return true;
+  if (kind === 'updates') return Boolean(preferences.updates ?? preferences.other ?? true);
+  if (kind === 'other') return Boolean(preferences.other ?? preferences.updates ?? true);
+  // fallback
+  return true;
+}
+
+async function sendExpoPush(tokens, { title, body, data } = {}) {
+  try {
+    if (!Array.isArray(tokens) || !tokens.length) return { ok: true, skipped: true, reason: 'no-tokens' };
+    if (typeof fetch !== 'function') {
+      console.warn('[api] fetch() not available; skipping push send');
+      return { ok: false, skipped: true, reason: 'no-fetch' };
+    }
+
+    const unique = Array.from(new Set(tokens.map((t) => safeString(t).trim()))).filter(hasExpoPushToken);
+    if (!unique.length) return { ok: true, skipped: true, reason: 'no-valid-tokens' };
+
+    const messages = unique.map((to) => ({
+      to,
+      title: safeString(title || 'BuddyBoard'),
+      body: safeString(body || ''),
+      data: (data && typeof data === 'object') ? data : {},
+      sound: 'default',
+    }));
+
+    const resp = await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(messages),
+    });
+
+    const json = await resp.json().catch(() => null);
+
+    // Best-effort cleanup for invalid/unregistered tokens.
+    // Expo returns tickets in the same order as the messages array.
+    try {
+      const tickets = json && Array.isArray(json.data) ? json.data : null;
+      if (resp.ok && tickets && tickets.length === messages.length) {
+        const tokensToDelete = [];
+        for (let i = 0; i < tickets.length; i += 1) {
+          if (shouldDeleteTokenForExpoError(tickets[i])) tokensToDelete.push(messages[i].to);
+        }
+        const deleted = deletePushTokens(tokensToDelete);
+        if (deleted) console.log(`[api] push cleanup: deleted ${deleted} invalid token(s)`);
+      }
+    } catch (_) {
+      // ignore cleanup failures
+    }
+
+    return { ok: resp.ok, status: resp.status, expo: json };
+  } catch (e) {
+    console.warn('[api] push send failed', e && e.message ? e.message : String(e));
+    return { ok: false, error: e && e.message ? e.message : String(e) };
+  }
+}
+
+function getAdminUserIds() {
+  try {
+    const rows = db.prepare('SELECT id, role FROM users').all();
+    const ids = [];
+    for (const r of rows) {
+      const role = safeString(r.role).trim().toLowerCase();
+      if (role === 'admin' || role === 'administrator') ids.push(String(r.id));
+    }
+    // Dev convenience: allow dev-token users to receive admin pushes.
+    ids.push('dev');
+    return Array.from(new Set(ids.filter(Boolean)));
+  } catch (_) {
+    return ['dev'];
+  }
+}
+
+function getPushTokensForUsers(userIds, { kind } = {}) {
+  try {
+    if (!Array.isArray(userIds) || !userIds.length) return [];
+    const placeholders = userIds.map(() => '?').join(',');
+    const rows = db.prepare(
+      `SELECT token, enabled, preferences_json FROM push_tokens WHERE enabled = 1 AND user_id IN (${placeholders})`
+    ).all(...userIds.map(String));
+
+    const out = [];
+    for (const row of rows) {
+      const token = safeString(row.token).trim();
+      if (!token) continue;
+      const prefs = safeJsonParse(row.preferences_json, {});
+      if (kind && !pushPrefAllows(prefs, kind)) continue;
+      out.push(token);
+    }
+    return Array.from(new Set(out));
+  } catch (_) {
+    return [];
+  }
+}
+
+function deletePushTokens(tokens) {
+  try {
+    if (!Array.isArray(tokens) || !tokens.length) return 0;
+    const unique = Array.from(new Set(tokens.map((t) => safeString(t).trim()))).filter(Boolean);
+    if (!unique.length) return 0;
+    const placeholders = unique.map(() => '?').join(',');
+    const info = db.prepare(`DELETE FROM push_tokens WHERE token IN (${placeholders})`).run(...unique);
+    return Number(info && typeof info.changes === 'number' ? info.changes : 0);
+  } catch (_) {
+    return 0;
+  }
+}
+
+function shouldDeleteTokenForExpoError(expoTicket) {
+  // Expo ticket format: { status: 'error', message, details: { error: 'DeviceNotRegistered' | ... } }
+  try {
+    if (!expoTicket || expoTicket.status !== 'error') return false;
+    const details = expoTicket.details && typeof expoTicket.details === 'object' ? expoTicket.details : {};
+    const code = safeString(details.error).trim();
+    // Only delete for terminal token problems.
+    return code === 'DeviceNotRegistered' || code === 'InvalidExpoPushToken';
+  } catch (_) {
+    return false;
+  }
+}
+
+function normalizeRecipients(input) {
+  if (!Array.isArray(input)) return [];
+  const ids = [];
+  for (const item of input) {
+    if (!item) continue;
+    if (typeof item === 'string' || typeof item === 'number') ids.push(String(item));
+    else if (typeof item === 'object' && item.id != null) ids.push(String(item.id));
+  }
+  return Array.from(new Set(ids.filter(Boolean)));
 }
 
 function userToClient(row) {
@@ -848,6 +1019,87 @@ app.post('/api/arrival/ping', authMiddleware, (req, res) => {
       payload.when ? String(payload.when) : null,
       createdAt
     );
+
+  // Generate an admin-facing arrival alert (deduped) when a parent/therapist arrives.
+  // Client already enforces schedule window and drop-zone check; the server stores a single alert
+  // per user/child/shift within a short window to avoid spamming.
+  try {
+    const r = String(payload.role || (req.user ? req.user.role : '') || '').trim().toLowerCase();
+    if (r === 'parent' || r === 'therapist') {
+      const actorId = payload.userId ? String(payload.userId) : (req.user ? String(req.user.id) : '');
+      const childId = payload.childId != null ? String(payload.childId) : null;
+      const shiftId = payload.shiftId != null ? String(payload.shiftId) : null;
+      const withinMins = 10;
+
+      const recent = db.prepare(`
+        SELECT id FROM urgent_memos
+        WHERE type = 'arrival_alert'
+          AND proposer_id = ?
+          AND (child_id IS ? OR child_id = ?)
+          AND (json_extract(meta_json, '$.shiftId') IS ? OR json_extract(meta_json, '$.shiftId') = ?)
+          AND datetime(created_at) > datetime('now', ?)
+        LIMIT 1
+      `).get(
+        actorId,
+        childId, childId,
+        shiftId, shiftId,
+        `-${withinMins} minutes`
+      );
+
+      if (!recent) {
+        const alertId = nanoId();
+        const t = nowISO();
+        const meta = {
+          lat: Number.isFinite(Number(payload.lat)) ? Number(payload.lat) : null,
+          lng: Number.isFinite(Number(payload.lng)) ? Number(payload.lng) : null,
+          distanceMiles: payload.distanceMiles != null ? Number(payload.distanceMiles) : null,
+          dropZoneMiles: payload.dropZoneMiles != null ? Number(payload.dropZoneMiles) : null,
+          eventId: payload.eventId ? String(payload.eventId) : null,
+          shiftId: shiftId,
+          when: payload.when ? String(payload.when) : null,
+        };
+        const title = r === 'therapist' ? 'Therapist Arrival' : 'Parent Arrival';
+        const note = ''; // UI can derive display copy
+        db.prepare(`
+          INSERT INTO urgent_memos (
+            id, type, status, proposer_id, actor_role, child_id, title, body, note, meta_json, ack, created_at, updated_at
+          ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
+        `).run(
+          alertId,
+          'arrival_alert',
+          'pending',
+          actorId,
+          r,
+          childId,
+          title,
+          '',
+          note,
+          JSON.stringify(meta),
+          0,
+          t,
+          t
+        );
+
+        // Push notify admins
+        try {
+          const adminIds = getAdminUserIds();
+          const tokens = getPushTokensForUsers(adminIds, { kind: 'updates' });
+          setTimeout(() => {
+            sendExpoPush(tokens, {
+              title,
+              body: 'Arrival detected. Open Alerts.',
+              data: { kind: 'arrival_alert', memoId: alertId, actorId, actorRole: r, childId },
+            }).catch(() => {});
+          }, 0);
+        } catch (_) {
+          // ignore
+        }
+      }
+    }
+  } catch (_) {
+    // ignore alert generation failures
+  }
+
   res.json({ ok: true });
 });
 

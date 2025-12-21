@@ -9,6 +9,19 @@ const getExpoPublicEnv = (key) => {
   return '';
 };
 
+function envFlag(value, defaultValue = false) {
+  try {
+    if (value == null) return defaultValue;
+    const v = String(value).trim().toLowerCase();
+    if (!v) return defaultValue;
+    if (['1', 'true', 'yes', 'y', 'on'].includes(v)) return true;
+    if (['0', 'false', 'no', 'n', 'off'].includes(v)) return false;
+    return defaultValue;
+  } catch (_) {
+    return defaultValue;
+  }
+}
+
 // API base URL
 // Prefer environment-driven config so dev/staging/prod can be swapped without code edits:
 //   EXPO_PUBLIC_API_BASE_URL=https://buddyboard.example.com
@@ -66,6 +79,11 @@ export const EMULATOR_HOST = '10.0.2.2';
 //   EXPO_PUBLIC_GOOGLE_PLACES_API_KEY=... (Expo will inline EXPO_PUBLIC_* vars)
 export const GOOGLE_PLACES_API_KEY = getExpoPublicEnv('EXPO_PUBLIC_GOOGLE_PLACES_API_KEY');
 
+// Testing toggle:
+// - In Expo Go, __DEV__ is true, so the app auto-logs in with a dev token.
+// - Set EXPO_PUBLIC_DISABLE_DEV_AUTOLOGIN=1 to force the real login flow in dev.
+export const DISABLE_DEV_AUTOLOGIN = envFlag(getExpoPublicEnv('EXPO_PUBLIC_DISABLE_DEV_AUTOLOGIN'), false);
+
 // Debug toggles
 // - DEBUG_LOGS: enables logger.debug(...) output in dev
 // Keep defaults quiet in production builds.
@@ -88,6 +106,7 @@ export default {
   BASE_URL,
   EMULATOR_HOST,
   GOOGLE_PLACES_API_KEY,
+  DISABLE_DEV_AUTOLOGIN,
   DEBUG_LOGS,
   DEBUG_LOG_COLORS,
   DEBUG_LOG_LEVEL,

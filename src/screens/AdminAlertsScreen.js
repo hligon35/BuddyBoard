@@ -18,6 +18,33 @@ export default function AdminAlertsScreen() {
     return c ? c.name : id;
   }
 
+  function typeLabel(m) {
+    const t = (m && m.type) ? String(m.type).toLowerCase() : 'urgent_memo';
+    if (t === 'time_update') return (m.updateType === 'pickup' ? 'Pickup' : 'Drop-off');
+    if (t === 'arrival_alert') return 'Arrival';
+    if (t === 'admin_memo') return 'Admin Memo';
+    return 'Alert';
+  }
+
+  function metaLine(m) {
+    const t = (m && m.type) ? String(m.type).toLowerCase() : 'urgent_memo';
+    const when = m.createdAt ? new Date(m.createdAt).toLocaleString() : '';
+    if (t === 'arrival_alert') {
+      const who = (m.actorRole || '').toString().toLowerCase();
+      const whoLabel = who ? who.toUpperCase() : 'USER';
+      return `${whoLabel} • ${when}`;
+    }
+    return `${typeLabel(m)} • ${when}`;
+  }
+
+  function primaryText(m) {
+    const t = (m && m.type) ? String(m.type).toLowerCase() : 'urgent_memo';
+    if (t === 'admin_memo') return m.subject || m.title || 'Admin Memo';
+    if (t === 'arrival_alert') return m.title || 'Arrival';
+    if (t === 'time_update') return `${m.updateType === 'pickup' ? 'Pickup' : 'Drop-off'} Time Update`;
+    return m.title || 'Alert';
+  }
+
   async function handleRespond(id, action) {
     try {
       const ok = await respondToUrgentMemo(id, action);
@@ -48,29 +75,45 @@ export default function AdminAlertsScreen() {
               const cname = childNameForId(item.childId);
               const status = item.status || 'pending';
               const statusColor = status === 'accepted' ? '#10B981' : status === 'denied' ? '#ef4444' : status === 'opened' ? '#F59E0B' : '#F59E0B';
+              const t = (item && item.type) ? String(item.type).toLowerCase() : 'urgent_memo';
               return (
                 <View style={styles.card}>
                   <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-                    <Text style={styles.meta}>{item.updateType === 'pickup' ? 'Pickup' : 'Drop-off'} • {new Date(item.createdAt).toLocaleString()}</Text>
+                    <Text style={styles.meta}>{metaLine(item)}</Text>
                     <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                       <View style={[styles.statusDot, { backgroundColor: statusColor }]} />
                       <Text style={{ marginLeft: 8, color: '#6b7280' }}>{status.toUpperCase()}</Text>
                     </View>
                   </View>
-                  <TouchableOpacity onPress={() => navigation.navigate('ChildDetail', { childId: item.childId })}>
-                    <Text style={styles.child}>Child: {cname}</Text>
-                  </TouchableOpacity>
-                  <Text style={styles.note}>{item.note}</Text>
+                  <Text style={styles.child}>{primaryText(item)}</Text>
+                  {item.childId ? (
+                    <TouchableOpacity onPress={() => navigation.navigate('ChildDetail', { childId: item.childId })}>
+                      <Text style={[styles.note, { fontWeight: '700' }]}>Child: {cname}</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                  {t === 'time_update' ? (
+                    <Text style={styles.note}>{item.note}</Text>
+                  ) : t === 'admin_memo' ? (
+                    <Text style={styles.note}>{item.body || ''}</Text>
+                  ) : t === 'arrival_alert' ? (
+                    <Text style={styles.note}>Arrival detected. Mark opened to acknowledge.</Text>
+                  ) : (
+                    <Text style={styles.note}>{item.body || item.note || ''}</Text>
+                  )}
                   <View style={styles.row}>
                     <TouchableOpacity style={[styles.btn, { backgroundColor: '#2563eb' }]} onPress={() => handleRespond(item.id, 'opened')}>
                       <Text style={styles.btnLabel}>Mark Opened</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity style={[styles.btn, { backgroundColor: '#10B981' }]} onPress={() => handleRespond(item.id, 'accepted')}>
-                      <Text style={styles.btnLabel}>Accept</Text>
-                    </TouchableOpacity>
-                    <TouchableOpacity style={[styles.btn, { backgroundColor: '#ef4444' }]} onPress={() => handleRespond(item.id, 'denied')}>
-                      <Text style={styles.btnLabel}>Deny</Text>
-                    </TouchableOpacity>
+                    {t === 'time_update' ? (
+                      <>
+                        <TouchableOpacity style={[styles.btn, { backgroundColor: '#10B981' }]} onPress={() => handleRespond(item.id, 'accepted')}>
+                          <Text style={styles.btnLabel}>Accept</Text>
+                        </TouchableOpacity>
+                        <TouchableOpacity style={[styles.btn, { backgroundColor: '#ef4444' }]} onPress={() => handleRespond(item.id, 'denied')}>
+                          <Text style={styles.btnLabel}>Deny</Text>
+                        </TouchableOpacity>
+                      </>
+                    ) : null}
                   </View>
                 </View>
               );

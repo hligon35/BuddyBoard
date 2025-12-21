@@ -17,6 +17,20 @@ export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [loading, setLoading] = useState(true);
 
+  // If the API returns 401, clear auth so the app can re-login cleanly.
+  useEffect(() => {
+    Api.setUnauthorizedHandler(() => {
+      try {
+        logger.warn('auth', 'Received 401 from API; clearing auth');
+      } catch (e) {
+        // ignore
+      }
+      // Fire and forget; we don't want to block the interceptor chain.
+      logout().catch(() => {});
+    });
+    return () => Api.setUnauthorizedHandler(null);
+  }, []);
+
   useEffect(() => {
     let mounted = true;
     (async () => {

@@ -32,6 +32,13 @@ const client = axios.create({
   headers: { Accept: 'application/json' },
 });
 
+let unauthorizedHandler = null;
+let lastUnauthorizedAt = 0;
+
+export function setUnauthorizedHandler(fn) {
+  unauthorizedHandler = typeof fn === 'function' ? fn : null;
+}
+
 // Debugging interceptors: log requests and responses to help diagnose 401/404s
 client.interceptors.request.use((req) => {
   try {
@@ -108,6 +115,20 @@ try {
         message: error?.message,
         responseType: dataType,
       });
+
+      // If auth is missing/expired/invalid, force the app to re-auth.
+      // Avoid loops on the login endpoint and avoid spamming.
+      try {
+        if (status === 401 && url && !String(url).includes('/api/auth/login')) {
+          const now = Date.now();
+          if (unauthorizedHandler && (now - lastUnauthorizedAt) > 1500) {
+            lastUnauthorizedAt = now;
+            unauthorizedHandler({ method, url, status });
+          }
+        }
+      } catch (e) {
+        // ignore
+      }
       return Promise.reject(error);
     }
   );
@@ -328,6 +349,8 @@ export default {
   getLinkPreview,
   getUrgentMemos,
   ackUrgentMemo,
+  sendUrgentMemo,
+  respondUrgentMemo,
   getMessages,
   sendMessage,
   sharePost,

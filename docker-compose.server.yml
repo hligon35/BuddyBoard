@@ -1,5 +1,3 @@
-version: "3.8"
-
 # Server/production overrides.
 # Goal: NEVER modify the git working tree on the server.
 # - No bind-mount of the repo into containers.
