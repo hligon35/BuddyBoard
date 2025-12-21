@@ -7,7 +7,6 @@ import { logger } from '../src/utils/logger';
 export default function SignUpScreen({ onDone, onCancel }) {
   const [name, setName] = useState('');
   const [email, setEmail] = useState('');
-  const [phone, setPhone] = useState('');
   const [password, setPassword] = useState('');
   const [busy, setBusy] = useState(false);
   const [show2fa, setShow2fa] = useState(false);
@@ -25,7 +24,6 @@ export default function SignUpScreen({ onDone, onCancel }) {
       const res = await Api.signup({
         name,
         email,
-        phone,
         password,
         role: 'parent',
         twoFaMethod: chosenMethod,
@@ -51,7 +49,7 @@ export default function SignUpScreen({ onDone, onCancel }) {
         logger.debug('auth', 'Prefilled dev 2FA code from server', { challengeId: res.challengeId });
       }
       setShow2fa(true);
-      Alert.alert('Verify', 'Enter the verification code sent via SMS.');
+      Alert.alert('Verify', 'Enter the verification code sent to your email.');
     } catch (e) {
       logger.warn('auth', 'Signup failed', { message: e?.message || String(e) });
 
@@ -76,9 +74,8 @@ export default function SignUpScreen({ onDone, onCancel }) {
 
   const submit = async () => {
     if (!email || !name || !password) return Alert.alert('Missing', 'Please provide name, email, and password');
-    if (!phone) return Alert.alert('Missing', 'Please provide a phone number for SMS verification (E.164 format like +15551234567).');
-    setMethod('sms');
-    await doSignup('sms');
+    setMethod('email');
+    await doSignup('email');
   };
 
   const verifyCode = async () => {
@@ -116,7 +113,7 @@ export default function SignUpScreen({ onDone, onCancel }) {
       }
       // Server enforces a 5-minute cooldown; respect retryAfterSec when provided.
       setResendUntilMs(Date.now() + 5 * 60 * 1000);
-      Alert.alert('Sent', 'A new verification code was sent via SMS.');
+      Alert.alert('Sent', 'A new verification code was sent.');
     } catch (e) {
       const retryAfterSec = e?.response?.data?.retryAfterSec;
       if (retryAfterSec) {
@@ -131,6 +128,8 @@ export default function SignUpScreen({ onDone, onCancel }) {
     }
   };
 
+  const methodLabel = (String(method || '').toLowerCase() === 'sms') ? 'SMS' : 'Email';
+
   return (
     <View style={{ flex: 1, padding: 20 }}>
       {!show2fa ? (
@@ -139,7 +138,6 @@ export default function SignUpScreen({ onDone, onCancel }) {
           <TextInput placeholder="Full name" value={name} onChangeText={setName} style={styles.input} />
           <TextInput placeholder="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" style={styles.input} />
           <TextInput placeholder="Password" value={password} onChangeText={setPassword} secureTextEntry style={styles.input} />
-          <TextInput placeholder="Phone (+15551234567)" value={phone} onChangeText={setPhone} keyboardType="phone-pad" style={styles.input} />
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 }}>
             <Button title="Cancel" onPress={() => { if (onCancel) onCancel(); }} />
             <Button title={busy ? 'Submitting...' : 'Submit'} onPress={submit} disabled={busy} />
@@ -148,7 +146,7 @@ export default function SignUpScreen({ onDone, onCancel }) {
       ) : (
         <View style={{ flex: 1, justifyContent: 'center' }}>
           <Text style={{ fontSize: 18, marginBottom: 8 }}>
-            Enter verification code (SMS){destinationMask ? ` to ${destinationMask}` : ''}
+            Enter verification code ({methodLabel}){destinationMask ? ` to ${destinationMask}` : ''}
           </Text>
           <TextInput placeholder="123456" value={code} onChangeText={setCode} keyboardType="number-pad" style={styles.input} />
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 }}>

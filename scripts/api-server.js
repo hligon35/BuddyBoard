@@ -9,7 +9,33 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const Database = require('better-sqlite3');
 const multer = require('multer');
-const twilio = require('twilio');
+let twilioLib = null;
+function getTwilioLib() {
+  if (twilioLib) return twilioLib;
+  try {
+    // Lazy require so the server can still boot even if the dependency
+    // is missing in a given deployment image.
+    // eslint-disable-next-line global-require
+    twilioLib = require('twilio');
+    return twilioLib;
+  } catch (e) {
+    return null;
+  }
+}
+
+let nodemailerLib = null;
+function getNodemailerLib() {
+  if (nodemailerLib) return nodemailerLib;
+  try {
+    // Lazy require so the server can still boot even if the dependency
+    // is missing in a given deployment image.
+    // eslint-disable-next-line global-require
+    nodemailerLib = require('nodemailer');
+    return nodemailerLib;
+  } catch (e) {
+    return null;
+  }
+}
 
 const PORT = Number(process.env.PORT || 3005);
 const DB_PATH = process.env.BB_DB_PATH || path.join(process.cwd(), '.data', 'buddyboard.sqlite');
@@ -31,6 +57,11 @@ const REQUIRE_2FA_ON_SIGNUP = envFlag(process.env.BB_REQUIRE_2FA_ON_SIGNUP, true
 const DEBUG_2FA_RETURN_CODE = envFlag(process.env.BB_DEBUG_2FA_RETURN_CODE, false);
 const LOG_REQUESTS = envFlag(process.env.BB_DEBUG_REQUESTS, true);
 
+// 2FA delivery toggles
+// Default: email enabled, SMS disabled.
+const ENABLE_EMAIL_2FA = envFlag(process.env.BB_ENABLE_EMAIL_2FA, true);
+const ENABLE_SMS_2FA = envFlag(process.env.BB_ENABLE_SMS_2FA, false);
+
 // 2FA delivery (SMS only).
 // Configure Twilio in production/TestFlight:
 // - BB_TWILIO_ACCOUNT_SID
@@ -41,18 +72,36 @@ const TWILIO_AUTH_TOKEN = (process.env.BB_TWILIO_AUTH_TOKEN || '').trim();
 const TWILIO_FROM = (process.env.BB_TWILIO_FROM || '').trim();
 const TWILIO_MESSAGING_SERVICE_SID = (process.env.BB_TWILIO_MESSAGING_SERVICE_SID || '').trim();
 
+// 2FA delivery (Email)
+// Configure SMTP:
+// - BB_SMTP_URL (e.g. smtp://user:pass@smtp.example.com:587)
+// - BB_EMAIL_FROM (e.g. BuddyBoard <no-reply@example.com>)
+const SMTP_URL = (process.env.BB_SMTP_URL || '').trim();
+const EMAIL_FROM = (process.env.BB_EMAIL_FROM || '').trim();
+const EMAIL_2FA_SUBJECT = (process.env.BB_EMAIL_2FA_SUBJECT || 'BuddyBoard verification code').trim();
+
 const slog = require('./logger');
 
 function twilioEnabled() {
+  if (!ENABLE_SMS_2FA) return false;
   if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) return false;
   if (TWILIO_MESSAGING_SERVICE_SID) return true;
   return !!TWILIO_FROM;
+}
+
+function emailEnabled() {
+  if (!ENABLE_EMAIL_2FA) return false;
+  return !!(SMTP_URL && EMAIL_FROM);
 }
 
 let twilioClient = null;
 function getTwilioClient() {
   if (!twilioEnabled()) return null;
   if (twilioClient) return twilioClient;
+  const twilio = getTwilioLib();
+  if (!twilio) {
+    throw new Error("Missing dependency 'twilio' in this server build. Rebuild your Docker image after installing dependencies (npm ci) so the twilio package is included.");
+  }
   twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
   return twilioClient;
 }
@@ -84,6 +133,57 @@ async function send2faCodeSms({ to, code }) {
   else msg.from = TWILIO_FROM;
 
   await client.messages.create(msg);
+}
+
+let emailTransporter = null;
+function getEmailTransporter() {
+  if (!emailEnabled()) return null;
+  if (emailTransporter) return emailTransporter;
+  const nodemailer = getNodemailerLib();
+  if (!nodemailer) {
+    throw new Error("Missing dependency 'nodemailer' in this server build. Rebuild your Docker image after installing dependencies (npm ci) so the nodemailer package is included.");
+  }
+  emailTransporter = nodemailer.createTransport(SMTP_URL);
+  return emailTransporter;
+}
+
+function normalizeEmail(input) {
+  const v = String(input || '').trim().toLowerCase();
+  if (!v) return '';
+  // Minimal sanity check; avoid strict RFC parsing.
+  if (!/^\S+@\S+\.[^\s@]+$/.test(v)) return '';
+  return v;
+}
+
+async function send2faCodeEmail({ to, code }) {
+  const destination = normalizeEmail(to);
+  if (!destination) throw new Error('Invalid email destination');
+
+  const transporter = getEmailTransporter();
+  if (!transporter) {
+    throw new Error('2FA email delivery is not configured (set BB_SMTP_URL and BB_EMAIL_FROM, and ensure BB_ENABLE_EMAIL_2FA=1)');
+  }
+
+  const text = `BuddyBoard verification code: ${code}. Expires in 5 minutes.`;
+  await transporter.sendMail({
+    from: EMAIL_FROM,
+    to: destination,
+    subject: EMAIL_2FA_SUBJECT,
+    text,
+  });
+}
+
+async function deliver2faCode({ method, destination, code }) {
+  const m = String(method || '').trim().toLowerCase();
+  if (m === 'sms') {
+    if (!ENABLE_SMS_2FA) throw new Error('SMS 2FA is disabled');
+    return send2faCodeSms({ to: destination, code });
+  }
+  if (m === 'email') {
+    if (!ENABLE_EMAIL_2FA) throw new Error('Email 2FA is disabled');
+    return send2faCodeEmail({ to: destination, code });
+  }
+  throw new Error('Unsupported 2FA method');
 }
 
 // Ephemeral 2FA challenges for dev/testing.
@@ -627,7 +727,7 @@ app.post('/api/auth/signup', async (req, res) => {
   const password = (req.body && req.body.password) ? String(req.body.password) : '';
   const name = (req.body && req.body.name) ? String(req.body.name).trim() : '';
   const role = (req.body && req.body.role) ? String(req.body.role).trim() : 'parent';
-  const twoFaMethod = (req.body && req.body.twoFaMethod) ? String(req.body.twoFaMethod).trim().toLowerCase() : 'sms';
+  const twoFaMethod = (req.body && req.body.twoFaMethod) ? String(req.body.twoFaMethod).trim().toLowerCase() : 'email';
   const phone = (req.body && req.body.phone) ? String(req.body.phone).trim() : '';
 
   if (!email || !password || !name) return res.status(400).json({ ok: false, error: 'name, email, password required' });
@@ -646,14 +746,25 @@ app.post('/api/auth/signup', async (req, res) => {
 
   // For end-to-end testing, default to requiring 2FA on signup.
   if (REQUIRE_2FA_ON_SIGNUP) {
-    if (twoFaMethod && twoFaMethod !== 'sms') {
-      return res.status(400).json({ ok: false, error: 'Only SMS 2FA is supported' });
+    const method = (twoFaMethod === 'sms' || twoFaMethod === 'email') ? twoFaMethod : 'email';
+    if (method === 'sms' && !ENABLE_SMS_2FA) {
+      return res.status(400).json({ ok: false, error: 'SMS 2FA is currently disabled' });
+    }
+    if (method === 'email' && !ENABLE_EMAIL_2FA) {
+      return res.status(400).json({ ok: false, error: 'Email 2FA is currently disabled' });
     }
 
-    const method = 'sms';
-    const destination = normalizeE164Phone(phone);
-    if (!destination) {
-      return res.status(400).json({ ok: false, error: 'phone required for sms 2fa (E.164 format, e.g. +15551234567)' });
+    let destination = '';
+    if (method === 'sms') {
+      destination = normalizeE164Phone(phone);
+      if (!destination) {
+        return res.status(400).json({ ok: false, error: 'phone required for sms 2fa (E.164 format, e.g. +15551234567)' });
+      }
+    } else {
+      destination = normalizeEmail(email);
+      if (!destination) {
+        return res.status(400).json({ ok: false, error: 'valid email required for email 2fa' });
+      }
     }
 
     const ch = create2faChallenge({ userId: id, method, destination });
@@ -664,7 +775,7 @@ app.post('/api/auth/signup', async (req, res) => {
       slog.debug('auth', '2FA code (dev)', { challengeId: ch.challengeId, code: ch.code });
     } else {
       try {
-        await send2faCodeSms({ to: destination, code: ch.code });
+        await deliver2faCode({ method, destination, code: ch.code });
         slog.info('auth', '2FA code delivered', { method, to: maskDest(method, destination), challengeId: ch.challengeId });
       } catch (e) {
         // Roll back created user on delivery failure to avoid orphan accounts.
@@ -723,21 +834,17 @@ app.post('/api/auth/2fa/resend', async (req, res) => {
     return res.status(status).json(payload);
   }
 
-  if (updated.method !== 'sms') {
-    return res.status(400).json({ ok: false, error: 'Only SMS 2FA is supported' });
-  }
-
   if (DEBUG_2FA_RETURN_CODE) {
     slog.debug('auth', '2FA code resent (dev)', { challengeId, code: updated.code });
-    return res.json({ ok: true, method: 'sms', to: maskDest('sms', updated.destination), challengeId, devCode: updated.code });
+    return res.json({ ok: true, method: updated.method, to: maskDest(updated.method, updated.destination), challengeId, devCode: updated.code });
   }
 
   try {
-    await send2faCodeSms({ to: updated.destination, code: updated.code });
-    slog.info('auth', '2FA code resent', { method: 'sms', to: maskDest('sms', updated.destination), challengeId });
-    return res.json({ ok: true, method: 'sms', to: maskDest('sms', updated.destination), challengeId });
+    await deliver2faCode({ method: updated.method, destination: updated.destination, code: updated.code });
+    slog.info('auth', '2FA code resent', { method: updated.method, to: maskDest(updated.method, updated.destination), challengeId });
+    return res.json({ ok: true, method: updated.method, to: maskDest(updated.method, updated.destination), challengeId });
   } catch (e) {
-    slog.error('auth', '2FA resend failed', { method: 'sms', to: maskDest('sms', updated.destination), message: e?.message || String(e) });
+    slog.error('auth', '2FA resend failed', { method: updated.method, to: maskDest(updated.method, updated.destination), message: e?.message || String(e) });
     return res.status(500).json({ ok: false, error: '2FA delivery failed; contact support' });
   }
 });
