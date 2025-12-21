@@ -31,15 +31,42 @@ function nanoId() {
 
 // In-memory 2FA challenges (mock)
 const twoFaChallenges = new Map();
+const TWOFA_CODE_TTL_MS = 5 * 60 * 1000;
+const TWOFA_RESEND_COOLDOWN_MS = 5 * 60 * 1000;
 function newOtpCode() {
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 function create2faChallenge({ userId, method, destination }) {
   const challengeId = `mock_${Math.random().toString(16).slice(2, 10)}`;
   const code = newOtpCode();
-  const expiresAt = Date.now() + 10 * 60 * 1000;
-  twoFaChallenges.set(challengeId, { userId, method, destination, code, expiresAt, attempts: 0 });
+  const now = Date.now();
+  const expiresAt = now + TWOFA_CODE_TTL_MS;
+  twoFaChallenges.set(challengeId, { userId, method, destination, code, expiresAt, attempts: 0, lastSentAt: now });
   return { challengeId, code, expiresAt };
+}
+
+function resend2faChallenge(challengeId) {
+  const ch = twoFaChallenges.get(challengeId);
+  if (!ch) return { ok: false, status: 404, error: 'invalid challenge' };
+
+  const now = Date.now();
+  const last = Number(ch.lastSentAt || 0);
+  const waitMs = (last + TWOFA_RESEND_COOLDOWN_MS) - now;
+  if (waitMs > 0) {
+    return {
+      ok: false,
+      status: 429,
+      error: 'Too many requests; please wait before requesting another code',
+      retryAfterSec: Math.ceil(waitMs / 1000),
+    };
+  }
+
+  ch.code = newOtpCode();
+  ch.expiresAt = now + TWOFA_CODE_TTL_MS;
+  ch.attempts = 0;
+  ch.lastSentAt = now;
+  twoFaChallenges.set(challengeId, ch);
+  return { ok: true, challengeId, code: ch.code, expiresAt: ch.expiresAt, method: ch.method, destination: ch.destination };
 }
 function consume2faChallenge(challengeId, code) {
   const ch = twoFaChallenges.get(challengeId);
@@ -142,6 +169,25 @@ app.post('/api/auth/2fa/verify', (req, res) => {
   const token = `mock-token-${Date.now()}`;
   slog.info('auth', '2FA verified (mock); token issued', { userId: user.id, method: result.method });
   return res.json({ ok: true, token, user });
+});
+
+app.post('/api/auth/2fa/resend', (req, res) => {
+  const challengeId = (req.body && req.body.challengeId) ? String(req.body.challengeId).trim() : '';
+  if (!challengeId) return res.status(400).json({ ok: false, error: 'challengeId required' });
+
+  const updated = resend2faChallenge(challengeId);
+  if (!updated.ok) {
+    const payload = { ok: false, error: updated.error || 'resend failed' };
+    if (updated.retryAfterSec) payload.retryAfterSec = updated.retryAfterSec;
+    return res.status(updated.status || 400).json(payload);
+  }
+
+  if (updated.method !== 'sms') {
+    return res.status(400).json({ ok: false, error: 'Only SMS 2FA is supported' });
+  }
+
+  slog.info('auth', '2FA code resent (mock)', { challengeId, method: 'sms' });
+  return res.json({ ok: true, method: 'sms', challengeId, devCode: updated.code });
 });
 app.get('/api/board', (req, res) => res.json(posts));
 app.post('/api/board', (req, res) => {

@@ -15,6 +15,7 @@ export default function SignUpScreen({ onDone, onCancel }) {
   const [code, setCode] = useState('');
   const [challengeId, setChallengeId] = useState('');
   const [destinationMask, setDestinationMask] = useState('');
+  const [resendUntilMs, setResendUntilMs] = useState(0);
   const auth = useAuth();
 
   const doSignup = async (chosenMethod) => {
@@ -50,7 +51,7 @@ export default function SignUpScreen({ onDone, onCancel }) {
         logger.debug('auth', 'Prefilled dev 2FA code from server', { challengeId: res.challengeId });
       }
       setShow2fa(true);
-      Alert.alert('Verify', `Enter the verification code sent via ${res.method || chosenMethod}.`);
+      Alert.alert('Verify', 'Enter the verification code sent via SMS.');
     } catch (e) {
       logger.warn('auth', 'Signup failed', { message: e?.message || String(e) });
       Alert.alert('Error', e?.response?.data?.error || e?.message || 'Signup failed');
@@ -81,6 +82,41 @@ export default function SignUpScreen({ onDone, onCancel }) {
     } finally { setBusy(false); }
   };
 
+  const resendCode = async () => {
+    if (!challengeId) return;
+    const now = Date.now();
+    if (resendUntilMs && now < resendUntilMs) {
+      const sec = Math.ceil((resendUntilMs - now) / 1000);
+      Alert.alert('Please wait', `You can request another code in ${sec} seconds.`);
+      return;
+    }
+
+    setBusy(true);
+    try {
+      logger.debug('auth', '2FA resend submit', { hasChallenge: !!challengeId });
+      const res = await Api.resend2fa({ challengeId });
+      if (res?.to) setDestinationMask(String(res.to));
+      if (typeof __DEV__ !== 'undefined' && __DEV__ && res?.devCode) {
+        setCode(String(res.devCode));
+        logger.debug('auth', 'Prefilled dev 2FA code from resend', { challengeId });
+      }
+      // Server enforces a 5-minute cooldown; respect retryAfterSec when provided.
+      setResendUntilMs(Date.now() + 5 * 60 * 1000);
+      Alert.alert('Sent', 'A new verification code was sent via SMS.');
+    } catch (e) {
+      const retryAfterSec = e?.response?.data?.retryAfterSec;
+      if (retryAfterSec) {
+        setResendUntilMs(Date.now() + (Number(retryAfterSec) * 1000));
+        Alert.alert('Please wait', `You can request another code in ${retryAfterSec} seconds.`);
+        return;
+      }
+      logger.warn('auth', '2FA resend failed', { message: e?.message || String(e) });
+      Alert.alert('Error', e?.response?.data?.error || e?.message || 'Failed to resend code');
+    } finally {
+      setBusy(false);
+    }
+  };
+
   return (
     <View style={{ flex: 1, padding: 20 }}>
       {!show2fa ? (
@@ -98,11 +134,12 @@ export default function SignUpScreen({ onDone, onCancel }) {
       ) : (
         <View style={{ flex: 1, justifyContent: 'center' }}>
           <Text style={{ fontSize: 18, marginBottom: 8 }}>
-            Enter verification code ({method === 'sms' ? 'text' : 'email'}){destinationMask ? ` to ${destinationMask}` : ''}
+            Enter verification code (SMS){destinationMask ? ` to ${destinationMask}` : ''}
           </Text>
           <TextInput placeholder="123456" value={code} onChangeText={setCode} keyboardType="number-pad" style={styles.input} />
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 }}>
             <Button title="Back" onPress={() => { setShow2fa(false); setMethod(null); setChallengeId(''); setDestinationMask(''); setCode(''); }} />
+            <Button title="Resend" onPress={resendCode} disabled={busy || !challengeId} />
             <Button title={busy ? 'Verifying...' : 'Verify'} onPress={verifyCode} disabled={busy} />
           </View>
         </View>

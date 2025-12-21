@@ -126,6 +126,10 @@ API server (SQLite) settings:
 
 If `BB_ALLOW_SIGNUP=1` and `BB_REQUIRE_2FA_ON_SIGNUP=1`, and you do NOT set `BB_DEBUG_2FA_RETURN_CODE=1`, signup will fail unless Twilio SMS is configured.
 
+2FA code timing:
+- Codes expire after 5 minutes.
+- You can request a new code at most once every 5 minutes.
+
 Example `.env`:
 
 ```env

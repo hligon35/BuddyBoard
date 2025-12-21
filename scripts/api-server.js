@@ -75,7 +75,7 @@ async function send2faCodeSms({ to, code }) {
     throw new Error('2FA SMS delivery is not configured (set BB_TWILIO_ACCOUNT_SID/BB_TWILIO_AUTH_TOKEN and BB_TWILIO_FROM or BB_TWILIO_MESSAGING_SERVICE_SID)');
   }
 
-  const body = `BuddyBoard verification code: ${code}. Expires in 10 minutes.`;
+  const body = `BuddyBoard verification code: ${code}. Expires in 5 minutes.`;
   const msg = {
     to,
     body,
@@ -89,6 +89,9 @@ async function send2faCodeSms({ to, code }) {
 // Ephemeral 2FA challenges for dev/testing.
 // NOTE: This is in-memory and resets when the server restarts.
 const twoFaChallenges = new Map();
+
+const TWOFA_CODE_TTL_MS = 5 * 60 * 1000;
+const TWOFA_RESEND_COOLDOWN_MS = 5 * 60 * 1000;
 
 function nanoIdShort() {
   // nanoId() exists in this file; keep challenge IDs short/unique.
@@ -124,9 +127,34 @@ function newOtpCode() {
 function create2faChallenge({ userId, method, destination }) {
   const challengeId = nanoIdShort();
   const code = newOtpCode();
-  const expiresAt = Date.now() + 10 * 60 * 1000;
-  twoFaChallenges.set(challengeId, { userId, method, destination, code, expiresAt, attempts: 0 });
+  const now = Date.now();
+  const expiresAt = now + TWOFA_CODE_TTL_MS;
+  twoFaChallenges.set(challengeId, { userId, method, destination, code, expiresAt, attempts: 0, lastSentAt: now });
   return { challengeId, code, expiresAt };
+}
+
+function resend2faChallenge(challengeId) {
+  const ch = twoFaChallenges.get(challengeId);
+  if (!ch) return { ok: false, status: 404, error: 'invalid challenge' };
+
+  const now = Date.now();
+  const last = Number(ch.lastSentAt || 0);
+  const waitMs = (last + TWOFA_RESEND_COOLDOWN_MS) - now;
+  if (waitMs > 0) {
+    return {
+      ok: false,
+      status: 429,
+      error: 'Too many requests; please wait before requesting another code',
+      retryAfterSec: Math.ceil(waitMs / 1000),
+    };
+  }
+
+  ch.code = newOtpCode();
+  ch.expiresAt = now + TWOFA_CODE_TTL_MS;
+  ch.attempts = 0;
+  ch.lastSentAt = now;
+  twoFaChallenges.set(challengeId, ch);
+  return { ok: true, challengeId, code: ch.code, expiresAt: ch.expiresAt, method: ch.method, destination: ch.destination };
 }
 
 function consume2faChallenge(challengeId, code) {
@@ -509,6 +537,38 @@ app.post('/api/auth/2fa/verify', (req, res) => {
   const token = signToken(user);
   slog.info('auth', '2FA verified; token issued', { userId: user?.id, method: result.method });
   return res.json({ ok: true, token, user });
+});
+
+// Resend SMS 2FA code with a cooldown.
+app.post('/api/auth/2fa/resend', async (req, res) => {
+  const challengeId = (req.body && req.body.challengeId) ? String(req.body.challengeId).trim() : '';
+  if (!challengeId) return res.status(400).json({ ok: false, error: 'challengeId required' });
+
+  const updated = resend2faChallenge(challengeId);
+  if (!updated.ok) {
+    const status = updated.status || 400;
+    const payload = { ok: false, error: updated.error || 'resend failed' };
+    if (updated.retryAfterSec) payload.retryAfterSec = updated.retryAfterSec;
+    return res.status(status).json(payload);
+  }
+
+  if (updated.method !== 'sms') {
+    return res.status(400).json({ ok: false, error: 'Only SMS 2FA is supported' });
+  }
+
+  if (DEBUG_2FA_RETURN_CODE) {
+    slog.debug('auth', '2FA code resent (dev)', { challengeId, code: updated.code });
+    return res.json({ ok: true, method: 'sms', to: maskDest('sms', updated.destination), challengeId, devCode: updated.code });
+  }
+
+  try {
+    await send2faCodeSms({ to: updated.destination, code: updated.code });
+    slog.info('auth', '2FA code resent', { method: 'sms', to: maskDest('sms', updated.destination), challengeId });
+    return res.json({ ok: true, method: 'sms', to: maskDest('sms', updated.destination), challengeId });
+  } catch (e) {
+    slog.error('auth', '2FA resend failed', { method: 'sms', to: maskDest('sms', updated.destination), message: e?.message || String(e) });
+    return res.status(500).json({ ok: false, error: '2FA delivery failed; contact support' });
+  }
 });
 
 // Board / Posts

@@ -132,6 +132,11 @@ export async function verify2fa(payload) {
   return res.data;
 }
 
+export async function resend2fa(payload) {
+  const res = await client.post('/api/auth/2fa/resend', payload);
+  return res.data;
+}
+
 export async function me() {
   const res = await client.get('/api/auth/me');
   return res.data;
