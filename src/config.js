@@ -13,7 +13,39 @@ const getExpoPublicEnv = (key) => {
 // Prefer environment-driven config so dev/staging/prod can be swapped without code edits:
 //   EXPO_PUBLIC_API_BASE_URL=https://buddyboard.example.com
 // In production builds, this should be set via EAS/CI secrets.
-const fallbackDevBaseUrl = 'http://localhost:3005';
+//
+// Dev convenience:
+// If EXPO_PUBLIC_API_BASE_URL is not set, try to infer the host IP from Expo/Metro
+// so physical devices on the same network can reach the local API server.
+const getDevHostFromExpo = () => {
+  try {
+    // `expo-constants` exists in Expo apps; we require it lazily to avoid
+    // hard crashes if it isn't available in some runtimes.
+    // eslint-disable-next-line global-require
+    const ConstantsModule = require('expo-constants');
+    const Constants = ConstantsModule?.default || ConstantsModule;
+
+    // Common locations across Expo SDK versions.
+    const hostUri =
+      Constants?.expoConfig?.hostUri ||
+      Constants?.manifest?.debuggerHost ||
+      Constants?.manifest2?.extra?.expoClient?.hostUri ||
+      '';
+
+    // hostUri/debuggerHost typically looks like: "192.168.1.10:19000"
+    const host = String(hostUri).split(':')[0];
+    if (host && host !== 'localhost' && host !== '127.0.0.1') return host;
+  } catch (_) {
+    // ignore
+  }
+  return '';
+};
+
+const fallbackDevBaseUrl = (() => {
+  const inferredHost = getDevHostFromExpo();
+  if (inferredHost) return `http://${inferredHost}:3005`;
+  return 'http://localhost:3005';
+})();
 export const BASE_URL =
   getExpoPublicEnv('EXPO_PUBLIC_API_BASE_URL') ||
   ((typeof __DEV__ !== 'undefined' && __DEV__) ? fallbackDevBaseUrl : '');

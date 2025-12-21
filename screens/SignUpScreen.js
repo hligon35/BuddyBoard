@@ -54,7 +54,21 @@ export default function SignUpScreen({ onDone, onCancel }) {
       Alert.alert('Verify', 'Enter the verification code sent via SMS.');
     } catch (e) {
       logger.warn('auth', 'Signup failed', { message: e?.message || String(e) });
-      Alert.alert('Error', e?.response?.data?.error || e?.message || 'Signup failed');
+
+      const serverMsg = e?.response?.data?.error;
+      const hasResponse = !!e?.response;
+      const apiBase = Api?.API_BASE_URL || 'unknown';
+      const isTimeout = e?.code === 'ECONNABORTED';
+
+      if (!hasResponse) {
+        const msg = isTimeout
+          ? `Request timed out trying to reach ${apiBase}. Is the API server running and reachable from this device?`
+          : `Network error trying to reach ${apiBase}. If you're on a phone, "localhost" won't work—set EXPO_PUBLIC_API_BASE_URL to your server/domain (or ensure you're on the same Wi‑Fi as your dev machine).`;
+        Alert.alert('Network error', msg);
+        return;
+      }
+
+      Alert.alert('Error', serverMsg || e?.message || 'Signup failed');
     } finally {
       setBusy(false);
     }

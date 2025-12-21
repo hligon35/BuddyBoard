@@ -17,6 +17,15 @@ try {
   // ignore
 }
 
+// Useful for debugging "Network Error" cases from screens.
+export const API_BASE_URL = effectiveBase;
+
+try {
+  logger.info('api', 'API base URL configured', { baseURL: effectiveBase || '', envBaseURL: BASE_URL || '' });
+} catch (e) {
+  // ignore
+}
+
 const client = axios.create({
   baseURL: effectiveBase,
   timeout: 20000,
