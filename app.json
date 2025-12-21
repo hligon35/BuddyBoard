@@ -24,7 +24,12 @@
     "orientation": "portrait",
     "plugins": [
       "expo-asset",
-      "expo-notifications",
+      [
+        "expo-notifications",
+        {
+          "mode": "production"
+        }
+      ],
       "@react-native-community/datetimepicker"
     ],
     "icon": "./assets/icon.png",

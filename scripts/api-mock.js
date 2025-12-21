@@ -107,6 +107,10 @@ let urgentMemos = [];
 let timeChangeProposals = [];
 let pushTokens = []; // { token, userId, platform, enabled, preferences, updatedAt }
 
+function nanoId() {
+  return `id_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
 app.get('/api/health', (req, res) => res.json({ ok: true, uptime: process.uptime() }));
 
 app.post('/api/arrival/ping', (req, res) => {
@@ -340,6 +344,57 @@ app.post('/api/urgent-memos/respond', (req, res) => {
 app.post('/api/urgent-memos/read', (req, res) => {
   const ids = Array.isArray(req.body.memoIds) ? req.body.memoIds : [];
   urgentMemos.forEach(u => { if (ids.includes(u.id)) u.ack = true; });
+  res.json({ ok: true });
+});
+
+// Admin responds to a memo/alert
+app.post('/api/urgent-memos/respond', (req, res) => {
+  const memoId = req.body && req.body.memoId ? String(req.body.memoId) : '';
+  const action = req.body && req.body.action ? String(req.body.action) : '';
+  if (!memoId || !action) return res.status(400).json({ ok: false, error: 'memoId and action required' });
+  const idx = urgentMemos.findIndex((m) => String(m.id) === memoId);
+  if (idx === -1) return res.status(404).json({ ok: false, error: 'not found' });
+  const t = new Date().toISOString();
+  urgentMemos[idx] = { ...urgentMemos[idx], status: action, respondedAt: t, updatedAt: t };
+  res.json({ ok: true, id: memoId, status: action, respondedAt: t, updatedAt: t });
+});
+
+// Arrival ping: store an arrival alert for admins (deduped)
+app.post('/api/arrival/ping', (req, res) => {
+  const p = req.body || {};
+  const role = (p.role || '').toString().toLowerCase();
+  if (role !== 'parent' && role !== 'therapist') return res.json({ ok: true });
+  const actorId = p.userId ? String(p.userId) : 'unknown';
+  const childId = p.childId != null ? String(p.childId) : null;
+
+  const recent = urgentMemos.find((m) => m.type === 'arrival_alert' && m.proposerId === actorId && String(m.childId || '') === String(childId || '') && (Date.now() - new Date(m.createdAt).getTime()) < 10 * 60 * 1000);
+  if (!recent) {
+    const createdAt = new Date().toISOString();
+    urgentMemos.unshift({
+      id: nanoId(),
+      type: 'arrival_alert',
+      status: 'pending',
+      proposerId: actorId,
+      actorRole: role,
+      childId,
+      title: role === 'therapist' ? 'Therapist Arrival' : 'Parent Arrival',
+      body: '',
+      note: '',
+      meta: {
+        lat: p.lat != null ? Number(p.lat) : null,
+        lng: p.lng != null ? Number(p.lng) : null,
+        distanceMiles: p.distanceMiles != null ? Number(p.distanceMiles) : null,
+        dropZoneMiles: p.dropZoneMiles != null ? Number(p.dropZoneMiles) : null,
+        when: p.when || createdAt,
+      },
+      recipients: [],
+      ack: false,
+      respondedAt: null,
+      date: createdAt,
+      createdAt,
+      updatedAt: createdAt,
+    });
+  }
   res.json({ ok: true });
 });
 

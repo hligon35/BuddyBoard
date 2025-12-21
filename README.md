@@ -25,6 +25,7 @@ Configuration
 - Set `EXPO_PUBLIC_API_BASE_URL` in your environment to change the API base URL (recommended).
 - On Android emulator, if your backend runs on localhost, use `10.0.2.2` as the host.
 - (Optional) For address autocomplete in Admin → Arrival Detection Controls, set `EXPO_PUBLIC_GOOGLE_PLACES_API_KEY` in your environment.
+- By default in dev (including Expo Go), the app auto-logs in with a dev token. To test the real login flow in Expo Go, set `EXPO_PUBLIC_DISABLE_DEV_AUTOLOGIN=1`.
 
 Notes
 
