@@ -9,6 +9,7 @@ import { logger } from '../src/utils/logger';
 export default function LoginScreen({ navigation, suppressAutoRedirect = false }) {
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [busy, setBusy] = useState(false);
   const [biometricBusy, setBiometricBusy] = useState(false);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
@@ -104,7 +105,27 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
         <LogoTitle width={360} height={108} />
       </View>
       <TextInput value={email} onChangeText={setEmail} style={styles.input} placeholder="Email" keyboardType="email-address" autoCapitalize="none" />
-      <TextInput value={password} onChangeText={setPassword} style={styles.input} placeholder="Password" secureTextEntry />
+
+      <View style={styles.passwordRow}>
+        <TextInput
+          value={password}
+          onChangeText={setPassword}
+          style={[styles.input, styles.passwordInput]}
+          placeholder="Password"
+          secureTextEntry={!showPassword}
+          autoCapitalize="none"
+          autoCorrect={false}
+          textContentType="password"
+        />
+        <TouchableOpacity
+          style={styles.peekBtn}
+          onPress={() => setShowPassword((v) => !v)}
+          accessibilityRole="button"
+          accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+        >
+          <Text style={styles.peekText}>{showPassword ? 'Hide' : 'Show'}</Text>
+        </TouchableOpacity>
+      </View>
 
       <View style={styles.actionsRow}>
         <View style={{ flex: 0 }}>
@@ -140,6 +161,10 @@ const styles = StyleSheet.create({
   input: { borderWidth: 1, borderColor: '#ccc', padding: 10, marginBottom: 12, borderRadius: 6 },
   registerWrap: { marginTop: 12, alignItems: 'center' },
   registerText: { color: '#2563eb', fontWeight: '600' },
+  passwordRow: { flexDirection: 'row', alignItems: 'center' },
+  passwordInput: { flex: 1, marginBottom: 0 },
+  peekBtn: { paddingHorizontal: 10, paddingVertical: 10, marginLeft: 8 },
+  peekText: { color: '#2563eb', fontWeight: '600' },
   actionsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
   sep: { marginHorizontal: 8, color: '#666', fontSize: 18 },
   signUpBtn: { marginLeft: 6 },
