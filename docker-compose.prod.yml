@@ -20,6 +20,11 @@ services:
     ports: []
     environment:
       - BB_PUBLIC_BASE_URL=${BB_PUBLIC_BASE_URL}
+      - BB_ENABLE_EMAIL_2FA=${BB_ENABLE_EMAIL_2FA}
+      - BB_SMTP_URL=${BB_SMTP_URL}
+      - BB_EMAIL_FROM=${BB_EMAIL_FROM}
+      - BB_EMAIL_2FA_SUBJECT=${BB_EMAIL_2FA_SUBJECT}
+      - BB_ENABLE_SMS_2FA=${BB_ENABLE_SMS_2FA}
 
 volumes:
   caddy_data:

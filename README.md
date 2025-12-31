@@ -120,12 +120,21 @@ API server (SQLite) settings:
 - `BB_DEBUG_2FA_RETURN_CODE=1` — DEV ONLY; returns `devCode` in the signup response and logs it server-side.
 - `BB_ALLOW_DEV_TOKEN=1` (or `true`) — optional; enables accepting `Bearer dev-token` for local/dev only. Default is enabled when `NODE_ENV` is not `production`.
 
-2FA SMS delivery (required for production/TestFlight if signup is enabled):
+2FA delivery
+
+Email 2FA (default; recommended for now):
+- `BB_ENABLE_EMAIL_2FA=1` (default)
+- `BB_SMTP_URL` — e.g. `smtp://user:pass@smtp.example.com:587`
+- `BB_EMAIL_FROM` — e.g. `BuddyBoard <no-reply@example.com>`
+- Optional: `BB_EMAIL_2FA_SUBJECT`
+
+SMS 2FA (currently disabled by default; code paths remain for later):
+- `BB_ENABLE_SMS_2FA=1`
 - `BB_TWILIO_ACCOUNT_SID`
 - `BB_TWILIO_AUTH_TOKEN`
 - Either `BB_TWILIO_FROM` (a Twilio phone number in E.164 format) or `BB_TWILIO_MESSAGING_SERVICE_SID`
 
-If `BB_ALLOW_SIGNUP=1` and `BB_REQUIRE_2FA_ON_SIGNUP=1`, and you do NOT set `BB_DEBUG_2FA_RETURN_CODE=1`, signup will fail unless Twilio SMS is configured.
+If `BB_ALLOW_SIGNUP=1` and `BB_REQUIRE_2FA_ON_SIGNUP=1`, and you do NOT set `BB_DEBUG_2FA_RETURN_CODE=1`, signup will fail unless a 2FA delivery method is configured (email SMTP by default; SMS requires explicitly enabling `BB_ENABLE_SMS_2FA=1`).
 
 2FA code timing:
 - Codes expire after 5 minutes.
@@ -142,6 +151,11 @@ BB_ALLOW_SIGNUP=0
 BB_REQUIRE_2FA_ON_SIGNUP=1
 BB_DEBUG_2FA_RETURN_CODE=0
 BB_ALLOW_DEV_TOKEN=0
+BB_ENABLE_EMAIL_2FA=1
+BB_SMTP_URL=
+BB_EMAIL_FROM=
+BB_EMAIL_2FA_SUBJECT=
+BB_ENABLE_SMS_2FA=0
 BB_TWILIO_ACCOUNT_SID=
 BB_TWILIO_AUTH_TOKEN=
 BB_TWILIO_FROM=

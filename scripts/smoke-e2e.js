@@ -110,7 +110,6 @@ async function main() {
   const name = process.env.BB_NAME || 'Smoke Tester';
   const password = process.env.BB_PASSWORD || 'Password123!';
   const role = process.env.BB_ROLE || 'parent';
-  const phone = process.env.BB_PHONE || '+15555550123';
 
   const results = [];
 
@@ -125,7 +124,7 @@ async function main() {
   // Auth: signup -> 2fa verify -> token
   const signup = await runStep(results, 'auth.signup', async () => {
     const r = await http(baseUrl, 'POST', '/api/auth/signup', {
-      json: { email, name, role, password, phone, twoFaMethod: 'sms' },
+      json: { email, name, role, password, twoFaMethod: 'email' },
     });
     if (!r.ok) throw new Error(`signup failed: ${r.status} ${JSON.stringify(r.data)}`);
     if (!r.data || typeof r.data !== 'object') throw new Error('signup returned non-object');

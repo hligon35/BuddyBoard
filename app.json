@@ -4,9 +4,12 @@
     "slug": "buddyboard-mobile",
     "version": "1.0.0",
     "sdkVersion": "54.0.0",
+    "cli": {
+      "appVersionSource": "local"
+    },
     "ios": {
       "bundleIdentifier": "com.azlabs.buddyboard",
-      "buildNumber": "1.0.7",
+      "buildNumber": "1.0.8",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSFaceIDUsageDescription": "BuddyBoard uses Face ID / Touch ID to help you securely sign in on this device.",
@@ -40,7 +43,7 @@
     },
     "android": {
       "package": "com.azlabs.buddyboard",
-      "versionCode": 7,
+      "versionCode": 8,
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
@@ -55,6 +58,6 @@
         "projectId": "38ed77a1-3892-42c8-b7cf-9cebe6d98545"
       }
     },
-    "owner": "hligon"
+    "owner": "ownerligon"
   }
 }
