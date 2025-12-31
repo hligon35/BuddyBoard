@@ -13,10 +13,10 @@
     "submit:android:internal": "eas submit -p android --latest --non-interactive --key ./google-play-service-account.json",
     "dev-clear-server": "node ./scripts/dev-clear-server.js",
     "api:server": "node ./scripts/api-server.js",
-    "api:mock": "set PORT=3006 && node ./scripts/api-mock.js",
+    "api:mock": "cross-env PORT=3006 node ./scripts/api-mock.js",
     "smoke": "node ./scripts/smoke-e2e.js",
-    "smoke:mock": "set BB_BASE_URL=http://127.0.0.1:3006 && node ./scripts/smoke-e2e.js",
-    "smoke:server": "set BB_BASE_URL=http://127.0.0.1:3005 && node ./scripts/smoke-e2e.js"
+    "smoke:mock": "cross-env BB_BASE_URL=http://127.0.0.1:3006 node ./scripts/smoke-e2e.js",
+    "smoke:server": "cross-env BB_BASE_URL=http://127.0.0.1:3005 node ./scripts/smoke-e2e.js"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.2.0",
@@ -63,6 +63,7 @@
     "@babel/core": "^7.26.0",
     "@react-native-community/cli": "latest",
     "@react-native-community/cli-server-api": "^20.0.2",
+    "cross-env": "^7.0.3",
     "expo-module-scripts": "^5.0.8"
   },
   "overrides": {
