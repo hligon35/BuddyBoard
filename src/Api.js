@@ -3,6 +3,18 @@ import { BASE_URL, EMULATOR_HOST } from './config';
 import { Platform } from 'react-native';
 import { logger } from './utils/logger';
 
+function isPhysicalDevice() {
+  try {
+    // Lazy require to avoid hard dependency in non-Expo runtimes.
+    // eslint-disable-next-line global-require
+    const DeviceModule = require('expo-device');
+    const Device = DeviceModule?.default || DeviceModule;
+    return Boolean(Device?.isDevice);
+  } catch (e) {
+    return false;
+  }
+}
+
 // Support Android emulator host mapping: if BASE_URL points to localhost
 // convert it to the emulator host (10.0.2.2) so requests from the
 // Android emulator reach the local machine. This saves editing config
@@ -30,6 +42,38 @@ const client = axios.create({
   baseURL: effectiveBase,
   timeout: 20000,
   headers: { Accept: 'application/json' },
+});
+
+// Fail fast with an actionable message for the most common device-only issues.
+client.interceptors.request.use((config) => {
+  const base = (config && (config.baseURL ?? client.defaults.baseURL)) || '';
+  const baseStr = String(base || '').trim();
+
+  // In React Native (native), an empty base URL makes relative requests fail with
+  // a generic axios "Network Error". Surface a clearer error.
+  if (!baseStr) {
+    const err = new Error(
+      'API base URL is not configured. Set EXPO_PUBLIC_API_BASE_URL to a reachable URL (LAN IP or HTTPS domain), then rebuild/restart the app.'
+    );
+    // Tag for debugging/logging.
+    err.code = 'BB_NO_API_BASE_URL';
+    throw err;
+  }
+
+  // Physical devices cannot reach your development machine via localhost.
+  // (Android emulator is handled separately via 10.0.2.2 rewrite above.)
+  if (
+    isPhysicalDevice() &&
+    (baseStr.includes('localhost') || baseStr.includes('127.0.0.1'))
+  ) {
+    const err = new Error(
+      `API base URL points to localhost (${baseStr}), which is not reachable from a physical device. Use your computer's LAN IP (e.g. http://192.168.x.x:3005) or a public HTTPS domain (e.g. https://buddyboard.getsparqd.com).`
+    );
+    err.code = 'BB_LOCALHOST_ON_DEVICE';
+    throw err;
+  }
+
+  return config;
 });
 
 let unauthorizedHandler = null;

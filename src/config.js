@@ -27,6 +27,12 @@ function envFlag(value, defaultValue = false) {
 //   EXPO_PUBLIC_API_BASE_URL=https://buddyboard.example.com
 // In production builds, this should be set via EAS/CI secrets.
 //
+// Production default:
+// This repo is intended to run against the public domain below. Keeping a
+// production fallback prevents "Network Error" caused by a missing build-time
+// env var in release builds.
+const DEFAULT_PROD_BASE_URL = 'https://buddyboard.getsparqd.com';
+//
 // Dev convenience:
 // If EXPO_PUBLIC_API_BASE_URL is not set, try to infer the host IP from Expo/Metro
 // so physical devices on the same network can reach the local API server.
@@ -61,7 +67,7 @@ const fallbackDevBaseUrl = (() => {
 })();
 export const BASE_URL =
   getExpoPublicEnv('EXPO_PUBLIC_API_BASE_URL') ||
-  ((typeof __DEV__ !== 'undefined' && __DEV__) ? fallbackDevBaseUrl : '');
+  ((typeof __DEV__ !== 'undefined' && __DEV__) ? fallbackDevBaseUrl : DEFAULT_PROD_BASE_URL);
 
 try {
   if (!BASE_URL && !(typeof __DEV__ !== 'undefined' && __DEV__)) {
