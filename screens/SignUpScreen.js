@@ -3,6 +3,7 @@ import { View, Text, TextInput, Button, StyleSheet, Alert, Modal } from 'react-n
 import { useAuth } from '../src/AuthContext';
 import * as Api from '../src/Api';
 import { logger } from '../src/utils/logger';
+import * as SecureStore from 'expo-secure-store';
 
 export default function SignUpScreen({ onDone, onCancel }) {
   const [name, setName] = useState('');
@@ -32,8 +33,12 @@ export default function SignUpScreen({ onDone, onCancel }) {
       // If backend is configured to skip 2FA, it may return a token directly.
       if (res && res.token) {
         await auth.setAuth({ token: res.token, user: res.user });
+        try {
+          await SecureStore.setItemAsync('bb_bio_token', String(res.token));
+          await SecureStore.setItemAsync('bb_bio_user', JSON.stringify(res.user || {}));
+        } catch (e) {}
         Alert.alert('Success', 'Account created and authenticated');
-        if (onDone) onDone();
+        if (onDone) onDone({ authed: true });
         return;
       }
 
@@ -85,8 +90,12 @@ export default function SignUpScreen({ onDone, onCancel }) {
       const res = await Api.verify2fa({ challengeId, code });
       if (!res || !res.token) throw new Error(res?.error || 'Verification failed');
       await auth.setAuth({ token: res.token, user: res.user });
+      try {
+        await SecureStore.setItemAsync('bb_bio_token', String(res.token));
+        await SecureStore.setItemAsync('bb_bio_user', JSON.stringify(res.user || {}));
+      } catch (e) {}
       Alert.alert('Success', 'Account created and authenticated');
-      if (onDone) onDone();
+      if (onDone) onDone({ authed: true });
     } catch (e) {
       logger.warn('auth', '2FA verification failed', { message: e?.message || String(e) });
       Alert.alert('Error', 'Verification failed');

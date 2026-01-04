@@ -237,6 +237,11 @@ export async function login(email, password) {
   return res.data;
 }
 
+export async function loginWithGoogle(idToken) {
+  const res = await client.post('/api/auth/google', { idToken });
+  return res.data;
+}
+
 export async function signup(payload) {
   const res = await client.post('/api/auth/signup', payload);
   return res.data;
@@ -427,6 +432,7 @@ export async function ackUrgentMemoApi(id) {
 export default {
   setAuthToken,
   login,
+  loginWithGoogle,
   signup,
   verify2fa,
   me,

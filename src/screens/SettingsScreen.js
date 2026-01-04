@@ -326,8 +326,29 @@ export default function SettingsScreen() {
     <ScreenWrapper bannerShowBack={false} style={{ flex: 1 }}>
       <ScrollView style={{ flex: 1, width: '100%' }} contentContainerStyle={{ alignItems: 'center', paddingBottom: 28 }} bounces={true} alwaysBounceVertical={true} showsVerticalScrollIndicator={false}>
         <View style={{ width: '100%', maxWidth: 720, borderRadius: 14, backgroundColor: '#fff', padding: 20, elevation: 3, shadowColor: '#000', shadowOpacity: 0.08, shadowRadius: 8, shadowOffset: { width: 0, height: 4 }, marginTop: 8 }}>
-        <TouchableOpacity onPress={() => Alert.alert('Edit Profile', 'Edit profile tapped')} style={{ position: 'absolute', right: 12, top: 12, padding: 6 }}>
-          <MaterialIcons name="edit" size={20} color="#374151" />
+        <TouchableOpacity
+          onPress={() => navigation.navigate('EditProfile')}
+          accessibilityLabel="Edit Profile"
+          style={{
+            position: 'absolute',
+            right: 12,
+            top: 12,
+            width: 40,
+            height: 40,
+            borderRadius: 10,
+            alignItems: 'center',
+            justifyContent: 'center',
+            borderWidth: 1,
+            borderColor: '#e6eef8',
+            backgroundColor: '#f1f5f9',
+            shadowColor: '#000',
+            shadowOffset: { width: 0, height: 1 },
+            shadowOpacity: 0.08,
+            shadowRadius: 2,
+            elevation: 2,
+          }}
+        >
+          <MaterialIcons name="edit" size={20} color="#2563eb" />
         </TouchableOpacity>
 
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>

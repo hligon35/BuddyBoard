@@ -3,6 +3,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Api from './Api';
 import { setDebugContext, logger } from './utils/logger';
 import { resetToLogin } from './navigationRef';
+import * as SecureStore from 'expo-secure-store';
 
 const TOKEN_KEY = 'auth_token';
 
@@ -82,6 +83,12 @@ export function AuthProvider({ children }) {
   async function logout() {
     await AsyncStorage.removeItem(TOKEN_KEY);
     await AsyncStorage.removeItem('auth_user');
+    try {
+      await SecureStore.deleteItemAsync('bb_bio_token');
+      await SecureStore.deleteItemAsync('bb_bio_user');
+    } catch (e) {
+      // ignore
+    }
     setToken(null);
     setUser(null);
     Api.setAuthToken(null);

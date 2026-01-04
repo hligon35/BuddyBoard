@@ -52,7 +52,7 @@ function envFlag(value, defaultValue = false) {
   return defaultValue;
 }
 
-const ALLOW_SIGNUP = envFlag(process.env.BB_ALLOW_SIGNUP, false);
+const ALLOW_SIGNUP = envFlag(process.env.BB_ALLOW_SIGNUP, true);
 const REQUIRE_2FA_ON_SIGNUP = envFlag(process.env.BB_REQUIRE_2FA_ON_SIGNUP, true);
 const DEBUG_2FA_RETURN_CODE = envFlag(process.env.BB_DEBUG_2FA_RETURN_CODE, false);
 const LOG_REQUESTS = envFlag(process.env.BB_DEBUG_REQUESTS, true);
@@ -282,6 +282,17 @@ const ALLOW_DEV_TOKEN = envFlag(process.env.BB_ALLOW_DEV_TOKEN, NODE_ENV !== 'pr
 const ADMIN_EMAIL = process.env.BB_ADMIN_EMAIL || '';
 const ADMIN_PASSWORD = process.env.BB_ADMIN_PASSWORD || '';
 const ADMIN_NAME = process.env.BB_ADMIN_NAME || 'Admin';
+
+const GOOGLE_CLIENT_IDS = String(process.env.BB_GOOGLE_CLIENT_IDS || '').trim();
+let googleClient = null;
+try {
+  if (GOOGLE_CLIENT_IDS) {
+    const { OAuth2Client } = require('google-auth-library');
+    googleClient = new OAuth2Client();
+  }
+} catch (e) {
+  googleClient = null;
+}
 
 function ensureDir(p) {
   fs.mkdirSync(p, { recursive: true });
@@ -736,6 +747,45 @@ app.post('/api/auth/login', (req, res) => {
   const token = signToken(user);
   slog.info('auth', 'Login success', { userId: user?.id, email: maskEmail(email) });
   res.json({ token, user });
+});
+
+app.post('/api/auth/google', async (req, res) => {
+  const idToken = (req.body && req.body.idToken) ? String(req.body.idToken).trim() : '';
+  if (!idToken) return res.status(400).json({ ok: false, error: 'idToken required' });
+  if (!JWT_SECRET) return res.status(500).json({ ok: false, error: 'server missing BB_JWT_SECRET' });
+
+  if (!GOOGLE_CLIENT_IDS || !googleClient) {
+    return res.status(501).json({ ok: false, error: 'Google sign-in is not configured on this server (set BB_GOOGLE_CLIENT_IDS)' });
+  }
+
+  try {
+    const audience = GOOGLE_CLIENT_IDS.split(',').map((s) => s.trim()).filter(Boolean);
+    const ticket = await googleClient.verifyIdToken({ idToken, audience });
+    const payload = ticket && ticket.getPayload ? ticket.getPayload() : null;
+    const email = payload && payload.email ? String(payload.email).trim().toLowerCase() : '';
+    const name = payload && (payload.name || payload.given_name) ? String(payload.name || payload.given_name).trim() : '';
+
+    if (!email) return res.status(400).json({ ok: false, error: 'Google token missing email' });
+
+    let row = db.prepare('SELECT * FROM users WHERE lower(email) = ?').get(email);
+    if (!row) {
+      const id = nanoId();
+      const t = nowISO();
+      // Users created via Google still need a password_hash due to schema constraints.
+      // Generate an unguessable random hash.
+      const randomSecret = `${nanoId()}_${Math.random().toString(36).slice(2)}_${Date.now()}`;
+      const hash = bcrypt.hashSync(randomSecret, 12);
+      db.prepare('INSERT INTO users (id,email,password_hash,name,phone,address,role,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)')
+        .run(id, email, hash, name || 'User', '', '', 'parent', t, t);
+      row = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+    }
+
+    const user = userToClient(row);
+    const token = signToken(user);
+    return res.json({ ok: true, token, user });
+  } catch (e) {
+    return res.status(401).json({ ok: false, error: 'invalid Google token' });
+  }
 });
 
 app.get('/api/auth/me', authMiddleware, (req, res) => {

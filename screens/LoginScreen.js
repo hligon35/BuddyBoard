@@ -1,11 +1,18 @@
-import React, { useState, useEffect } from 'react';
+import React, { useMemo, useState, useEffect } from 'react';
 import { View, Text, TextInput, Button, StyleSheet, Alert, ActivityIndicator, TouchableOpacity, Modal } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
+import * as SecureStore from 'expo-secure-store';
+import { MaterialIcons } from '@expo/vector-icons';
+import * as WebBrowser from 'expo-web-browser';
+import * as Google from 'expo-auth-session/providers/google';
 import SignUpScreen from './SignUpScreen';
 import { useAuth } from '../src/AuthContext';
 import LogoTitle from '../src/components/LogoTitle';
 import { logger } from '../src/utils/logger';
 import { API_BASE_URL } from '../src/Api';
+import * as Api from '../src/Api';
+
+WebBrowser.maybeCompleteAuthSession();
 
 export default function LoginScreen({ navigation, suppressAutoRedirect = false }) {
   const [email, setEmail] = useState('');
@@ -15,14 +22,35 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
   const [biometricBusy, setBiometricBusy] = useState(false);
   const [biometricAvailable, setBiometricAvailable] = useState(false);
   const [biometricLabel, setBiometricLabel] = useState('Use biometrics');
+  const [hasBiometricAuthStored, setHasBiometricAuthStored] = useState(false);
   const [showSignUp, setShowSignUp] = useState(false);
   const auth = useAuth();
+
+  const googleIds = {
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+  };
+
+  const [googleRequest, googleResponse, googlePromptAsync] = Google.useAuthRequest({
+    iosClientId: googleIds.iosClientId,
+    androidClientId: googleIds.androidClientId,
+    webClientId: googleIds.webClientId,
+    scopes: ['profile', 'email'],
+  });
+
+  const fieldWidthStyle = useMemo(() => ({ width: '100%', maxWidth: 360 }), []);
 
   async function doLogin(){
     setBusy(true);
     try{
       logger.debug('auth', 'Login submit', { hasEmail: !!email });
-      await auth.login(email, password);
+      const res = await auth.login(email, password);
+      try {
+        await SecureStore.setItemAsync('bb_bio_token', String(res?.token || auth?.token || ''));
+        await SecureStore.setItemAsync('bb_bio_user', JSON.stringify(res?.user || auth?.user || {}));
+        setHasBiometricAuthStored(true);
+      } catch (e) {}
       navigation.replace('Main');
     }catch(e){
       logger.warn('auth', 'Login failed', { message: e?.message || String(e) });
@@ -33,9 +61,64 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
     }finally{ setBusy(false); }
   }
 
+  async function doGoogleLogin() {
+    if (busy) return;
+
+    const hasAnyClientId = !!(googleIds.iosClientId || googleIds.androidClientId || googleIds.webClientId);
+    if (!hasAnyClientId) {
+      Alert.alert('Google sign-in', 'Missing Google client IDs. Set EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID / ANDROID / WEB and rebuild.');
+      return;
+    }
+    try {
+      await googlePromptAsync({ useProxy: false, showInRecents: true });
+    } catch (e) {
+      Alert.alert('Google sign-in failed', e?.message || 'Could not start Google sign-in.');
+    }
+  }
+
+  useEffect(() => {
+    let cancelled = false;
+    (async () => {
+      if (!googleResponse) return;
+      if (googleResponse.type !== 'success') return;
+      if (busy) return;
+
+      try {
+        setBusy(true);
+        const idToken = googleResponse?.params?.id_token || googleResponse?.authentication?.idToken;
+        if (!idToken) throw new Error('Google did not return an id_token');
+
+        const res = await Api.loginWithGoogle(idToken);
+        if (!res?.token) throw new Error(res?.error || 'Invalid Google login response');
+
+        await auth.setAuth({ token: res.token, user: res.user });
+        try {
+          await SecureStore.setItemAsync('bb_bio_token', String(res.token));
+          await SecureStore.setItemAsync('bb_bio_user', JSON.stringify(res.user || {}));
+          if (!cancelled) setHasBiometricAuthStored(true);
+        } catch (e) {}
+
+        navigation.replace('Main');
+      } catch (e) {
+        const msg = e?.response?.data?.error || e?.message || 'Google sign-in failed.';
+        Alert.alert('Google sign-in failed', msg);
+      } finally {
+        if (!cancelled) setBusy(false);
+      }
+    })();
+    return () => { cancelled = true; };
+  }, [googleResponse]);
+
   async function doBiometricUnlock() {
     setBiometricBusy(true);
     try {
+      const storedToken = await SecureStore.getItemAsync('bb_bio_token');
+      const storedUser = await SecureStore.getItemAsync('bb_bio_user');
+      if (!storedToken || !storedUser) {
+        Alert.alert('Biometric sign-in', 'No saved sign-in found. Please sign in with email and password first.');
+        return;
+      }
+
       const result = await LocalAuthentication.authenticateAsync({
         promptMessage: 'Unlock BuddyBoard',
         cancelLabel: 'Cancel',
@@ -43,6 +126,9 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
       });
 
       if (result?.success) {
+        let parsedUser = null;
+        try { parsedUser = JSON.parse(storedUser); } catch (e) {}
+        await auth.setAuth({ token: storedToken, user: parsedUser || undefined });
         navigation.replace('Main');
         return;
       }
@@ -99,6 +185,20 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
     return () => { mounted = false; };
   }, [auth.loading]);
 
+  useEffect(() => {
+    let mounted = true;
+    (async () => {
+      try {
+        const storedToken = await SecureStore.getItemAsync('bb_bio_token');
+        const storedUser = await SecureStore.getItemAsync('bb_bio_user');
+        if (mounted) setHasBiometricAuthStored(!!storedToken && !!storedUser);
+      } catch (e) {
+        if (mounted) setHasBiometricAuthStored(false);
+      }
+    })();
+    return () => { mounted = false; };
+  }, [auth.loading, showSignUp]);
+
   if (auth.loading) return (
     <View style={styles.container}><ActivityIndicator size="large" /></View>
   );
@@ -108,9 +208,18 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
       <View style={styles.logoWrap}>
         <LogoTitle width={360} height={108} />
       </View>
-      <TextInput value={email} onChangeText={setEmail} style={styles.input} placeholder="Email" keyboardType="email-address" autoCapitalize="none" />
+      <View style={fieldWidthStyle}>
+        <TextInput
+          value={email}
+          onChangeText={setEmail}
+          style={styles.input}
+          placeholder="Email"
+          keyboardType="email-address"
+          autoCapitalize="none"
+        />
+      </View>
 
-      <View style={styles.passwordRow}>
+      <View style={[fieldWidthStyle, styles.passwordFieldWrap]}>
         <TextInput
           value={password}
           onChangeText={setPassword}
@@ -122,12 +231,12 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
           textContentType="password"
         />
         <TouchableOpacity
-          style={styles.peekBtn}
+          style={styles.peekIconBtn}
           onPress={() => setShowPassword((v) => !v)}
           accessibilityRole="button"
           accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
         >
-          <Text style={styles.peekText}>{showPassword ? 'Hide' : 'Show'}</Text>
+          <MaterialIcons name={showPassword ? 'visibility-off' : 'visibility'} size={20} color="#2563eb" />
         </TouchableOpacity>
       </View>
 
@@ -141,11 +250,29 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
         </TouchableOpacity>
       </View>
 
+      <View style={styles.secondaryActions}>
+        <TouchableOpacity
+          style={[styles.secondaryBtn, busy ? { opacity: 0.7 } : null]}
+          onPress={doGoogleLogin}
+          disabled={busy}
+          accessibilityRole="button"
+        >
+          <MaterialIcons name="account-circle" size={18} color="#111827" />
+          <Text style={styles.secondaryBtnText}>Sign in with Google</Text>
+        </TouchableOpacity>
+      </View>
+
       <Modal visible={showSignUp} animationType="slide" onRequestClose={() => setShowSignUp(false)}>
-        <SignUpScreen onDone={() => setShowSignUp(false)} onCancel={() => setShowSignUp(false)} />
+        <SignUpScreen
+          onDone={(result) => {
+            setShowSignUp(false);
+            if (result && result.authed) navigation.replace('Main');
+          }}
+          onCancel={() => setShowSignUp(false)}
+        />
       </Modal>
 
-      {biometricAvailable && !!auth.token && (
+      {biometricAvailable && hasBiometricAuthStored && (
         <View style={styles.biometricWrap}>
           <Button
             title={biometricBusy ? 'Checking…' : biometricLabel}
@@ -162,15 +289,17 @@ const styles = StyleSheet.create({
   container: { flex: 1, padding: 20, justifyContent: 'center' },
   logoWrap: { alignItems: 'center', marginBottom: 18 },
   title: { fontSize: 28, fontWeight: '700', marginBottom: 20 },
-  input: { borderWidth: 1, borderColor: '#ccc', padding: 10, marginBottom: 12, borderRadius: 6 },
+  input: { borderWidth: 1, borderColor: '#ccc', paddingVertical: 10, paddingHorizontal: 12, marginBottom: 12, borderRadius: 10, backgroundColor: '#fff' },
   registerWrap: { marginTop: 12, alignItems: 'center' },
   registerText: { color: '#2563eb', fontWeight: '600' },
-  passwordRow: { flexDirection: 'row', alignItems: 'center' },
-  passwordInput: { flex: 1, marginBottom: 0 },
-  peekBtn: { paddingHorizontal: 10, paddingVertical: 10, marginLeft: 8 },
-  peekText: { color: '#2563eb', fontWeight: '600' },
+  passwordFieldWrap: { position: 'relative' },
+  passwordInput: { paddingRight: 42 },
+  peekIconBtn: { position: 'absolute', right: 10, top: 10, width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
   actionsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
   sep: { marginHorizontal: 8, color: '#666', fontSize: 18 },
   signUpBtn: { marginLeft: 6 },
-  biometricWrap: { marginTop: 12 }
+  biometricWrap: { marginTop: 12 },
+  secondaryActions: { marginTop: 10, alignItems: 'center' },
+  secondaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, borderColor: '#e5e7eb', backgroundColor: '#f8fafc', width: '100%', maxWidth: 360 },
+  secondaryBtnText: { marginLeft: 8, color: '#111827', fontWeight: '700' },
 });

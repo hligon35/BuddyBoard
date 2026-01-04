@@ -22,6 +22,7 @@ import ChatsScreen from './src/screens/ChatsScreen';
 import ChatThreadScreen from './src/screens/ChatThreadScreen';
 import NewThreadScreen from './src/screens/NewThreadScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import EditProfileScreen from './src/screens/EditProfileScreen';
 import HelpScreen from './src/screens/HelpScreen';
 import MyClassScreen from './src/screens/MyClassScreen';
 import AdminControlsScreen from './src/screens/AdminControlsScreen';
@@ -157,6 +158,7 @@ function SettingsStack() {
       })}
     >
       <SettingsStackNav.Screen name="SettingsMain" component={SettingsScreen} options={{ title: 'Profile Settings' }} />
+      <SettingsStackNav.Screen name="EditProfile" component={EditProfileScreen} options={{ title: 'Edit Profile' }} />
       <SettingsStackNav.Screen name="Help" component={HelpScreen} options={{ title: 'Help' }} />
     </SettingsStackNav.Navigator>
   );
