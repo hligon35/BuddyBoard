@@ -9,6 +9,20 @@ const getExpoPublicEnv = (key) => {
   return '';
 };
 
+function getWebOrigin() {
+  try {
+    // In web builds, prefer the current origin so deployments accessed via IP
+    // (or alternate hostnames) can still reach the co-hosted /api reverse proxy.
+    if (typeof window !== 'undefined' && window.location && window.location.origin) {
+      const origin = String(window.location.origin).trim();
+      if (origin) return origin;
+    }
+  } catch (_) {
+    // ignore
+  }
+  return '';
+}
+
 function envFlag(value, defaultValue = false) {
   try {
     if (value == null) return defaultValue;
@@ -26,10 +40,50 @@ function envFlag(value, defaultValue = false) {
 // Prefer environment-driven config so dev/staging/prod can be swapped without code edits:
 //   EXPO_PUBLIC_API_BASE_URL=https://buddyboard.example.com
 // In production builds, this should be set via EAS/CI secrets.
-const fallbackDevBaseUrl = 'http://localhost:3005';
+//
+// Production default:
+// This repo is intended to run against the public domain below. Keeping a
+// production fallback prevents "Network Error" caused by a missing build-time
+// env var in release builds.
+const DEFAULT_PROD_BASE_URL = 'https://buddyboard.getsparqd.com';
+//
+// Dev convenience:
+// If EXPO_PUBLIC_API_BASE_URL is not set, try to infer the host IP from Expo/Metro
+// so physical devices on the same network can reach the local API server.
+const getDevHostFromExpo = () => {
+  try {
+    // `expo-constants` exists in Expo apps; we require it lazily to avoid
+    // hard crashes if it isn't available in some runtimes.
+    // eslint-disable-next-line global-require
+    const ConstantsModule = require('expo-constants');
+    const Constants = ConstantsModule?.default || ConstantsModule;
+
+    // Common locations across Expo SDK versions.
+    const hostUri =
+      Constants?.expoConfig?.hostUri ||
+      Constants?.manifest?.debuggerHost ||
+      Constants?.manifest2?.extra?.expoClient?.hostUri ||
+      '';
+
+    // hostUri/debuggerHost typically looks like: "192.168.1.10:19000"
+    const host = String(hostUri).split(':')[0];
+    if (host && host !== 'localhost' && host !== '127.0.0.1') return host;
+  } catch (_) {
+    // ignore
+  }
+  return '';
+};
+
+const fallbackDevBaseUrl = (() => {
+  const inferredHost = getDevHostFromExpo();
+  if (inferredHost) return `http://${inferredHost}:3005`;
+  return 'http://localhost:3005';
+})();
+
+const fallbackWebBaseUrl = getWebOrigin();
 export const BASE_URL =
   getExpoPublicEnv('EXPO_PUBLIC_API_BASE_URL') ||
-  ((typeof __DEV__ !== 'undefined' && __DEV__) ? fallbackDevBaseUrl : '');
+  ((typeof __DEV__ !== 'undefined' && __DEV__) ? fallbackDevBaseUrl : (fallbackWebBaseUrl || DEFAULT_PROD_BASE_URL));
 
 try {
   if (!BASE_URL && !(typeof __DEV__ !== 'undefined' && __DEV__)) {

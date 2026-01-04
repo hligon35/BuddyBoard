@@ -141,19 +141,21 @@ app.post('/api/auth/signup', (req, res) => {
   const email = (req.body && req.body.email) ? String(req.body.email).trim().toLowerCase() : '';
   const name = (req.body && req.body.name) ? String(req.body.name).trim() : '';
   const role = (req.body && req.body.role) ? String(req.body.role).trim() : 'parent';
-  const twoFaMethod = (req.body && req.body.twoFaMethod) ? String(req.body.twoFaMethod).trim().toLowerCase() : 'sms';
+  const twoFaMethod = (req.body && req.body.twoFaMethod) ? String(req.body.twoFaMethod).trim().toLowerCase() : 'email';
   const phone = (req.body && req.body.phone) ? String(req.body.phone).trim() : '';
 
   if (!email || !name) return res.status(400).json({ ok: false, error: 'name and email required' });
 
-  if (twoFaMethod && twoFaMethod !== 'sms') {
-    return res.status(400).json({ ok: false, error: 'Only SMS 2FA is supported' });
-  }
-
   const user = { id: `mock-user-${Date.now()}`, email, name, role };
-  const method = 'sms';
-  const destination = String(phone || '').trim();
-  if (!destination) return res.status(400).json({ ok: false, error: 'phone required for sms 2fa' });
+  const method = (twoFaMethod === 'sms' || twoFaMethod === 'email') ? twoFaMethod : 'email';
+  let destination = '';
+  if (method === 'sms') {
+    destination = String(phone || '').trim();
+    if (!destination) return res.status(400).json({ ok: false, error: 'phone required for sms 2fa' });
+  } else {
+    destination = String(email || '').trim().toLowerCase();
+    if (!destination) return res.status(400).json({ ok: false, error: 'email required for email 2fa' });
+  }
 
   const ch = create2faChallenge({ userId: user.id, method, destination });
   slog.info('auth', '2FA challenge created (mock signup)', { method, userId: user.id });
@@ -186,12 +188,8 @@ app.post('/api/auth/2fa/resend', (req, res) => {
     return res.status(updated.status || 400).json(payload);
   }
 
-  if (updated.method !== 'sms') {
-    return res.status(400).json({ ok: false, error: 'Only SMS 2FA is supported' });
-  }
-
-  slog.info('auth', '2FA code resent (mock)', { challengeId, method: 'sms' });
-  return res.json({ ok: true, method: 'sms', challengeId, devCode: updated.code });
+  slog.info('auth', '2FA code resent (mock)', { challengeId, method: updated.method });
+  return res.json({ ok: true, method: updated.method, challengeId, devCode: updated.code });
 });
 app.get('/api/board', (req, res) => res.json(posts));
 app.post('/api/board', (req, res) => {

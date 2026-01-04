@@ -3,6 +3,30 @@ import { BASE_URL, EMULATOR_HOST } from './config';
 import { Platform } from 'react-native';
 import { logger } from './utils/logger';
 
+function isPhysicalDevice() {
+  try {
+    // Lazy require to avoid hard dependency in non-Expo runtimes.
+    // eslint-disable-next-line global-require
+    const DeviceModule = require('expo-device');
+    const Device = DeviceModule?.default || DeviceModule;
+    return Boolean(Device?.isDevice);
+  } catch (e) {
+    return false;
+  }
+}
+
+function looksLikeIpLiteralUrl(url) {
+  try {
+    const u = new URL(String(url || ''));
+    const host = String(u.hostname || '');
+    // Simple IPv4 check; this is enough to catch the common "https://1.2.3.4" misconfig.
+    if (/^\d{1,3}(?:\.\d{1,3}){3}$/.test(host)) return true;
+  } catch (e) {
+    // ignore
+  }
+  return false;
+}
+
 // Support Android emulator host mapping: if BASE_URL points to localhost
 // convert it to the emulator host (10.0.2.2) so requests from the
 // Android emulator reach the local machine. This saves editing config
@@ -17,10 +41,80 @@ try {
   // ignore
 }
 
+// Useful for debugging "Network Error" cases from screens.
+export const API_BASE_URL = effectiveBase;
+
+try {
+  logger.info('api', 'API base URL configured', { baseURL: effectiveBase || '', envBaseURL: BASE_URL || '' });
+} catch (e) {
+  // ignore
+}
+
 const client = axios.create({
   baseURL: effectiveBase,
   timeout: 20000,
   headers: { Accept: 'application/json' },
+});
+
+// Fail fast with an actionable message for the most common device-only issues.
+client.interceptors.request.use((config) => {
+  const base = (config && (config.baseURL ?? client.defaults.baseURL)) || '';
+  const baseStr = String(base || '').trim();
+
+  // In React Native (native), an empty base URL makes relative requests fail with
+  // a generic axios "Network Error". Surface a clearer error.
+  if (!baseStr) {
+    const err = new Error(
+      'API base URL is not configured. Set EXPO_PUBLIC_API_BASE_URL to a reachable URL (LAN IP or HTTPS domain), then rebuild/restart the app.'
+    );
+    // Tag for debugging/logging.
+    err.code = 'BB_NO_API_BASE_URL';
+    throw err;
+  }
+
+  // Physical devices cannot reach your development machine via localhost.
+  // (Android emulator is handled separately via 10.0.2.2 rewrite above.)
+  if (
+    isPhysicalDevice() &&
+    (baseStr.includes('localhost') || baseStr.includes('127.0.0.1'))
+  ) {
+    const err = new Error(
+      `API base URL points to localhost (${baseStr}), which is not reachable from a physical device. Use your computer's LAN IP (e.g. http://192.168.x.x:3005) or a public HTTPS domain (e.g. https://buddyboard.getsparqd.com).`
+    );
+    err.code = 'BB_LOCALHOST_ON_DEVICE';
+    throw err;
+  }
+
+  // TestFlight / App Store builds on iOS are subject to App Transport Security.
+  // If the API base URL is accidentally set to http://, axios often reports a generic "Network Error".
+  if (
+    isPhysicalDevice() &&
+    Platform.OS === 'ios' &&
+    (typeof __DEV__ === 'undefined' || !__DEV__) &&
+    baseStr.startsWith('http://')
+  ) {
+    const err = new Error(
+      `API base URL is HTTP (${baseStr}). iOS TestFlight/App Store builds require HTTPS. Set EXPO_PUBLIC_API_BASE_URL to https://buddyboard.getsparqd.com (or another valid HTTPS domain) and rebuild.`
+    );
+    err.code = 'BB_IOS_HTTP_BLOCKED';
+    throw err;
+  }
+
+  // Avoid pointing iOS builds at a raw IP over HTTPS; certificate hostname mismatch will fail the TLS handshake.
+  if (
+    isPhysicalDevice() &&
+    Platform.OS === 'ios' &&
+    (typeof __DEV__ === 'undefined' || !__DEV__) &&
+    looksLikeIpLiteralUrl(baseStr)
+  ) {
+    const err = new Error(
+      `API base URL appears to use an IP address (${baseStr}). Use a proper HTTPS domain (e.g. https://buddyboard.getsparqd.com) to avoid TLS certificate hostname mismatch, then rebuild.`
+    );
+    err.code = 'BB_IOS_IP_BASE_URL';
+    throw err;
+  }
+
+  return config;
 });
 
 let unauthorizedHandler = null;
@@ -143,6 +237,11 @@ export async function login(email, password) {
   return res.data;
 }
 
+export async function loginWithGoogle(idToken) {
+  const res = await client.post('/api/auth/google', { idToken });
+  return res.data;
+}
+
 export async function signup(payload) {
   const res = await client.post('/api/auth/signup', payload);
   return res.data;
@@ -160,6 +259,11 @@ export async function resend2fa(payload) {
 
 export async function me() {
   const res = await client.get('/api/auth/me');
+  return res.data;
+}
+
+export async function updateMe(payload) {
+  const res = await client.put('/api/auth/me', payload);
   return res.data;
 }
 
@@ -328,9 +432,11 @@ export async function ackUrgentMemoApi(id) {
 export default {
   setAuthToken,
   login,
+  loginWithGoogle,
   signup,
   verify2fa,
   me,
+  updateMe,
   getPosts,
   createPost,
   likePost,

@@ -7,8 +7,8 @@ import { useAuth } from '../AuthContext';
 import { ScreenWrapper } from '../components/ScreenWrapper';
 
 export default function MyChildScreen() {
-  const { children, resetChildrenToDemo, urgentMemos, sendTimeUpdateAlert, timeChangeProposals, proposeTimeChange, respondToProposal, respondToUrgentMemo } = useData();
-  // Only use real children from context; do not auto-seed a demo child here — the demo loader button remains.
+  const { children, urgentMemos, sendTimeUpdateAlert, timeChangeProposals, proposeTimeChange, respondToProposal, respondToUrgentMemo } = useData();
+  // Only use real children from context.
   const childList = (Array.isArray(children) && children.length) ? children : [];
   const [selectedIndex, setSelectedIndex] = useState(0);
   useEffect(() => {

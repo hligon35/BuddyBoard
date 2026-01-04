@@ -2,28 +2,28 @@ import React, { useEffect, useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import * as SplashScreen from 'expo-splash-screen';
 // Temporarily remove TailwindProvider if not available at runtime
-import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
+import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import { AuthProvider, useAuth } from './src/AuthContext';
 import { DataProvider } from './src/DataContext';
 import UrgentMemoOverlay from './src/components/UrgentMemoOverlay';
 import BottomNav from './src/components/BottomNav';
-import DevRoleSwitcher from './src/components/DevRoleSwitcher';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import ArrivalDetector from './src/components/ArrivalDetector';
 import { logger, setDebugContext } from './src/utils/logger';
 import { registerGlobalDebugHandlers } from './src/utils/registerDebugHandlers';
 import { configureNotificationHandling } from './src/utils/pushNotifications';
-// navigation ref used by the global bottom nav
-const navigationRef = createNavigationContainerRef();
+import { navigationRef } from './src/navigationRef';
 
 import HomeScreen from './src/screens/HomeScreen';
 import ChatsScreen from './src/screens/ChatsScreen';
 import ChatThreadScreen from './src/screens/ChatThreadScreen';
 import NewThreadScreen from './src/screens/NewThreadScreen';
 import SettingsScreen from './src/screens/SettingsScreen';
+import EditProfileScreen from './src/screens/EditProfileScreen';
 import HelpScreen from './src/screens/HelpScreen';
 import MyClassScreen from './src/screens/MyClassScreen';
 import AdminControlsScreen from './src/screens/AdminControlsScreen';
@@ -43,6 +43,14 @@ import { HelpButton, LogoutButton, BackButton } from './src/components/TopButton
 import { View, Text } from 'react-native';
 import LogoTitle from './src/components/LogoTitle';
 import LoginScreen from './screens/LoginScreen';
+import VideoSplash from './src/components/VideoSplash';
+import { initSentry, Sentry } from './src/sentry';
+
+initSentry();
+
+SplashScreen.preventAutoHideAsync().catch(() => {
+  // ignore
+});
 
 const RootStack = createNativeStackNavigator();
 const AppStack = createNativeStackNavigator();
@@ -159,6 +167,7 @@ function SettingsStack() {
       })}
     >
       <SettingsStackNav.Screen name="SettingsMain" component={SettingsScreen} options={{ title: 'Profile Settings' }} />
+      <SettingsStackNav.Screen name="EditProfile" component={EditProfileScreen} options={{ title: 'Edit Profile' }} />
       <SettingsStackNav.Screen name="Help" component={HelpScreen} options={{ title: 'Help' }} />
     </SettingsStackNav.Navigator>
   );
@@ -192,9 +201,10 @@ function MainRoutes() {
   );
 }
 
-export default function App() {
+function App() {
   const [problem, setProblem] = useState(null);
   const [currentRoute, setCurrentRoute] = useState('Login');
+  const [showVideoSplash, setShowVideoSplash] = useState(true);
 
   useEffect(() => {
     try {
@@ -244,6 +254,18 @@ export default function App() {
       <SafeAreaProvider>
       <AuthProvider>
         <DataProvider>
+          {showVideoSplash && (
+            <VideoSplash
+              source={require('./assets/splash-icon.mp4')}
+              durationMs={5000}
+              onReady={() => {
+                SplashScreen.hideAsync().catch(() => {
+                  // ignore
+                });
+              }}
+              onDone={() => setShowVideoSplash(false)}
+            />
+          )}
           <NavigationContainer
             ref={navigationRef}
             onStateChange={() => {
@@ -283,7 +305,6 @@ export default function App() {
           {currentRoute !== 'Login' && (
             <>
               <BottomNav navigationRef={navigationRef} currentRoute={currentRoute} />
-              <DevRoleSwitcher />
               <UrgentMemoOverlay />
               <ArrivalDetector />
             </>
@@ -295,3 +316,5 @@ export default function App() {
     </GestureHandlerRootView>
   );
 }
+
+export default Sentry.wrap(App);

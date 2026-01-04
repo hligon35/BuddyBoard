@@ -1,6 +1,40 @@
-import * as Notifications from 'expo-notifications';
-import * as Device from 'expo-device';
 import { Platform } from 'react-native';
+
+let notificationsLib = null;
+function getNotificationsLib() {
+  if (notificationsLib) return notificationsLib;
+  try {
+    // Lazy require so Expo Go can run without triggering warnings at import-time.
+    // eslint-disable-next-line global-require
+    notificationsLib = require('expo-notifications');
+    return notificationsLib;
+  } catch (e) {
+    return null;
+  }
+}
+
+let deviceLib = null;
+function getDeviceLib() {
+  if (deviceLib) return deviceLib;
+  try {
+    // eslint-disable-next-line global-require
+    deviceLib = require('expo-device');
+    return deviceLib;
+  } catch (e) {
+    return null;
+  }
+}
+
+function isExpoGo() {
+  try {
+    // eslint-disable-next-line global-require
+    const ConstantsModule = require('expo-constants');
+    const Constants = ConstantsModule?.default || ConstantsModule;
+    return String(Constants?.appOwnership || '').toLowerCase() === 'expo';
+  } catch (e) {
+    return false;
+  }
+}
 
 // Read EAS projectId from app.json so getExpoPushTokenAsync works reliably in EAS builds.
 const EAS_PROJECT_ID = (() => {
@@ -13,7 +47,12 @@ const EAS_PROJECT_ID = (() => {
 })();
 
 export function configureNotificationHandling() {
+  if (isExpoGo()) return;
+
   // Show alerts by default when a notification arrives.
+  const Notifications = getNotificationsLib();
+  if (!Notifications) return;
+
   Notifications.setNotificationHandler({
     handleNotification: async () => ({
       shouldShowAlert: true,
@@ -24,6 +63,16 @@ export function configureNotificationHandling() {
 }
 
 export async function registerForExpoPushTokenAsync() {
+  if (isExpoGo()) {
+    return { ok: false, reason: 'expo-go' };
+  }
+
+  const Device = getDeviceLib();
+  const Notifications = getNotificationsLib();
+  if (!Device || !Notifications) {
+    return { ok: false, reason: 'missing-deps' };
+  }
+
   if (!Device.isDevice) {
     return { ok: false, reason: 'not-device' };
   }

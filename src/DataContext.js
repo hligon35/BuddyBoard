@@ -4,8 +4,6 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Api from './Api';
 import { Share } from 'react-native';
 import { useAuth } from './AuthContext';
-import devDirectoryFlag from './utils/devDirectoryFlag';
-import { seededParents as fileParents, seededTherapists as fileTherapists, seededChildrenWithParents as fileChildren } from './seed/directorySeed_v2';
 
 const DataContext = createContext(null);
 
@@ -20,49 +18,6 @@ const ARCHIVED_KEY = 'bbs_archived_threads_v1';
 const CHILDREN_KEY = 'bbs_children_v1';
 const BLOCKED_KEY = 'bbs_blocked_v1';
 
-// Demo posts for local development — authored by seeded therapists and parents only
-const now = Date.now();
-const demoPosts = [
-  {
-    id: 'demo-1',
-    author: fileTherapists && fileTherapists[0] ? { id: fileTherapists[0].id, name: fileTherapists[0].name, avatar: fileTherapists[0].avatar } : null,
-    title: 'Communication Board Intro',
-    body: 'We introduced a communication board today — please review the attached tips for home use.',
-    image: 'https://picsum.photos/seed/commboard/800/450',
-    likes: 12,
-    comments: [],
-    shares: 1,
-    createdAt: new Date(now - 1000 * 60 * 60 * 2).toISOString(),
-  },
-  {
-    id: 'demo-2',
-    author: fileParents && fileParents[0] ? { id: fileParents[0].id, name: `${fileParents[0].firstName} ${fileParents[0].lastName}`, avatar: fileParents[0].avatar } : null,
-    title: 'Playdate Friday',
-    body: 'Would anyone like to join a playdate at the park this Friday?',
-    image: 'https://picsum.photos/seed/playdate/800/450',
-    likes: 30,
-    comments: [],
-    shares: 3,
-    createdAt: new Date(now - 1000 * 60 * 60 * 24).toISOString(),
-  },
-  {
-    id: 'demo-3',
-    author: fileTherapists && fileTherapists[2] ? { id: fileTherapists[2].id, name: fileTherapists[2].name, avatar: fileTherapists[2].avatar } : null,
-    title: 'Weekly Progress Update',
-    body: 'Great progress this week on independent dressing — keep up the great work at home!',
-    likes: 8,
-    comments: [],
-    shares: 0,
-    createdAt: new Date(now - 1000 * 60 * 30).toISOString(),
-  },
-];
-
-// Demo chat messages (parents <> therapists)
-const demoMessages = [
-  { id: 'm-1', threadId: 't-1', body: 'Hi — just checking how the session went today.', createdAt: new Date(now - 1000 * 60 * 60 * 6).toISOString(), sender: { id: 'you', name: 'You' }, to: [fileParents && fileParents[0] ? { id: fileParents[0].id, name: `${fileParents[0].firstName} ${fileParents[0].lastName}` } : null] },
-  { id: 'm-2', threadId: 't-2', body: 'We made great progress on communication goals.', createdAt: new Date(now - 1000 * 60 * 60 * 5).toISOString(), sender: fileTherapists && fileTherapists[0] ? { id: fileTherapists[0].id, name: fileTherapists[0].name } : null, to: [{ id: 'you', name: 'You' }] },
-  { id: 'm-3', threadId: 't-3', body: 'Can we move the speech session to 3:30 PM?', createdAt: new Date(now - 1000 * 60 * 60 * 10).toISOString(), sender: { id: 'you', name: 'You' }, to: [fileTherapists && fileTherapists[1] ? { id: fileTherapists[1].id, name: fileTherapists[1].name } : null] },
-];
 
 // Helper: attach therapist objects (ABA/BCBA) to children based on assigned ABA ids
 function attachTherapistsToChildren(childrenArr, therapistsArr) {
@@ -126,18 +81,18 @@ export function DataProvider({ children: reactChildren }) {
         if (postsRaw) {
           try {
             const parsed = JSON.parse(postsRaw);
-            if (Array.isArray(parsed) && parsed.length) setPosts(parsed);
-            else setPosts(demoPosts);
+            if (Array.isArray(parsed)) setPosts(parsed);
+            else setPosts([]);
           } catch (e) {
-            setPosts(demoPosts);
+            setPosts([]);
           }
         } else {
-          setPosts(demoPosts);
+          setPosts([]);
         }
 
         // Messages and memos
         if (mRaw) setMessages(JSON.parse(mRaw));
-        else setMessages(demoMessages);
+        else setMessages([]);
         if (uRaw) setUrgentMemos(uRaw ? JSON.parse(uRaw) : []);
 
         // Parents & Therapists (set first so children can attach references)
@@ -210,47 +165,7 @@ export function DataProvider({ children: reactChildren }) {
     AsyncStorage.setItem(BLOCKED_KEY, JSON.stringify(blockedUserIds)).catch(() => {});
   }, [blockedUserIds]);
 
-  // Listen for dev directory toggle: seed or revert directory data
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const v = await devDirectoryFlag.get();
-        if (!mounted) return;
-        if (v) {
-          // set therapists and parents first
-          setTherapists(fileTherapists);
-          setParents(fileParents);
-          const mapped = attachTherapistsToChildren(fileChildren, fileTherapists);
-          setChildren(mapped);
-          AsyncStorage.setItem(THERAPISTS_KEY, JSON.stringify(fileTherapists)).catch(() => {});
-          AsyncStorage.setItem(PARENTS_KEY, JSON.stringify(fileParents)).catch(() => {});
-          AsyncStorage.setItem(CHILDREN_KEY, JSON.stringify(mapped)).catch(() => {});
-        }
-      } catch (e) {}
-    })();
-    const unsub = devDirectoryFlag.addListener((val) => {
-      if (!mounted) return;
-      if (val) {
-        setTherapists(fileTherapists);
-        setParents(fileParents);
-        const mapped = attachTherapistsToChildren(fileChildren, fileTherapists);
-        setChildren(mapped);
-        AsyncStorage.setItem(THERAPISTS_KEY, JSON.stringify(fileTherapists)).catch(() => {});
-        AsyncStorage.setItem(PARENTS_KEY, JSON.stringify(fileParents)).catch(() => {});
-        AsyncStorage.setItem(CHILDREN_KEY, JSON.stringify(mapped)).catch(() => {});
-      } else {
-        // clear directory when dev seed is turned off (do not fall back to legacy demo pools)
-        setChildren([]);
-        setParents([]);
-        setTherapists([]);
-        AsyncStorage.setItem(CHILDREN_KEY, JSON.stringify([])).catch(() => {});
-        AsyncStorage.removeItem(PARENTS_KEY).catch(() => {});
-        AsyncStorage.setItem(THERAPISTS_KEY, JSON.stringify([])).catch(() => {});
-      }
-    });
-    return () => { mounted = false; unsub(); };
-  }, []);
+  // (Removed) dev-only directory seeding and demo data.
 
   // Dev: poll a dev-clear server running on the packager host to trigger clearing persisted data
   useEffect(() => {
@@ -717,27 +632,6 @@ export function DataProvider({ children: reactChildren }) {
     }
   }
 
-  function resetChildrenToDemo() {
-    try {
-      // Legacy demo children removed — clearing children instead
-      setChildren([]);
-      AsyncStorage.setItem(CHILDREN_KEY, JSON.stringify([])).catch(() => {});
-    } catch (e) {
-      console.warn('resetChildrenToDemo failed', e?.message || e);
-    }
-  }
-
-  function resetMessagesToDemo() {
-    try {
-      setMessages(demoMessages);
-      setArchivedThreads([]);
-      AsyncStorage.setItem(MESSAGES_KEY, JSON.stringify(demoMessages)).catch(() => {});
-      AsyncStorage.setItem(ARCHIVED_KEY, JSON.stringify([])).catch(() => {});
-    } catch (e) {
-      console.warn('resetMessagesToDemo failed', e?.message || e);
-    }
-  }
-
   function clearMessages() {
     try {
       setMessages([]);
@@ -799,13 +693,6 @@ export function DataProvider({ children: reactChildren }) {
     }
   }
 
-  // Expose a dev-only helper for clearing all persisted app data
-  if (__DEV__) {
-    try {
-      global.clearBuddyBoardData = clearAllData;
-    } catch (e) {}
-  }
-
   return (
     <DataContext.Provider value={{
       posts,
@@ -820,8 +707,6 @@ export function DataProvider({ children: reactChildren }) {
       setParents,
       setTherapists,
       // legacy therapist pools removed; use `therapists` only
-      resetChildrenToDemo,
-      resetMessagesToDemo,
       clearMessages,
       archiveThread,
       unarchiveThread,

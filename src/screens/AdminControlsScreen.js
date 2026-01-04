@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect, useRef } from 'react';
-import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Animated, Linking, Alert, Switch, TextInput, KeyboardAvoidingView, Platform, Keyboard } from 'react-native';
+import { View, Text, ScrollView, StyleSheet, TouchableOpacity, Image, Animated, Linking, Alert, Switch, TextInput, KeyboardAvoidingView, Platform, Keyboard, Modal, Pressable, Share } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
 import { ScreenWrapper } from '../components/ScreenWrapper';
 import { pravatarUriFor, setIdVisibilityEnabled, initIdVisibilityFromStorage } from '../utils/idVisibility';
@@ -7,6 +7,7 @@ import { useData } from '../DataContext';
 import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { GOOGLE_PLACES_API_KEY } from '../config';
+import * as FileSystem from 'expo-file-system';
 
 const APP_BUNDLE_ID = (() => {
   try {
@@ -23,7 +24,10 @@ const ORG_ARRIVAL_KEY = 'settings_arrival_org_enabled_v1';
 
 export default function AdminControlsScreen() {
   const navigation = useNavigation();
-  const { posts, messages, children, parents = [], therapists = [], resetChildrenToDemo, urgentMemos = [] } = useData();
+  const { posts, messages, children, parents = [], therapists = [], urgentMemos = [] } = useData();
+  const [exportModalVisible, setExportModalVisible] = useState(false);
+  const [importModalVisible, setImportModalVisible] = useState(false);
+  const [importPickedFile, setImportPickedFile] = useState(null);
   const [showStudentsPreview, setShowStudentsPreview] = useState(false);
   const [showFacultyPreview, setShowFacultyPreview] = useState(false);
   const [showParentsPreview, setShowParentsPreview] = useState(false);
@@ -52,15 +56,95 @@ export default function AdminControlsScreen() {
   // open admin chat monitor (admin-only chat oversight)
   const openChats = () => navigation.navigate('AdminChatMonitor');
   const openImport = () => {
-    try {
-      navigation.navigate('ImportData');
-    } catch (e) {
-      Alert.alert('Import', 'Import screen is not available.');
-    }
+    setImportPickedFile(null);
+    setImportModalVisible(true);
   };
   const openStudentDirectory = () => navigation.navigate('StudentDirectory');
   const openFacultyDirectory = () => navigation.navigate('FacultyDirectory');
   const openParentDirectory = () => navigation.navigate('ParentDirectory');
+
+  function toCSV(rows) {
+    if (!rows || !rows.length) return '';
+    const keys = Object.keys(rows[0]);
+    const header = keys.join(',');
+    const lines = rows.map(r => keys.map(k => (`"${String(r[k] ?? '')}"`)).join(','));
+    return [header, ...lines].join('\n');
+  }
+
+  function buildExportPayload() {
+    // Do not include internal ID fields in exports for privacy.
+    const postsCsv = toCSV((posts || []).map(p => ({ title: p.title, body: p.body, author: p.author?.name, createdAt: p.createdAt })));
+    const messagesCsv = toCSV((messages || []).map(m => ({ threadId: m.threadId || '', body: m.body, sender: m.sender?.name, createdAt: m.createdAt })));
+    const childrenCsv = toCSV((children || []).map(c => ({ name: c.name, age: c.age, room: c.room, notes: c.notes })));
+    return `--- Posts ---\n${postsCsv}\n\n--- Messages ---\n${messagesCsv}\n\n--- Children ---\n${childrenCsv}`;
+  }
+
+  async function doExportShare() {
+    try {
+      const payload = buildExportPayload();
+      await Share.share({ message: payload, title: 'BuddyBoard export' });
+      setExportModalVisible(false);
+    } catch (e) {
+      Alert.alert('Export failed', e?.message || String(e));
+    }
+  }
+
+  async function doExportSaveToFolderAndroid() {
+    try {
+      if (Platform.OS !== 'android' || !FileSystem?.StorageAccessFramework) {
+        return doExportShare();
+      }
+
+      const payload = buildExportPayload();
+      const ts = new Date().toISOString().replace(/[:.]/g, '-');
+      const fileName = `buddyboard_export_${ts}.txt`;
+
+      const perm = await FileSystem.StorageAccessFramework.requestDirectoryPermissionsAsync();
+      if (!perm.granted || !perm.directoryUri) return;
+
+      const fileUri = await FileSystem.StorageAccessFramework.createFileAsync(
+        perm.directoryUri,
+        fileName,
+        'text/plain'
+      );
+      await FileSystem.writeAsStringAsync(fileUri, payload, { encoding: FileSystem.EncodingType.UTF8 });
+
+      setExportModalVisible(false);
+      Alert.alert('Export saved', `Saved to selected folder as ${fileName}`);
+    } catch (e) {
+      Alert.alert('Export failed', e?.message || String(e));
+    }
+  }
+
+  async function pickImportFile() {
+    try {
+      const DocumentPickerModule = require('expo-document-picker');
+      const DocumentPicker = DocumentPickerModule?.default || DocumentPickerModule;
+      if (!DocumentPicker?.getDocumentAsync) {
+        Alert.alert('Import', 'File picker is not available.');
+        return;
+      }
+
+      const res = await DocumentPicker.getDocumentAsync({
+        type: ['text/plain', 'text/csv', 'application/json', '*/*'],
+        copyToCacheDirectory: true,
+        multiple: false,
+      });
+
+      if (res?.canceled) return;
+      const asset = Array.isArray(res?.assets) ? res.assets[0] : null;
+      if (!asset?.uri) return;
+
+      setImportPickedFile({
+        name: asset.name || 'selected file',
+        uri: asset.uri,
+        size: asset.size,
+        mimeType: asset.mimeType,
+      });
+    } catch (e) {
+      Alert.alert('Import failed', e?.message || String(e));
+    }
+  }
 
   const pendingAlertCount = (urgentMemos || []).filter((m) => !m.status || m.status === 'pending').length;
   const [showIds, setShowIds] = useState(false);
@@ -452,6 +536,69 @@ export default function AdminControlsScreen() {
 
   return (
     <ScreenWrapper bannerShowBack={false} style={styles.container}>
+      <Modal
+        visible={exportModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setExportModalVisible(false)}
+      >
+        <Pressable style={styles.overlayBackdrop} onPress={() => setExportModalVisible(false)}>
+          <Pressable style={styles.overlayCard} onPress={() => {}}>
+            <Text style={styles.overlayTitle}>Export</Text>
+            <Text style={styles.overlaySub}>Select a destination for your export.</Text>
+
+            <TouchableOpacity style={styles.overlayOption} onPress={doExportShare} accessibilityLabel="Export via share">
+              <MaterialIcons name="share" size={18} color="#374151" />
+              <Text style={styles.overlayOptionText}>Share</Text>
+            </TouchableOpacity>
+
+            {Platform.OS === 'android' ? (
+              <TouchableOpacity style={styles.overlayOption} onPress={doExportSaveToFolderAndroid} accessibilityLabel="Export and save to folder">
+                <MaterialIcons name="folder" size={18} color="#374151" />
+                <Text style={styles.overlayOptionText}>Save to folder</Text>
+              </TouchableOpacity>
+            ) : null}
+
+            <View style={styles.overlayActions}>
+              <TouchableOpacity style={styles.overlayCancel} onPress={() => setExportModalVisible(false)}>
+                <Text style={styles.overlayCancelText}>Cancel</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
+      <Modal
+        visible={importModalVisible}
+        transparent
+        animationType="fade"
+        onRequestClose={() => setImportModalVisible(false)}
+      >
+        <Pressable style={styles.overlayBackdrop} onPress={() => setImportModalVisible(false)}>
+          <Pressable style={styles.overlayCard} onPress={() => {}}>
+            <Text style={styles.overlayTitle}>Import</Text>
+            <Text style={styles.overlaySub}>Select a file to import.</Text>
+
+            <TouchableOpacity style={styles.overlayOption} onPress={pickImportFile} accessibilityLabel="Select import file">
+              <MaterialIcons name="upload-file" size={18} color="#374151" />
+              <Text style={styles.overlayOptionText}>Choose file</Text>
+            </TouchableOpacity>
+
+            {!!importPickedFile && (
+              <View style={{ marginTop: 10 }}>
+                <Text style={{ color: '#374151' }} numberOfLines={2}>Selected: {importPickedFile.name}</Text>
+              </View>
+            )}
+
+            <View style={styles.overlayActions}>
+              <TouchableOpacity style={styles.overlayCancel} onPress={() => setImportModalVisible(false)}>
+                <Text style={styles.overlayCancelText}>Close</Text>
+              </TouchableOpacity>
+            </View>
+          </Pressable>
+        </Pressable>
+      </Modal>
+
       <KeyboardAvoidingView
         style={{ flex: 1 }}
         behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
@@ -471,7 +618,7 @@ export default function AdminControlsScreen() {
 
         {/* Quick Actions (Export + Alerts) */}
         <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 12 }}>
-          <TouchableOpacity onPress={() => navigation.navigate('ExportData')} style={{ marginRight: 12, alignItems: 'center' }} accessibilityLabel="Export Data">
+          <TouchableOpacity onPress={() => setExportModalVisible(true)} style={{ marginRight: 12, alignItems: 'center' }} accessibilityLabel="Export Data">
             <View style={[styles.iconTileBtn, { width: 44, height: 44, borderRadius: 10 }]}>
               <MaterialIcons name="file-download" size={20} color="#fff" />
             </View>
@@ -735,6 +882,15 @@ const styles = StyleSheet.create({
   secondaryBtnText: { marginLeft: 8, color: '#2563eb', fontWeight: '700' },
   primaryBtn: { marginTop: 12, backgroundColor: '#2563eb', paddingVertical: 12, borderRadius: 10, alignItems: 'center' },
   primaryBtnText: { color: '#fff', fontWeight: '700' },
+  overlayBackdrop: { flex: 1, backgroundColor: 'rgba(0,0,0,0.35)', alignItems: 'center', justifyContent: 'center', padding: 18 },
+  overlayCard: { width: '100%', maxWidth: 520, backgroundColor: '#fff', borderRadius: 12, padding: 16 },
+  overlayTitle: { fontSize: 18, fontWeight: '700', color: '#111827' },
+  overlaySub: { marginTop: 6, color: '#6b7280' },
+  overlayOption: { marginTop: 12, flexDirection: 'row', alignItems: 'center', paddingVertical: 12, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, borderColor: '#eef2f7', backgroundColor: '#f8fafc' },
+  overlayOptionText: { marginLeft: 10, fontWeight: '700', color: '#111827' },
+  overlayActions: { marginTop: 16, flexDirection: 'row', justifyContent: 'flex-end' },
+  overlayCancel: { paddingVertical: 10, paddingHorizontal: 12 },
+  overlayCancelText: { color: '#2563eb', fontWeight: '700' },
   suggestionsBox: { marginTop: 6, borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 10, backgroundColor: '#fff', overflow: 'hidden' },
   suggestionRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, paddingHorizontal: 12, borderBottomWidth: 1, borderBottomColor: '#eef2f7' },
   suggestionText: { marginLeft: 8, flex: 1, color: '#111827' },

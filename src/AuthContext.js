@@ -2,7 +2,8 @@ import React, { createContext, useContext, useEffect, useState } from 'react';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Api from './Api';
 import { setDebugContext, logger } from './utils/logger';
-import { DEV_AUTO_LOGIN } from './config';
+import { resetToLogin } from './navigationRef';
+import * as SecureStore from 'expo-secure-store';
 
 const TOKEN_KEY = 'auth_token';
 
@@ -63,17 +64,6 @@ export function AuthProvider({ children }) {
     }
   }, [user, token]);
 
-  // Dev auto-login for local testing (non-persistent)
-  useEffect(() => {
-    if (__DEV__ && DEV_AUTO_LOGIN && !loading && !token) {
-      const devToken = 'dev-token';
-      setToken(devToken);
-      Api.setAuthToken(devToken);
-      setUser({ id: 'dev', name: 'Developer', email: 'dev@example.com', role: 'ADMIN' });
-      logger.info('auth', 'Dev auto-login enabled');
-    }
-  }, [loading]);
-
   async function setAuth({ token: nextToken, user: nextUser }) {
     if (!nextToken) throw new Error('Missing token');
     await AsyncStorage.setItem(TOKEN_KEY, nextToken);
@@ -93,43 +83,18 @@ export function AuthProvider({ children }) {
   async function logout() {
     await AsyncStorage.removeItem(TOKEN_KEY);
     await AsyncStorage.removeItem('auth_user');
-    setToken(null);
-    setUser(null);
-    Api.setAuthToken(null);
-  }
-
-  // Dev helper: set role/user for testing and persist to AsyncStorage
-  async function setRole(role) {
-    if (!role) return;
-    const next = Object.assign({}, user || { id: 'dev', name: 'Developer', email: 'dev@example.com' }, { role });
     try {
-      await AsyncStorage.setItem('auth_user', JSON.stringify(next));
+      await SecureStore.deleteItemAsync('bb_bio_token');
+      await SecureStore.deleteItemAsync('bb_bio_user');
     } catch (e) {
       // ignore
     }
-    setUser(next);
+    setToken(null);
+    setUser(null);
+    Api.setAuthToken(null);
+    resetToLogin();
   }
-
-  // Dev helper to programmatically set auth (only exposed in dev builds)
-  async function devSetAuth({ token: t, user: u }) {
-    if (!__DEV__) return;
-    try {
-      if (t) {
-        await AsyncStorage.setItem(TOKEN_KEY, t);
-        setToken(t);
-        Api.setAuthToken(t);
-      }
-      if (u) {
-        await AsyncStorage.setItem('auth_user', JSON.stringify(u));
-        setUser(u);
-      }
-    } catch (e) {
-      console.warn('devSetAuth failed', e);
-    }
-  }
-
-  const value = { token, user, loading, login, logout, setRole };
-  if (__DEV__) value.devSetAuth = devSetAuth;
+  const value = { token, user, loading, login, logout };
   value.setAuth = setAuth;
 
   return (

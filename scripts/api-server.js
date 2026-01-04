@@ -9,7 +9,33 @@ const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
 const Database = require('better-sqlite3');
 const multer = require('multer');
-const twilio = require('twilio');
+let twilioLib = null;
+function getTwilioLib() {
+  if (twilioLib) return twilioLib;
+  try {
+    // Lazy require so the server can still boot even if the dependency
+    // is missing in a given deployment image.
+    // eslint-disable-next-line global-require
+    twilioLib = require('twilio');
+    return twilioLib;
+  } catch (e) {
+    return null;
+  }
+}
+
+let nodemailerLib = null;
+function getNodemailerLib() {
+  if (nodemailerLib) return nodemailerLib;
+  try {
+    // Lazy require so the server can still boot even if the dependency
+    // is missing in a given deployment image.
+    // eslint-disable-next-line global-require
+    nodemailerLib = require('nodemailer');
+    return nodemailerLib;
+  } catch (e) {
+    return null;
+  }
+}
 
 const PORT = Number(process.env.PORT || 3005);
 const DB_PATH = process.env.BB_DB_PATH || path.join(process.cwd(), '.data', 'buddyboard.sqlite');
@@ -26,10 +52,15 @@ function envFlag(value, defaultValue = false) {
   return defaultValue;
 }
 
-const ALLOW_SIGNUP = envFlag(process.env.BB_ALLOW_SIGNUP, false);
+const ALLOW_SIGNUP = envFlag(process.env.BB_ALLOW_SIGNUP, true);
 const REQUIRE_2FA_ON_SIGNUP = envFlag(process.env.BB_REQUIRE_2FA_ON_SIGNUP, true);
 const DEBUG_2FA_RETURN_CODE = envFlag(process.env.BB_DEBUG_2FA_RETURN_CODE, false);
 const LOG_REQUESTS = envFlag(process.env.BB_DEBUG_REQUESTS, true);
+
+// 2FA delivery toggles
+// Default: email enabled, SMS disabled.
+const ENABLE_EMAIL_2FA = envFlag(process.env.BB_ENABLE_EMAIL_2FA, true);
+const ENABLE_SMS_2FA = envFlag(process.env.BB_ENABLE_SMS_2FA, false);
 
 // 2FA delivery (SMS only).
 // Configure Twilio in production/TestFlight:
@@ -41,18 +72,36 @@ const TWILIO_AUTH_TOKEN = (process.env.BB_TWILIO_AUTH_TOKEN || '').trim();
 const TWILIO_FROM = (process.env.BB_TWILIO_FROM || '').trim();
 const TWILIO_MESSAGING_SERVICE_SID = (process.env.BB_TWILIO_MESSAGING_SERVICE_SID || '').trim();
 
+// 2FA delivery (Email)
+// Configure SMTP:
+// - BB_SMTP_URL (e.g. smtp://user:pass@smtp.example.com:587)
+// - BB_EMAIL_FROM (e.g. BuddyBoard <no-reply@example.com>)
+const SMTP_URL = (process.env.BB_SMTP_URL || '').trim();
+const EMAIL_FROM = (process.env.BB_EMAIL_FROM || '').trim();
+const EMAIL_2FA_SUBJECT = (process.env.BB_EMAIL_2FA_SUBJECT || 'BuddyBoard verification code').trim();
+
 const slog = require('./logger');
 
 function twilioEnabled() {
+  if (!ENABLE_SMS_2FA) return false;
   if (!TWILIO_ACCOUNT_SID || !TWILIO_AUTH_TOKEN) return false;
   if (TWILIO_MESSAGING_SERVICE_SID) return true;
   return !!TWILIO_FROM;
+}
+
+function emailEnabled() {
+  if (!ENABLE_EMAIL_2FA) return false;
+  return !!(SMTP_URL && EMAIL_FROM);
 }
 
 let twilioClient = null;
 function getTwilioClient() {
   if (!twilioEnabled()) return null;
   if (twilioClient) return twilioClient;
+  const twilio = getTwilioLib();
+  if (!twilio) {
+    throw new Error("Missing dependency 'twilio' in this server build. Rebuild your Docker image after installing dependencies (npm ci) so the twilio package is included.");
+  }
   twilioClient = twilio(TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN);
   return twilioClient;
 }
@@ -84,6 +133,57 @@ async function send2faCodeSms({ to, code }) {
   else msg.from = TWILIO_FROM;
 
   await client.messages.create(msg);
+}
+
+let emailTransporter = null;
+function getEmailTransporter() {
+  if (!emailEnabled()) return null;
+  if (emailTransporter) return emailTransporter;
+  const nodemailer = getNodemailerLib();
+  if (!nodemailer) {
+    throw new Error("Missing dependency 'nodemailer' in this server build. Rebuild your Docker image after installing dependencies (npm ci) so the nodemailer package is included.");
+  }
+  emailTransporter = nodemailer.createTransport(SMTP_URL);
+  return emailTransporter;
+}
+
+function normalizeEmail(input) {
+  const v = String(input || '').trim().toLowerCase();
+  if (!v) return '';
+  // Minimal sanity check; avoid strict RFC parsing.
+  if (!/^\S+@\S+\.[^\s@]+$/.test(v)) return '';
+  return v;
+}
+
+async function send2faCodeEmail({ to, code }) {
+  const destination = normalizeEmail(to);
+  if (!destination) throw new Error('Invalid email destination');
+
+  const transporter = getEmailTransporter();
+  if (!transporter) {
+    throw new Error('2FA email delivery is not configured (set BB_SMTP_URL and BB_EMAIL_FROM, and ensure BB_ENABLE_EMAIL_2FA=1)');
+  }
+
+  const text = `BuddyBoard verification code: ${code}. Expires in 5 minutes.`;
+  await transporter.sendMail({
+    from: EMAIL_FROM,
+    to: destination,
+    subject: EMAIL_2FA_SUBJECT,
+    text,
+  });
+}
+
+async function deliver2faCode({ method, destination, code }) {
+  const m = String(method || '').trim().toLowerCase();
+  if (m === 'sms') {
+    if (!ENABLE_SMS_2FA) throw new Error('SMS 2FA is disabled');
+    return send2faCodeSms({ to: destination, code });
+  }
+  if (m === 'email') {
+    if (!ENABLE_EMAIL_2FA) throw new Error('Email 2FA is disabled');
+    return send2faCodeEmail({ to: destination, code });
+  }
+  throw new Error('Unsupported 2FA method');
 }
 
 // Ephemeral 2FA challenges for dev/testing.
@@ -183,6 +283,17 @@ const ADMIN_EMAIL = process.env.BB_ADMIN_EMAIL || '';
 const ADMIN_PASSWORD = process.env.BB_ADMIN_PASSWORD || '';
 const ADMIN_NAME = process.env.BB_ADMIN_NAME || 'Admin';
 
+const GOOGLE_CLIENT_IDS = String(process.env.BB_GOOGLE_CLIENT_IDS || '').trim();
+let googleClient = null;
+try {
+  if (GOOGLE_CLIENT_IDS) {
+    const { OAuth2Client } = require('google-auth-library');
+    googleClient = new OAuth2Client();
+  }
+} catch (e) {
+  googleClient = null;
+}
+
 function ensureDir(p) {
   fs.mkdirSync(p, { recursive: true });
 }
@@ -213,6 +324,8 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   name TEXT NOT NULL,
+  phone TEXT,
+  address TEXT,
   role TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -281,6 +394,23 @@ CREATE TABLE IF NOT EXISTS push_tokens (
   preferences_json TEXT,
   updated_at TEXT NOT NULL
 );
+function ensureUserProfileColumns() {
+  try {
+    const cols = db.prepare("PRAGMA table_info('users')").all();
+    const names = new Set((cols || []).map((c) => String(c.name || '').toLowerCase()));
+
+    if (!names.has('phone')) {
+      db.exec('ALTER TABLE users ADD COLUMN phone TEXT');
+    }
+    if (!names.has('address')) {
+      db.exec('ALTER TABLE users ADD COLUMN address TEXT');
+    }
+  } catch (e) {
+    console.warn('[api] users table migration failed:', e && e.message ? e.message : String(e));
+  }
+}
+
+ensureUserProfileColumns();
 
 CREATE TABLE IF NOT EXISTS arrival_pings (
   id TEXT PRIMARY KEY,
@@ -481,6 +611,8 @@ function userToClient(row) {
     id: row.id,
     email: row.email,
     name: row.name,
+    phone: row.phone || '',
+    address: row.address || '',
     role: row.role,
   };
 }
@@ -504,14 +636,15 @@ requireJwtConfigured();
 // Seed admin user if configured
 try {
   if (ADMIN_EMAIL && ADMIN_PASSWORD) {
-    const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(ADMIN_EMAIL);
+    const normalizedAdminEmail = String(ADMIN_EMAIL).trim().toLowerCase();
+    const existing = db.prepare('SELECT id FROM users WHERE lower(email) = ?').get(normalizedAdminEmail);
     if (!existing) {
       const id = nanoId();
       const hash = bcrypt.hashSync(ADMIN_PASSWORD, 12);
       const t = nowISO();
       db.prepare('INSERT INTO users (id,email,password_hash,name,role,created_at,updated_at) VALUES (?,?,?,?,?,?,?)')
-        .run(id, ADMIN_EMAIL, hash, ADMIN_NAME, 'ADMIN', t, t);
-      console.log('[api] Seeded admin user:', ADMIN_EMAIL);
+        .run(id, normalizedAdminEmail, hash, ADMIN_NAME, 'ADMIN', t, t);
+      console.log('[api] Seeded admin user:', normalizedAdminEmail);
     }
   }
 } catch (e) {
@@ -563,7 +696,7 @@ function authMiddleware(req, res, next) {
     const userId = payload && payload.sub ? String(payload.sub) : '';
     if (!userId) return res.status(401).json({ ok: false, error: 'invalid token' });
 
-    const row = db.prepare('SELECT id,email,name,role FROM users WHERE id = ?').get(userId);
+    const row = db.prepare('SELECT id,email,name,phone,address,role FROM users WHERE id = ?').get(userId);
     if (!row) return res.status(401).json({ ok: false, error: 'user not found' });
     req.user = userToClient(row);
     return next();
@@ -602,7 +735,8 @@ app.post('/api/auth/login', (req, res) => {
 
   slog.debug('auth', 'Login attempt', { email: maskEmail(email) });
 
-  const row = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  // Treat emails case-insensitively (SQLite comparisons are case-sensitive by default).
+  const row = db.prepare('SELECT * FROM users WHERE lower(email) = ?').get(email);
   if (!row) return res.status(401).json({ ok: false, error: 'invalid credentials' });
   const ok = bcrypt.compareSync(password, row.password_hash);
   if (!ok) return res.status(401).json({ ok: false, error: 'invalid credentials' });
@@ -615,8 +749,117 @@ app.post('/api/auth/login', (req, res) => {
   res.json({ token, user });
 });
 
+app.post('/api/auth/google', async (req, res) => {
+  const idToken = (req.body && req.body.idToken) ? String(req.body.idToken).trim() : '';
+  if (!idToken) return res.status(400).json({ ok: false, error: 'idToken required' });
+  if (!JWT_SECRET) return res.status(500).json({ ok: false, error: 'server missing BB_JWT_SECRET' });
+
+  if (!GOOGLE_CLIENT_IDS || !googleClient) {
+    return res.status(501).json({ ok: false, error: 'Google sign-in is not configured on this server (set BB_GOOGLE_CLIENT_IDS)' });
+  }
+
+  try {
+    const audience = GOOGLE_CLIENT_IDS.split(',').map((s) => s.trim()).filter(Boolean);
+    const ticket = await googleClient.verifyIdToken({ idToken, audience });
+    const payload = ticket && ticket.getPayload ? ticket.getPayload() : null;
+    const email = payload && payload.email ? String(payload.email).trim().toLowerCase() : '';
+    const name = payload && (payload.name || payload.given_name) ? String(payload.name || payload.given_name).trim() : '';
+
+    if (!email) return res.status(400).json({ ok: false, error: 'Google token missing email' });
+
+    let row = db.prepare('SELECT * FROM users WHERE lower(email) = ?').get(email);
+    if (!row) {
+      const id = nanoId();
+      const t = nowISO();
+      // Users created via Google still need a password_hash due to schema constraints.
+      // Generate an unguessable random hash.
+      const randomSecret = `${nanoId()}_${Math.random().toString(36).slice(2)}_${Date.now()}`;
+      const hash = bcrypt.hashSync(randomSecret, 12);
+      db.prepare('INSERT INTO users (id,email,password_hash,name,phone,address,role,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)')
+        .run(id, email, hash, name || 'User', '', '', 'parent', t, t);
+      row = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+    }
+
+    const user = userToClient(row);
+    const token = signToken(user);
+    return res.json({ ok: true, token, user });
+  } catch (e) {
+    return res.status(401).json({ ok: false, error: 'invalid Google token' });
+  }
+});
+
 app.get('/api/auth/me', authMiddleware, (req, res) => {
   res.json({ ok: true, user: req.user });
+});
+
+app.put('/api/auth/me', authMiddleware, (req, res) => {
+  const name = (req.body && req.body.name != null) ? String(req.body.name).trim() : undefined;
+  const email = (req.body && req.body.email != null) ? String(req.body.email).trim().toLowerCase() : undefined;
+  const phoneRaw = (req.body && req.body.phone != null) ? String(req.body.phone).trim() : undefined;
+  const address = (req.body && req.body.address != null) ? String(req.body.address).trim() : undefined;
+  const newPassword = (req.body && req.body.password != null) ? String(req.body.password) : undefined;
+
+  if (name !== undefined && !name) return res.status(400).json({ ok: false, error: 'name cannot be empty' });
+  if (email !== undefined && !email) return res.status(400).json({ ok: false, error: 'email cannot be empty' });
+
+  let phone = phoneRaw;
+  if (phone !== undefined) {
+    if (!phone) phone = '';
+    else {
+      const normalized = normalizeE164Phone(phone);
+      if (!normalized) {
+        return res.status(400).json({ ok: false, error: 'phone must be in E.164 format (e.g. +15551234567)' });
+      }
+      phone = normalized;
+    }
+  }
+
+  if (newPassword !== undefined) {
+    if (!String(newPassword).trim()) return res.status(400).json({ ok: false, error: 'password cannot be empty' });
+    if (String(newPassword).length < 6) return res.status(400).json({ ok: false, error: 'password must be at least 6 characters' });
+  }
+
+  try {
+    const userId = String(req.user.id);
+
+    if (email !== undefined) {
+      const existing = db.prepare('SELECT id FROM users WHERE lower(email) = ? AND id <> ?').get(email, userId);
+      if (existing) return res.status(409).json({ ok: false, error: 'email already exists' });
+    }
+
+    const fields = [];
+    const values = [];
+
+    if (name !== undefined) { fields.push('name = ?'); values.push(name); }
+    if (email !== undefined) { fields.push('email = ?'); values.push(email); }
+    if (phone !== undefined) { fields.push('phone = ?'); values.push(phone); }
+    if (address !== undefined) { fields.push('address = ?'); values.push(address); }
+    if (newPassword !== undefined) {
+      const hash = bcrypt.hashSync(newPassword, 12);
+      fields.push('password_hash = ?');
+      values.push(hash);
+    }
+
+    if (!fields.length) {
+      return res.status(400).json({ ok: false, error: 'no fields to update' });
+    }
+
+    fields.push('updated_at = ?');
+    values.push(nowISO());
+    values.push(userId);
+
+    db.prepare(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+
+    const row = db.prepare('SELECT id,email,name,phone,address,role FROM users WHERE id = ?').get(userId);
+    if (!row) return res.status(404).json({ ok: false, error: 'user not found' });
+    if (!JWT_SECRET) return res.status(500).json({ ok: false, error: 'server missing BB_JWT_SECRET' });
+
+    const user = userToClient(row);
+    const token = signToken(user);
+    return res.json({ ok: true, token, user });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e?.message || 'update failed' });
+  }
 });
 
 // Optional signup (off by default)
@@ -627,33 +870,44 @@ app.post('/api/auth/signup', async (req, res) => {
   const password = (req.body && req.body.password) ? String(req.body.password) : '';
   const name = (req.body && req.body.name) ? String(req.body.name).trim() : '';
   const role = (req.body && req.body.role) ? String(req.body.role).trim() : 'parent';
-  const twoFaMethod = (req.body && req.body.twoFaMethod) ? String(req.body.twoFaMethod).trim().toLowerCase() : 'sms';
+  const twoFaMethod = (req.body && req.body.twoFaMethod) ? String(req.body.twoFaMethod).trim().toLowerCase() : 'email';
   const phone = (req.body && req.body.phone) ? String(req.body.phone).trim() : '';
 
   if (!email || !password || !name) return res.status(400).json({ ok: false, error: 'name, email, password required' });
   if (!JWT_SECRET) return res.status(500).json({ ok: false, error: 'server missing BB_JWT_SECRET' });
 
-  const exists = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+  const exists = db.prepare('SELECT id FROM users WHERE lower(email) = ?').get(email);
   if (exists) return res.status(409).json({ ok: false, error: 'email already exists' });
 
   const id = nanoId();
   const hash = bcrypt.hashSync(password, 12);
   const t = nowISO();
-  db.prepare('INSERT INTO users (id,email,password_hash,name,role,created_at,updated_at) VALUES (?,?,?,?,?,?,?)')
-    .run(id, email, hash, name, role, t, t);
+  db.prepare('INSERT INTO users (id,email,password_hash,name,phone,role,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)')
+    .run(id, email, hash, name, phone, role, t, t);
 
   const user = { id, email, name, role };
 
   // For end-to-end testing, default to requiring 2FA on signup.
   if (REQUIRE_2FA_ON_SIGNUP) {
-    if (twoFaMethod && twoFaMethod !== 'sms') {
-      return res.status(400).json({ ok: false, error: 'Only SMS 2FA is supported' });
+    const method = (twoFaMethod === 'sms' || twoFaMethod === 'email') ? twoFaMethod : 'email';
+    if (method === 'sms' && !ENABLE_SMS_2FA) {
+      return res.status(400).json({ ok: false, error: 'SMS 2FA is currently disabled' });
+    }
+    if (method === 'email' && !ENABLE_EMAIL_2FA) {
+      return res.status(400).json({ ok: false, error: 'Email 2FA is currently disabled' });
     }
 
-    const method = 'sms';
-    const destination = normalizeE164Phone(phone);
-    if (!destination) {
-      return res.status(400).json({ ok: false, error: 'phone required for sms 2fa (E.164 format, e.g. +15551234567)' });
+    let destination = '';
+    if (method === 'sms') {
+      destination = normalizeE164Phone(phone);
+      if (!destination) {
+        return res.status(400).json({ ok: false, error: 'phone required for sms 2fa (E.164 format, e.g. +15551234567)' });
+      }
+    } else {
+      destination = normalizeEmail(email);
+      if (!destination) {
+        return res.status(400).json({ ok: false, error: 'valid email required for email 2fa' });
+      }
     }
 
     const ch = create2faChallenge({ userId: id, method, destination });
@@ -664,7 +918,7 @@ app.post('/api/auth/signup', async (req, res) => {
       slog.debug('auth', '2FA code (dev)', { challengeId: ch.challengeId, code: ch.code });
     } else {
       try {
-        await send2faCodeSms({ to: destination, code: ch.code });
+        await deliver2faCode({ method, destination, code: ch.code });
         slog.info('auth', '2FA code delivered', { method, to: maskDest(method, destination), challengeId: ch.challengeId });
       } catch (e) {
         // Roll back created user on delivery failure to avoid orphan accounts.
@@ -723,21 +977,17 @@ app.post('/api/auth/2fa/resend', async (req, res) => {
     return res.status(status).json(payload);
   }
 
-  if (updated.method !== 'sms') {
-    return res.status(400).json({ ok: false, error: 'Only SMS 2FA is supported' });
-  }
-
   if (DEBUG_2FA_RETURN_CODE) {
     slog.debug('auth', '2FA code resent (dev)', { challengeId, code: updated.code });
-    return res.json({ ok: true, method: 'sms', to: maskDest('sms', updated.destination), challengeId, devCode: updated.code });
+    return res.json({ ok: true, method: updated.method, to: maskDest(updated.method, updated.destination), challengeId, devCode: updated.code });
   }
 
   try {
-    await send2faCodeSms({ to: updated.destination, code: updated.code });
-    slog.info('auth', '2FA code resent', { method: 'sms', to: maskDest('sms', updated.destination), challengeId });
-    return res.json({ ok: true, method: 'sms', to: maskDest('sms', updated.destination), challengeId });
+    await deliver2faCode({ method: updated.method, destination: updated.destination, code: updated.code });
+    slog.info('auth', '2FA code resent', { method: updated.method, to: maskDest(updated.method, updated.destination), challengeId });
+    return res.json({ ok: true, method: updated.method, to: maskDest(updated.method, updated.destination), challengeId });
   } catch (e) {
-    slog.error('auth', '2FA resend failed', { method: 'sms', to: maskDest('sms', updated.destination), message: e?.message || String(e) });
+    slog.error('auth', '2FA resend failed', { method: updated.method, to: maskDest(updated.method, updated.destination), message: e?.message || String(e) });
     return res.status(500).json({ ok: false, error: '2FA delivery failed; contact support' });
   }
 });
