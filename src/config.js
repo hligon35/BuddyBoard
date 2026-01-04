@@ -9,6 +9,20 @@ const getExpoPublicEnv = (key) => {
   return '';
 };
 
+function getWebOrigin() {
+  try {
+    // In web builds, prefer the current origin so deployments accessed via IP
+    // (or alternate hostnames) can still reach the co-hosted /api reverse proxy.
+    if (typeof window !== 'undefined' && window.location && window.location.origin) {
+      const origin = String(window.location.origin).trim();
+      if (origin) return origin;
+    }
+  } catch (_) {
+    // ignore
+  }
+  return '';
+}
+
 function envFlag(value, defaultValue = false) {
   try {
     if (value == null) return defaultValue;
@@ -65,9 +79,11 @@ const fallbackDevBaseUrl = (() => {
   if (inferredHost) return `http://${inferredHost}:3005`;
   return 'http://localhost:3005';
 })();
+
+const fallbackWebBaseUrl = getWebOrigin();
 export const BASE_URL =
   getExpoPublicEnv('EXPO_PUBLIC_API_BASE_URL') ||
-  ((typeof __DEV__ !== 'undefined' && __DEV__) ? fallbackDevBaseUrl : DEFAULT_PROD_BASE_URL);
+  ((typeof __DEV__ !== 'undefined' && __DEV__) ? fallbackDevBaseUrl : (fallbackWebBaseUrl || DEFAULT_PROD_BASE_URL));
 
 try {
   if (!BASE_URL && !(typeof __DEV__ !== 'undefined' && __DEV__)) {

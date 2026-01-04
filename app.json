@@ -9,7 +9,7 @@
     },
     "ios": {
       "bundleIdentifier": "com.azlabs.buddyboard",
-      "buildNumber": "1.0.8",
+      "buildNumber": "1.0.9",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSFaceIDUsageDescription": "BuddyBoard uses Face ID / Touch ID to help you securely sign in on this device.",
@@ -43,7 +43,7 @@
     },
     "android": {
       "package": "com.azlabs.buddyboard",
-      "versionCode": 8,
+      "versionCode": 9,
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/icon.png",
@@ -58,6 +58,6 @@
         "projectId": "38ed77a1-3892-42c8-b7cf-9cebe6d98545"
       }
     },
-    "owner": "ownerligon"
+    "owner": "hligon"
   }
 }

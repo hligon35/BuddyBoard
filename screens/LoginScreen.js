@@ -5,6 +5,7 @@ import SignUpScreen from './SignUpScreen';
 import { useAuth } from '../src/AuthContext';
 import LogoTitle from '../src/components/LogoTitle';
 import { logger } from '../src/utils/logger';
+import { API_BASE_URL } from '../src/Api';
 
 export default function LoginScreen({ navigation, suppressAutoRedirect = false }) {
   const [email, setEmail] = useState('');
@@ -25,7 +26,10 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
       navigation.replace('Main');
     }catch(e){
       logger.warn('auth', 'Login failed', { message: e?.message || String(e) });
-      Alert.alert('Login failed', e.message || 'Please check credentials');
+      const msg = e?.message || 'Please check credentials';
+      const isNetworkish = /network|timeout|ssl|certificate|ats/i.test(String(msg));
+      const detail = isNetworkish ? `\n\nServer: ${API_BASE_URL || '(unset)'}` : '';
+      Alert.alert('Login failed', `${msg}${detail}`);
     }finally{ setBusy(false); }
   }
 

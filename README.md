@@ -167,6 +167,33 @@ BB_ADMIN_NAME=Admin
 
 After changing `.env`, restart the `expo` service so Metro rebundles with the new values.
 
+EAS internal distribution builds
+-------------------------------
+This repo is configured for EAS builds with internal distribution (useful for installing on testers' devices without going through the public stores).
+
+Prereqs:
+- Install EAS CLI: `npm i -g eas-cli`
+- Log in: `eas login`
+
+Recommended profiles:
+- `internal` (Android APK, easy sideload / testers)
+- `preview` (Android App Bundle)
+- `production` (store-ready)
+
+Build examples:
+
+```sh
+# Android APK for internal testing
+eas build -p android --profile internal
+
+# iOS internal build (requires Apple Developer account + device provisioning)
+eas build -p ios --profile internal
+```
+
+Notes:
+- The app reads the API host from `EXPO_PUBLIC_API_BASE_URL` (see `eas.json`).
+- For web builds, if `EXPO_PUBLIC_API_BASE_URL` is not set, the app falls back to the current browser origin (so accessing the site via an IP/alternate hostname still works when `/api/*` is reverse-proxied).
+
 Production HTTPS (recommended)
 ------------------------------
 For App Store / Play Store builds (and iOS reliability), use a stable HTTPS domain.

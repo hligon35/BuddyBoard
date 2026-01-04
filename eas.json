@@ -1,34 +1,58 @@
 {
+  "cli": {
+    "appVersionSource": "local"
+  },
   "build": {
+    "internal": {
+      "distribution": "internal",
+      "android": { "buildType": "apk" },
+      "ios": {
+        "simulator": false
+      },
+      "env": {
+        "EXPO_PUBLIC_API_BASE_URL": "https://buddyboard.getsparqd.com"
+      }
+    },
     "development": {
       "developmentClient": true,
       "distribution": "internal",
       "android": { "buildType": "apk" },
+      "ios": {
+        "simulator": false
+      },
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://buddyboard.getsparqd.com"
       }
     },
     "preview": {
-      "distribution": "internal",
+      "distribution": "store",
       "android": { "buildType": "app-bundle" },
+      "ios": {
+        "simulator": false
+      },
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://buddyboard.getsparqd.com"
       }
     },
     "production": {
+      "distribution": "store",
       "android": { "buildType": "app-bundle" },
+      "ios": {
+        "simulator": false
+      },
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://buddyboard.getsparqd.com"
       }
     }
   },
   "submit": {
-      "production": {
-        "ios": {
-          "ascAppId": "6756227915",
-          "appleId": "ligon88harold@gmail.com"
-        }
-}
-}
+    "production": {
+      "ios": {
+        "ascAppId": "6756227915",
+        "appleId": "ligon88harold@gmail.com"
+      }
+    }
+  }
+
 }
 
