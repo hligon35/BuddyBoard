@@ -2,6 +2,7 @@ import React, { useEffect, useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
+import * as SplashScreen from 'expo-splash-screen';
 // Temporarily remove TailwindProvider if not available at runtime
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -42,6 +43,14 @@ import { HelpButton, LogoutButton, BackButton } from './src/components/TopButton
 import { View, Text } from 'react-native';
 import LogoTitle from './src/components/LogoTitle';
 import LoginScreen from './screens/LoginScreen';
+import VideoSplash from './src/components/VideoSplash';
+import { initSentry, Sentry } from './src/sentry';
+
+initSentry();
+
+SplashScreen.preventAutoHideAsync().catch(() => {
+  // ignore
+});
 
 const RootStack = createNativeStackNavigator();
 const AppStack = createNativeStackNavigator();
@@ -192,9 +201,10 @@ function MainRoutes() {
   );
 }
 
-export default function App() {
+function App() {
   const [problem, setProblem] = useState(null);
   const [currentRoute, setCurrentRoute] = useState('Login');
+  const [showVideoSplash, setShowVideoSplash] = useState(true);
 
   useEffect(() => {
     try {
@@ -244,6 +254,18 @@ export default function App() {
       <SafeAreaProvider>
       <AuthProvider>
         <DataProvider>
+          {showVideoSplash && (
+            <VideoSplash
+              source={require('./assets/splash-icon.mp4')}
+              durationMs={5000}
+              onReady={() => {
+                SplashScreen.hideAsync().catch(() => {
+                  // ignore
+                });
+              }}
+              onDone={() => setShowVideoSplash(false)}
+            />
+          )}
           <NavigationContainer
             ref={navigationRef}
             onStateChange={() => {
@@ -294,3 +316,5 @@ export default function App() {
     </GestureHandlerRootView>
   );
 }
+
+export default Sentry.wrap(App);

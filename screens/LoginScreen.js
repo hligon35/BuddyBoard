@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, Alert, ActivityIndicator, TouchableOpacity, Modal } from 'react-native';
+import { View, Text, TextInput, Button, StyleSheet, Alert, ActivityIndicator, TouchableOpacity, Modal, Platform } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -14,24 +14,13 @@ import * as Api from '../src/Api';
 
 WebBrowser.maybeCompleteAuthSession();
 
-export default function LoginScreen({ navigation, suppressAutoRedirect = false }) {
-  const [email, setEmail] = useState('');
-  const [password, setPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
-  const [busy, setBusy] = useState(false);
-  const [biometricBusy, setBiometricBusy] = useState(false);
-  const [biometricAvailable, setBiometricAvailable] = useState(false);
-  const [biometricLabel, setBiometricLabel] = useState('Use biometrics');
-  const [hasBiometricAuthStored, setHasBiometricAuthStored] = useState(false);
-  const [showSignUp, setShowSignUp] = useState(false);
-  const auth = useAuth();
-
-  const googleIds = {
-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-  };
-
+function GoogleSignInController({
+  googleIds,
+  busy,
+  setBusy,
+  auth,
+  navigation,
+}) {
   const [googleRequest, googleResponse, googlePromptAsync] = Google.useAuthRequest({
     iosClientId: googleIds.iosClientId,
     androidClientId: googleIds.androidClientId,
@@ -39,36 +28,8 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
     scopes: ['profile', 'email'],
   });
 
-  const fieldWidthStyle = useMemo(() => ({ width: '100%', maxWidth: 360 }), []);
-
-  async function doLogin(){
-    setBusy(true);
-    try{
-      logger.debug('auth', 'Login submit', { hasEmail: !!email });
-      const res = await auth.login(email, password);
-      try {
-        await SecureStore.setItemAsync('bb_bio_token', String(res?.token || auth?.token || ''));
-        await SecureStore.setItemAsync('bb_bio_user', JSON.stringify(res?.user || auth?.user || {}));
-        setHasBiometricAuthStored(true);
-      } catch (e) {}
-      navigation.replace('Main');
-    }catch(e){
-      logger.warn('auth', 'Login failed', { message: e?.message || String(e) });
-      const msg = e?.message || 'Please check credentials';
-      const isNetworkish = /network|timeout|ssl|certificate|ats/i.test(String(msg));
-      const detail = isNetworkish ? `\n\nServer: ${API_BASE_URL || '(unset)'}` : '';
-      Alert.alert('Login failed', `${msg}${detail}`);
-    }finally{ setBusy(false); }
-  }
-
   async function doGoogleLogin() {
     if (busy) return;
-
-    const hasAnyClientId = !!(googleIds.iosClientId || googleIds.androidClientId || googleIds.webClientId);
-    if (!hasAnyClientId) {
-      Alert.alert('Google sign-in', 'Missing Google client IDs. Set EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID / ANDROID / WEB and rebuild.');
-      return;
-    }
     try {
       await googlePromptAsync({ useProxy: false, showInRecents: true });
     } catch (e) {
@@ -95,7 +56,6 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
         try {
           await SecureStore.setItemAsync('bb_bio_token', String(res.token));
           await SecureStore.setItemAsync('bb_bio_user', JSON.stringify(res.user || {}));
-          if (!cancelled) setHasBiometricAuthStored(true);
         } catch (e) {}
 
         navigation.replace('Main');
@@ -106,8 +66,76 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
         if (!cancelled) setBusy(false);
       }
     })();
-    return () => { cancelled = true; };
-  }, [googleResponse]);
+    return () => {
+      cancelled = true;
+    };
+  }, [googleResponse, busy, setBusy, auth, navigation]);
+
+  return (
+    <View style={{ width: '100%', maxWidth: 360, marginTop: 10 }}>
+      <Button
+        title="Continue with Google"
+        onPress={doGoogleLogin}
+        disabled={!googleRequest || busy}
+      />
+    </View>
+  );
+}
+
+export default function LoginScreen({ navigation, suppressAutoRedirect = false }) {
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [biometricBusy, setBiometricBusy] = useState(false);
+  const [biometricAvailable, setBiometricAvailable] = useState(false);
+  const [biometricLabel, setBiometricLabel] = useState('Use biometrics');
+  const [hasBiometricAuthStored, setHasBiometricAuthStored] = useState(false);
+  const [showSignUp, setShowSignUp] = useState(false);
+  const auth = useAuth();
+
+  const googleIds = {
+    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
+    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
+    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+  };
+
+  const googleRequiredClientId = Platform.OS === 'ios'
+    ? googleIds.iosClientId
+    : Platform.OS === 'android'
+      ? googleIds.androidClientId
+      : googleIds.webClientId;
+
+  const googleEnabled = !!googleRequiredClientId;
+
+  const fieldWidthStyle = useMemo(() => ({ width: '100%', maxWidth: 360 }), []);
+
+  async function doLogin(){
+    setBusy(true);
+    try{
+      logger.debug('auth', 'Login submit', { hasEmail: !!email });
+      const res = await auth.login(email, password);
+      try {
+        await SecureStore.setItemAsync('bb_bio_token', String(res?.token || auth?.token || ''));
+        await SecureStore.setItemAsync('bb_bio_user', JSON.stringify(res?.user || auth?.user || {}));
+        setHasBiometricAuthStored(true);
+      } catch (e) {}
+      navigation.replace('Main');
+    }catch(e){
+      logger.warn('auth', 'Login failed', { message: e?.message || String(e) });
+      const msg = e?.message || 'Please check credentials';
+      const isNetworkish = /network|timeout|ssl|certificate|ats/i.test(String(msg));
+      const detail = isNetworkish ? `\n\nServer: ${API_BASE_URL || '(unset)'}` : '';
+      Alert.alert('Login failed', `${msg}${detail}`);
+    }finally{ setBusy(false); }
+  }
+
+  function showGoogleConfigHelp() {
+    Alert.alert(
+      'Google sign-in not configured',
+      'Missing the Google Client ID for this platform.\n\nFor EAS builds, add these to your build profile env (or EAS project env vars):\n- EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID\n- EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID\n- EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID\n\nThen rebuild the app binary.'
+    );
+  }
 
   async function doBiometricUnlock() {
     setBiometricBusy(true);
@@ -218,6 +246,20 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
           autoCapitalize="none"
         />
       </View>
+
+      {googleEnabled ? (
+        <GoogleSignInController
+          googleIds={googleIds}
+          busy={busy}
+          setBusy={setBusy}
+          auth={auth}
+          navigation={navigation}
+        />
+      ) : (
+        <View style={{ width: '100%', maxWidth: 360, marginTop: 10 }}>
+          <Button title="Continue with Google" onPress={showGoogleConfigHelp} />
+        </View>
+      )}
 
       <View style={[fieldWidthStyle, styles.passwordFieldWrap]}>
         <TextInput
