@@ -1,7 +1,5 @@
 import React, { useEffect, useLayoutEffect, useRef, useState } from 'react';
 import { View, Text, FlatList, TouchableOpacity, Image, Alert, Platform, ToastAndroid, Animated, RefreshControl } from 'react-native';
-import AsyncStorage from '@react-native-async-storage/async-storage';
-import devToolsFlag from '../utils/devToolsFlag';
 import { useData } from '../DataContext';
 import { useAuth } from '../AuthContext';
 import Swipeable from 'react-native-gesture-handler/Swipeable';
@@ -91,25 +89,10 @@ function MessageRow({ item, user, navigation, archiveThread, deleteThread }) {
 import { ScreenWrapper, CenteredContainer } from '../components/ScreenWrapper';
 
 export default function ChatsScreen({ navigation }) {
-  const { messages, fetchAndSync, resetMessagesToDemo, clearMessages, archiveThread, deleteThread, archivedThreads } = useData();
+  const { messages, fetchAndSync, clearMessages, archiveThread, deleteThread, archivedThreads } = useData();
   const { user } = useAuth();
   const [refreshing, setRefreshing] = useState(false);
-  const [devToolsVisible, setDevToolsVisible] = useState(true);
   const [dateFilterDays, setDateFilterDays] = useState(null); // null => no filter
-
-  useEffect(() => {
-    let mounted = true;
-    (async () => {
-      try {
-        const v = await AsyncStorage.getItem('dev_tools_visible_v1');
-        if (!mounted) return;
-        if (v === null) setDevToolsVisible(true);
-        else setDevToolsVisible(v === '1');
-      } catch (e) {}
-    })();
-    const unsub = devToolsFlag.addListener((v) => { if (mounted) setDevToolsVisible(Boolean(v)); });
-    return () => { mounted = false; try { unsub(); } catch (e) {} };
-  }, []);
 
   useEffect(() => { fetchAndSync(); }, []);
 

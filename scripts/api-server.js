@@ -313,6 +313,8 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   name TEXT NOT NULL,
+  phone TEXT,
+  address TEXT,
   role TEXT NOT NULL,
   created_at TEXT NOT NULL,
   updated_at TEXT NOT NULL
@@ -381,6 +383,23 @@ CREATE TABLE IF NOT EXISTS push_tokens (
   preferences_json TEXT,
   updated_at TEXT NOT NULL
 );
+function ensureUserProfileColumns() {
+  try {
+    const cols = db.prepare("PRAGMA table_info('users')").all();
+    const names = new Set((cols || []).map((c) => String(c.name || '').toLowerCase()));
+
+    if (!names.has('phone')) {
+      db.exec('ALTER TABLE users ADD COLUMN phone TEXT');
+    }
+    if (!names.has('address')) {
+      db.exec('ALTER TABLE users ADD COLUMN address TEXT');
+    }
+  } catch (e) {
+    console.warn('[api] users table migration failed:', e && e.message ? e.message : String(e));
+  }
+}
+
+ensureUserProfileColumns();
 
 CREATE TABLE IF NOT EXISTS arrival_pings (
   id TEXT PRIMARY KEY,
@@ -581,6 +600,8 @@ function userToClient(row) {
     id: row.id,
     email: row.email,
     name: row.name,
+    phone: row.phone || '',
+    address: row.address || '',
     role: row.role,
   };
 }
@@ -604,14 +625,15 @@ requireJwtConfigured();
 // Seed admin user if configured
 try {
   if (ADMIN_EMAIL && ADMIN_PASSWORD) {
-    const existing = db.prepare('SELECT id FROM users WHERE email = ?').get(ADMIN_EMAIL);
+    const normalizedAdminEmail = String(ADMIN_EMAIL).trim().toLowerCase();
+    const existing = db.prepare('SELECT id FROM users WHERE lower(email) = ?').get(normalizedAdminEmail);
     if (!existing) {
       const id = nanoId();
       const hash = bcrypt.hashSync(ADMIN_PASSWORD, 12);
       const t = nowISO();
       db.prepare('INSERT INTO users (id,email,password_hash,name,role,created_at,updated_at) VALUES (?,?,?,?,?,?,?)')
-        .run(id, ADMIN_EMAIL, hash, ADMIN_NAME, 'ADMIN', t, t);
-      console.log('[api] Seeded admin user:', ADMIN_EMAIL);
+        .run(id, normalizedAdminEmail, hash, ADMIN_NAME, 'ADMIN', t, t);
+      console.log('[api] Seeded admin user:', normalizedAdminEmail);
     }
   }
 } catch (e) {
@@ -663,7 +685,7 @@ function authMiddleware(req, res, next) {
     const userId = payload && payload.sub ? String(payload.sub) : '';
     if (!userId) return res.status(401).json({ ok: false, error: 'invalid token' });
 
-    const row = db.prepare('SELECT id,email,name,role FROM users WHERE id = ?').get(userId);
+    const row = db.prepare('SELECT id,email,name,phone,address,role FROM users WHERE id = ?').get(userId);
     if (!row) return res.status(401).json({ ok: false, error: 'user not found' });
     req.user = userToClient(row);
     return next();
@@ -702,7 +724,8 @@ app.post('/api/auth/login', (req, res) => {
 
   slog.debug('auth', 'Login attempt', { email: maskEmail(email) });
 
-  const row = db.prepare('SELECT * FROM users WHERE email = ?').get(email);
+  // Treat emails case-insensitively (SQLite comparisons are case-sensitive by default).
+  const row = db.prepare('SELECT * FROM users WHERE lower(email) = ?').get(email);
   if (!row) return res.status(401).json({ ok: false, error: 'invalid credentials' });
   const ok = bcrypt.compareSync(password, row.password_hash);
   if (!ok) return res.status(401).json({ ok: false, error: 'invalid credentials' });
@@ -719,6 +742,76 @@ app.get('/api/auth/me', authMiddleware, (req, res) => {
   res.json({ ok: true, user: req.user });
 });
 
+app.put('/api/auth/me', authMiddleware, (req, res) => {
+  const name = (req.body && req.body.name != null) ? String(req.body.name).trim() : undefined;
+  const email = (req.body && req.body.email != null) ? String(req.body.email).trim().toLowerCase() : undefined;
+  const phoneRaw = (req.body && req.body.phone != null) ? String(req.body.phone).trim() : undefined;
+  const address = (req.body && req.body.address != null) ? String(req.body.address).trim() : undefined;
+  const newPassword = (req.body && req.body.password != null) ? String(req.body.password) : undefined;
+
+  if (name !== undefined && !name) return res.status(400).json({ ok: false, error: 'name cannot be empty' });
+  if (email !== undefined && !email) return res.status(400).json({ ok: false, error: 'email cannot be empty' });
+
+  let phone = phoneRaw;
+  if (phone !== undefined) {
+    if (!phone) phone = '';
+    else {
+      const normalized = normalizeE164Phone(phone);
+      if (!normalized) {
+        return res.status(400).json({ ok: false, error: 'phone must be in E.164 format (e.g. +15551234567)' });
+      }
+      phone = normalized;
+    }
+  }
+
+  if (newPassword !== undefined) {
+    if (!String(newPassword).trim()) return res.status(400).json({ ok: false, error: 'password cannot be empty' });
+    if (String(newPassword).length < 6) return res.status(400).json({ ok: false, error: 'password must be at least 6 characters' });
+  }
+
+  try {
+    const userId = String(req.user.id);
+
+    if (email !== undefined) {
+      const existing = db.prepare('SELECT id FROM users WHERE lower(email) = ? AND id <> ?').get(email, userId);
+      if (existing) return res.status(409).json({ ok: false, error: 'email already exists' });
+    }
+
+    const fields = [];
+    const values = [];
+
+    if (name !== undefined) { fields.push('name = ?'); values.push(name); }
+    if (email !== undefined) { fields.push('email = ?'); values.push(email); }
+    if (phone !== undefined) { fields.push('phone = ?'); values.push(phone); }
+    if (address !== undefined) { fields.push('address = ?'); values.push(address); }
+    if (newPassword !== undefined) {
+      const hash = bcrypt.hashSync(newPassword, 12);
+      fields.push('password_hash = ?');
+      values.push(hash);
+    }
+
+    if (!fields.length) {
+      return res.status(400).json({ ok: false, error: 'no fields to update' });
+    }
+
+    fields.push('updated_at = ?');
+    values.push(nowISO());
+    values.push(userId);
+
+    db.prepare(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`).run(...values);
+
+    const row = db.prepare('SELECT id,email,name,phone,address,role FROM users WHERE id = ?').get(userId);
+    if (!row) return res.status(404).json({ ok: false, error: 'user not found' });
+    if (!JWT_SECRET) return res.status(500).json({ ok: false, error: 'server missing BB_JWT_SECRET' });
+
+    const user = userToClient(row);
+    const token = signToken(user);
+    return res.json({ ok: true, token, user });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e?.message || 'update failed' });
+  }
+});
+
 // Optional signup (off by default)
 app.post('/api/auth/signup', async (req, res) => {
   if (!ALLOW_SIGNUP) return res.status(403).json({ ok: false, error: 'signup disabled' });
@@ -733,14 +826,14 @@ app.post('/api/auth/signup', async (req, res) => {
   if (!email || !password || !name) return res.status(400).json({ ok: false, error: 'name, email, password required' });
   if (!JWT_SECRET) return res.status(500).json({ ok: false, error: 'server missing BB_JWT_SECRET' });
 
-  const exists = db.prepare('SELECT id FROM users WHERE email = ?').get(email);
+  const exists = db.prepare('SELECT id FROM users WHERE lower(email) = ?').get(email);
   if (exists) return res.status(409).json({ ok: false, error: 'email already exists' });
 
   const id = nanoId();
   const hash = bcrypt.hashSync(password, 12);
   const t = nowISO();
-  db.prepare('INSERT INTO users (id,email,password_hash,name,role,created_at,updated_at) VALUES (?,?,?,?,?,?,?)')
-    .run(id, email, hash, name, role, t, t);
+  db.prepare('INSERT INTO users (id,email,password_hash,name,phone,role,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)')
+    .run(id, email, hash, name, phone, role, t, t);
 
   const user = { id, email, name, role };
 

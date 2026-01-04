@@ -3,13 +3,11 @@ import { Modal, View, Text, Button, ScrollView, TouchableOpacity, StyleSheet, To
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { useAuth } from '../AuthContext';
 import * as Api from '../Api';
-import devToolsFlag from '../utils/devToolsFlag';
 
 export default function UrgentMemoOverlay() {
   const { user } = useAuth();
   const [memos, setMemos] = useState([]);
   const [visible, setVisible] = useState(false);
-  const [devToolsVisible, setDevToolsVisible] = useState(true);
 
   useEffect(() => {
     (async () => {
@@ -23,12 +21,6 @@ export default function UrgentMemoOverlay() {
           const t = (m && m.type) ? String(m.type).toLowerCase() : 'urgent_memo';
           return t === 'urgent_memo' || (!m.type && (m.title || m.body));
         });
-        // Dev helper: if no memos returned in development and dev tools enabled, show a demo memo so overlay is visible for testing
-        if (__DEV__ && devToolsVisible && (!Array.isArray(list) || list.length === 0)) {
-          list = [
-            { id: 'demo-1', title: 'Demo Urgent Memo', body: 'This is a demo urgent memo for development. Verify modal layout and acknowledgement.', date: new Date().toLocaleString() },
-          ];
-        }
         setMemos(list);
         const seenKey = `urgentSeen_${user.id}`;
         const seenRaw = await AsyncStorage.getItem(seenKey);
@@ -47,33 +39,11 @@ export default function UrgentMemoOverlay() {
         // Defensive: ensure IDs exist before includes check
         const unseen = list.filter((m) => { try { return !seen.includes(m?.id); } catch (e) { return true; } });
         if (unseen.length) setVisible(true);
-        // If there were no unseen items but we're in dev and we injected a demo memo, ensure modal shows
-        if (__DEV__ && devToolsVisible && Array.isArray(list) && list.length && !visible) {
-          const seenKey = `urgentSeen_${user.id}`;
-          // if seen list doesn't include our demo id, show it
-          try {
-            const seenRaw = await AsyncStorage.getItem(seenKey);
-            const parsed = seenRaw ? JSON.parse(seenRaw) : [];
-            if (!Array.isArray(parsed) || !parsed.includes(list[0].id)) setVisible(true);
-          } catch (e) {
-            setVisible(true);
-          }
-        }
       } catch (e) {
         console.warn('urgent memos fetch failed', e.message);
       }
     })();
-    const unsub = devToolsFlag.addListener((v) => {
-      setDevToolsVisible(Boolean(v));
-      if (__DEV__ && !v) setVisible(false);
-    });
-    (async () => {
-      try {
-        const v = await devToolsFlag.get();
-        setDevToolsVisible(Boolean(v));
-      } catch (e) {}
-    })();
-    return () => { try { unsub(); } catch (e) {} };
+    return () => {};
   }, [user]);
 
   async function handleContinue() {

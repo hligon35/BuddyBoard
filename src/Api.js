@@ -257,6 +257,11 @@ export async function me() {
   return res.data;
 }
 
+export async function updateMe(payload) {
+  const res = await client.put('/api/auth/me', payload);
+  return res.data;
+}
+
 export async function getPosts() {
   const res = await client.get('/api/board');
   return res.data;
@@ -425,6 +430,7 @@ export default {
   signup,
   verify2fa,
   me,
+  updateMe,
   getPosts,
   createPost,
   likePost,

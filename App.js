@@ -3,21 +3,19 @@ import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 // Temporarily remove TailwindProvider if not available at runtime
-import { NavigationContainer, createNavigationContainerRef } from '@react-navigation/native';
+import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
 
 import { AuthProvider, useAuth } from './src/AuthContext';
 import { DataProvider } from './src/DataContext';
 import UrgentMemoOverlay from './src/components/UrgentMemoOverlay';
 import BottomNav from './src/components/BottomNav';
-import DevRoleSwitcher from './src/components/DevRoleSwitcher';
 import ErrorBoundary from './src/components/ErrorBoundary';
 import ArrivalDetector from './src/components/ArrivalDetector';
 import { logger, setDebugContext } from './src/utils/logger';
 import { registerGlobalDebugHandlers } from './src/utils/registerDebugHandlers';
 import { configureNotificationHandling } from './src/utils/pushNotifications';
-// navigation ref used by the global bottom nav
-const navigationRef = createNavigationContainerRef();
+import { navigationRef } from './src/navigationRef';
 
 import HomeScreen from './src/screens/HomeScreen';
 import ChatsScreen from './src/screens/ChatsScreen';
@@ -283,7 +281,6 @@ export default function App() {
           {currentRoute !== 'Login' && (
             <>
               <BottomNav navigationRef={navigationRef} currentRoute={currentRoute} />
-              <DevRoleSwitcher />
               <UrgentMemoOverlay />
               <ArrivalDetector />
             </>
