@@ -26,7 +26,6 @@
     ],
     "orientation": "portrait",
     "plugins": [
-      "expo-asset",
       [
         "expo-notifications",
         {

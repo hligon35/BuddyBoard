@@ -4,11 +4,15 @@
   },
   "build": {
     "internal": {
+<<<<<<< Updated upstream
       "distribution": "internal",
       "android": { "buildType": "apk" },
       "ios": {
         "simulator": false
       },
+=======
+      "android": { "buildType": "app-bundle" },
+>>>>>>> Stashed changes
       "env": {
         "EXPO_PUBLIC_API_BASE_URL": "https://buddyboard.getsparqd.com"
       }
@@ -46,6 +50,15 @@
     }
   },
   "submit": {
+<<<<<<< Updated upstream
+=======
+    "internal": {
+      "android": {
+        "serviceAccountKeyPath": "./google-play-service-account.json",
+        "track": "internal"
+      }
+    },
+>>>>>>> Stashed changes
     "production": {
       "ios": {
         "ascAppId": "6756227915",
@@ -53,6 +66,9 @@
       }
     }
   }
+<<<<<<< Updated upstream
 
+=======
+>>>>>>> Stashed changes
 }
 
