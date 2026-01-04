@@ -245,6 +245,26 @@ function App() {
         <Text style={{ marginTop: 12, color: '#666' }}>Check the import paths and default exports for those files.</Text>
       </View>
     );
+import * as Sentry from '@sentry/react-native';
+
+Sentry.init({
+  dsn: 'https://edc1859485c0683ec2b5d443fe4fc612@o4510654674632704.ingest.us.sentry.io/4510654676533248',
+
+  // Adds more context data to events (IP address, cookies, user, etc.)
+  // For more information, visit: https://docs.sentry.io/platforms/react-native/data-management/data-collected/
+  sendDefaultPii: true,
+
+  // Enable Logs
+  enableLogs: true,
+
+  // Configure Session Replay
+  replaysSessionSampleRate: 0.1,
+  replaysOnErrorSampleRate: 1,
+  integrations: [Sentry.mobileReplayIntegration(), Sentry.feedbackIntegration()],
+
+  // uncomment the line below to enable Spotlight (https://spotlightjs.com)
+  // spotlight: __DEV__,
+});
   }
 
   return (

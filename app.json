@@ -34,7 +34,15 @@
       ],
       "@react-native-community/datetimepicker",
       "expo-web-browser",
-      "@sentry/react-native"
+      "@sentry/react-native",
+      [
+        "@sentry/react-native/expo",
+        {
+          "url": "https://sentry.io/",
+          "project": "react-native",
+          "organization": "sparq-digital"
+        }
+      ]
     ],
     "icon": "./assets/icon.png",
     "splash": {
