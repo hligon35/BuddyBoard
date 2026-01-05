@@ -11,6 +11,19 @@ export default function VideoSplash({
   const videoRef = useRef(null);
   const [loaded, setLoaded] = useState(false);
   const readySentRef = useRef(false);
+  const doneSentRef = useRef(false);
+
+  const safeReady = () => {
+    if (readySentRef.current) return;
+    readySentRef.current = true;
+    onReady?.();
+  };
+
+  const safeDone = () => {
+    if (doneSentRef.current) return;
+    doneSentRef.current = true;
+    onDone?.();
+  };
 
   useEffect(() => {
     if (!loaded) return;
@@ -22,7 +35,7 @@ export default function VideoSplash({
       } catch (e) {
         // ignore
       }
-      onDone?.();
+      safeDone();
     }, durationMs);
 
     return () => {
@@ -42,10 +55,12 @@ export default function VideoSplash({
         isMuted
         onLoad={() => {
           setLoaded(true);
-          if (!readySentRef.current) {
-            readySentRef.current = true;
-            onReady?.();
-          }
+          safeReady();
+        }}
+        onError={() => {
+          // If the asset can't load/decode, don't block app startup.
+          safeReady();
+          safeDone();
         }}
       />
     </View>

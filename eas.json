@@ -10,15 +10,11 @@
         "simulator": false
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://buddyboard.getsparqd.com",
-        "EXPO_PUBLIC_SENTRY_DSN": "SET_IN_EAS_DASHBOARD",
         "EXPO_PUBLIC_SENTRY_ENVIRONMENT": "internal",
         "SENTRY_ORG": "sparq-digital",
-        "SENTRY_PROJECT": "react-native",
+        "SENTRY_PROJECT": "sparqplug",
         "SENTRY_ALLOW_FAILURE": "true",
-        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "SET_IN_EAS_DASHBOARD",
-        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "SET_IN_EAS_DASHBOARD",
-        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "SET_IN_EAS_DASHBOARD"
+        "EXPO_PUBLIC_API_BASE_URL": "https://buddyboard.getsparqd.com"
       }
     },
     "development": {
@@ -29,15 +25,11 @@
         "simulator": false
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://buddyboard.getsparqd.com",
-        "EXPO_PUBLIC_SENTRY_DSN": "SET_IN_EAS_DASHBOARD",
         "EXPO_PUBLIC_SENTRY_ENVIRONMENT": "development",
         "SENTRY_ORG": "sparq-digital",
-        "SENTRY_PROJECT": "react-native",
+        "SENTRY_PROJECT": "sparqplug",
         "SENTRY_ALLOW_FAILURE": "true",
-        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "SET_IN_EAS_DASHBOARD",
-        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "SET_IN_EAS_DASHBOARD",
-        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "SET_IN_EAS_DASHBOARD"
+        "EXPO_PUBLIC_API_BASE_URL": "https://buddyboard.getsparqd.com"
       }
     },
     "preview": {
@@ -47,15 +39,11 @@
         "simulator": false
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://buddyboard.getsparqd.com",
-        "EXPO_PUBLIC_SENTRY_DSN": "SET_IN_EAS_DASHBOARD",
         "EXPO_PUBLIC_SENTRY_ENVIRONMENT": "preview",
         "SENTRY_ORG": "sparq-digital",
-        "SENTRY_PROJECT": "react-native",
+        "SENTRY_PROJECT": "sparqplug",
         "SENTRY_ALLOW_FAILURE": "true",
-        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "SET_IN_EAS_DASHBOARD",
-        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "SET_IN_EAS_DASHBOARD",
-        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "SET_IN_EAS_DASHBOARD"
+        "EXPO_PUBLIC_API_BASE_URL": "https://buddyboard.getsparqd.com"
       }
     },
     "production": {
@@ -65,15 +53,11 @@
         "simulator": false
       },
       "env": {
-        "EXPO_PUBLIC_API_BASE_URL": "https://buddyboard.getsparqd.com",
-        "EXPO_PUBLIC_SENTRY_DSN": "SET_IN_EAS_DASHBOARD",
         "EXPO_PUBLIC_SENTRY_ENVIRONMENT": "production",
         "SENTRY_ORG": "sparq-digital",
-        "SENTRY_PROJECT": "react-native",
+        "SENTRY_PROJECT": "sparqplug",
         "SENTRY_ALLOW_FAILURE": "true",
-        "EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID": "SET_IN_EAS_DASHBOARD",
-        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "SET_IN_EAS_DASHBOARD",
-        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "SET_IN_EAS_DASHBOARD"
+        "EXPO_PUBLIC_API_BASE_URL": "https://buddyboard.getsparqd.com"
       }
     }
   },
