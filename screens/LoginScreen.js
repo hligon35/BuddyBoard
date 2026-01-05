@@ -108,6 +108,8 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
 
   const googleEnabled = !!googleRequiredClientId;
 
+  const SENTRY_OTLP_URL = 'https://o4510654674632704.ingest.us.sentry.io/api/4510654676533248/integration/otlp';
+
   const fieldWidthStyle = useMemo(() => ({ width: '100%', maxWidth: 360 }), []);
 
   async function doLogin(){
@@ -123,9 +125,29 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
       navigation.replace('Main');
     }catch(e){
       logger.warn('auth', 'Login failed', { message: e?.message || String(e) });
+      const status = e?.response?.status;
+      const responseData = e?.response?.data;
+
       const msg = e?.message || 'Please check credentials';
       const isNetworkish = /network|timeout|ssl|certificate|ats/i.test(String(msg));
-      const detail = isNetworkish ? `\n\nServer: ${API_BASE_URL || '(unset)'}` : '';
+      const isBadGateway = status === 502;
+
+      const base = API_BASE_URL || '(unset)';
+      const detailLines = [];
+      if (status) detailLines.push(`Status: ${status}`);
+      if (base) detailLines.push(`Server: ${base}`);
+      if (isBadGateway) detailLines.push('Note: 502 usually means the proxy/server could not reach the backend.');
+      if (responseData != null && typeof responseData === 'string' && responseData.trim()) {
+        detailLines.push(`Response: ${responseData.slice(0, 300)}`);
+      } else if (responseData != null && typeof responseData === 'object') {
+        try {
+          detailLines.push(`Response: ${JSON.stringify(responseData).slice(0, 300)}`);
+        } catch (e) {
+          // ignore
+        }
+      }
+
+      const detail = (isNetworkish || status) ? `\n\n${detailLines.join('\n')}` : '';
       Alert.alert('Login failed', `${msg}${detail}`);
     }finally{ setBusy(false); }
   }
@@ -247,20 +269,6 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
         />
       </View>
 
-      {googleEnabled ? (
-        <GoogleSignInController
-          googleIds={googleIds}
-          busy={busy}
-          setBusy={setBusy}
-          auth={auth}
-          navigation={navigation}
-        />
-      ) : (
-        <View style={{ width: '100%', maxWidth: 360, marginTop: 10 }}>
-          <Button title="Continue with Google" onPress={showGoogleConfigHelp} />
-        </View>
-      )}
-
       <View style={[fieldWidthStyle, styles.passwordFieldWrap]}>
         <TextInput
           value={password}
@@ -286,14 +294,8 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
         <View style={{ flex: 0 }}>
           <Button title={busy ? 'Signing in...' : 'Sign in'} onPress={doLogin} disabled={busy} />
         </View>
-        <Text style={styles.sep}>|</Text>
-        <TouchableOpacity style={styles.signUpBtn} onPress={() => setShowSignUp(true)} accessibilityRole="button">
-          <Text style={styles.registerText}>Sign up</Text>
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.secondaryActions}>
-        {/* Google sign-in is handled above via GoogleSignInController */}
+        <View style={{ width: 12 }} />
+        <Button title="Sign up" onPress={() => setShowSignUp(true)} disabled={busy} />
       </View>
 
       <Modal visible={showSignUp} animationType="slide" onRequestClose={() => setShowSignUp(false)}>
@@ -315,6 +317,36 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
           />
         </View>
       )}
+
+      {/* Google sign-in at the bottom of the form */}
+      <View style={styles.secondaryActions}>
+        {googleEnabled ? (
+          <GoogleSignInController
+            googleIds={googleIds}
+            busy={busy}
+            setBusy={setBusy}
+            auth={auth}
+            navigation={navigation}
+          />
+        ) : (
+          <View style={{ width: '100%', maxWidth: 360, marginTop: 10 }}>
+            <Button title="Continue with Google" onPress={showGoogleConfigHelp} />
+          </View>
+        )}
+
+        <View style={{ width: '100%', maxWidth: 360, marginTop: 10 }}>
+          <Button
+            title="Open Sentry OTLP URL"
+            onPress={() => {
+              try {
+                WebBrowser.openBrowserAsync(SENTRY_OTLP_URL);
+              } catch (e) {
+                Alert.alert('Could not open link', SENTRY_OTLP_URL);
+              }
+            }}
+          />
+        </View>
+      </View>
     </View>
   );
 }
@@ -330,8 +362,6 @@ const styles = StyleSheet.create({
   passwordInput: { paddingRight: 42 },
   peekIconBtn: { position: 'absolute', right: 10, top: 10, width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
   actionsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
-  sep: { marginHorizontal: 8, color: '#666', fontSize: 18 },
-  signUpBtn: { marginLeft: 6 },
   biometricWrap: { marginTop: 12 },
   secondaryActions: { marginTop: 10, alignItems: 'center' },
   secondaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, borderColor: '#e5e7eb', backgroundColor: '#f8fafc', width: '100%', maxWidth: 360 },
