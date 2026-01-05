@@ -293,15 +293,7 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
       </View>
 
       <View style={styles.secondaryActions}>
-        <TouchableOpacity
-          style={[styles.secondaryBtn, busy ? { opacity: 0.7 } : null]}
-          onPress={doGoogleLogin}
-          disabled={busy}
-          accessibilityRole="button"
-        >
-          <MaterialIcons name="account-circle" size={18} color="#111827" />
-          <Text style={styles.secondaryBtnText}>Sign in with Google</Text>
-        </TouchableOpacity>
+        {/* Google sign-in is handled above via GoogleSignInController */}
       </View>
 
       <Modal visible={showSignUp} animationType="slide" onRequestClose={() => setShowSignUp(false)}>

@@ -274,6 +274,7 @@ function App() {
             <VideoSplash
               source={require('./assets/splash-icon.mp4')}
               durationMs={5000}
+              scale={0.9}
               onReady={() => {
                 SplashScreen.hideAsync().catch(() => {
                   // ignore

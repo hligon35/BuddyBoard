@@ -5,6 +5,7 @@ import { Video, ResizeMode } from 'expo-av';
 export default function VideoSplash({
   source,
   durationMs = 5000,
+  scale = 1,
   onReady,
   onDone,
 }) {
@@ -47,9 +48,9 @@ export default function VideoSplash({
     <View style={styles.wrap} pointerEvents="none">
       <Video
         ref={videoRef}
-        style={StyleSheet.absoluteFillObject}
+        style={[StyleSheet.absoluteFillObject, scale !== 1 ? { transform: [{ scale }] } : null]}
         source={source}
-        resizeMode={ResizeMode.COVER}
+        resizeMode={ResizeMode.CONTAIN}
         shouldPlay
         isLooping
         isMuted
