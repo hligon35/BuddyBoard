@@ -11,6 +11,7 @@ import LogoTitle from '../src/components/LogoTitle';
 import { logger } from '../src/utils/logger';
 import { API_BASE_URL } from '../src/Api';
 import * as Api from '../src/Api';
+import { Sentry } from '../src/sentry';
 
 WebBrowser.maybeCompleteAuthSession();
 
@@ -109,6 +110,9 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
   const googleEnabled = !!googleRequiredClientId;
 
   const SENTRY_OTLP_URL = 'https://o4510654674632704.ingest.us.sentry.io/api/4510654676533248/integration/otlp';
+  const sentryEnv = String(process.env.EXPO_PUBLIC_SENTRY_ENVIRONMENT || '').toLowerCase();
+  const sentryDsn = String(process.env.EXPO_PUBLIC_SENTRY_DSN || '');
+  const showSentryTestButton = sentryEnv === 'internal';
 
   const fieldWidthStyle = useMemo(() => ({ width: '100%', maxWidth: 360 }), []);
 
@@ -346,6 +350,37 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
             }}
           />
         </View>
+
+        {showSentryTestButton ? (
+          <View style={{ width: '100%', maxWidth: 360, marginTop: 10 }}>
+            <Button
+              title="Internal: Send Sentry test error"
+              onPress={() => {
+                try {
+                  if (!sentryDsn) {
+                    Alert.alert(
+                      'Sentry not configured',
+                      'EXPO_PUBLIC_SENTRY_DSN is empty in this build. Add it to the EAS internal environment and rebuild.'
+                    );
+                    return;
+                  }
+
+                  Sentry.withScope((scope) => {
+                    scope.setTag('bb_sentry_test', '1');
+                    scope.setTag('bb_env', sentryEnv || 'unknown');
+                    scope.setExtra('apiBaseUrl', API_BASE_URL || '');
+                    scope.setExtra('time', new Date().toISOString());
+                    Sentry.captureException(new Error('BuddyBoard Sentry test error (internal build)'));
+                  });
+
+                  Alert.alert('Sent', 'Sent a test error to Sentry. Check Sentry → Issues (environment: internal).');
+                } catch (e) {
+                  Alert.alert('Failed', e?.message || 'Could not send test error.');
+                }
+              }}
+            />
+          </View>
+        ) : null}
       </View>
     </View>
   );
