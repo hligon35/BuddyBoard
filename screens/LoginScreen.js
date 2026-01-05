@@ -24,8 +24,19 @@ function GoogleSignInController({
   navigation,
 }) {
   const appEnv = String(process.env.EXPO_PUBLIC_SENTRY_ENVIRONMENT || '').toLowerCase();
-  const useProxy = appEnv === 'internal';
-  const redirectUri = AuthSession.makeRedirectUri({ useProxy });
+  // Internal/dev builds: prefer Expo proxy (simpler + avoids deep-link config issues).
+  let useProxy = appEnv === 'internal' || appEnv === 'development';
+  let redirectUri;
+  try {
+    redirectUri = AuthSession.makeRedirectUri({
+      useProxy,
+      scheme: 'buddyboard',
+    });
+  } catch (e) {
+    // If the app doesn't have a custom scheme configured, fall back to proxy.
+    useProxy = true;
+    redirectUri = AuthSession.makeRedirectUri({ useProxy });
+  }
 
   const [googleRequest, googleResponse, googlePromptAsync] = Google.useAuthRequest({
     iosClientId: googleIds.iosClientId,

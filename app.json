@@ -24,6 +24,7 @@
       "ios",
       "web"
     ],
+    "scheme": "buddyboard",
     "orientation": "portrait",
     "plugins": [
       [
