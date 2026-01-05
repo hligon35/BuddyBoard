@@ -4,6 +4,7 @@ import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
+import * as AuthSession from 'expo-auth-session';
 import * as Google from 'expo-auth-session/providers/google';
 import SignUpScreen from './SignUpScreen';
 import { useAuth } from '../src/AuthContext';
@@ -22,19 +23,28 @@ function GoogleSignInController({
   auth,
   navigation,
 }) {
+  const appEnv = String(process.env.EXPO_PUBLIC_SENTRY_ENVIRONMENT || '').toLowerCase();
+  const useProxy = appEnv === 'internal';
+  const redirectUri = AuthSession.makeRedirectUri({ useProxy });
+
   const [googleRequest, googleResponse, googlePromptAsync] = Google.useAuthRequest({
     iosClientId: googleIds.iosClientId,
     androidClientId: googleIds.androidClientId,
     webClientId: googleIds.webClientId,
     scopes: ['profile', 'email'],
+    redirectUri,
   });
 
   async function doGoogleLogin() {
     if (busy) return;
     try {
-      await googlePromptAsync({ useProxy: false, showInRecents: true });
+      await googlePromptAsync({ useProxy, showInRecents: true });
     } catch (e) {
-      Alert.alert('Google sign-in failed', e?.message || 'Could not start Google sign-in.');
+      const msg = e?.message || 'Could not start Google sign-in.';
+      Alert.alert(
+        'Google sign-in failed',
+        `${msg}\n\nRedirect URI: ${redirectUri}\nProxy: ${useProxy ? 'on' : 'off'}`
+      );
     }
   }
 
