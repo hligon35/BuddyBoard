@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, Alert, Modal } from 'react-native';
+import { View, Text, TextInput, Button, StyleSheet, Alert, Modal, ImageBackground } from 'react-native';
 import { useAuth } from '../src/AuthContext';
 import * as Api from '../src/Api';
 import { logger } from '../src/utils/logger';
@@ -140,32 +140,34 @@ export default function SignUpScreen({ onDone, onCancel }) {
   const methodLabel = (String(method || '').toLowerCase() === 'sms') ? 'SMS' : 'Email';
 
   return (
-    <View style={{ flex: 1, padding: 20 }}>
-      {!show2fa ? (
-        <View style={{ flex: 1, justifyContent: 'center' }}>
-          <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 12 }}>Sign Up</Text>
-          <TextInput placeholder="Full name" value={name} onChangeText={setName} style={styles.input} />
-          <TextInput placeholder="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" style={styles.input} />
-          <TextInput placeholder="Password" value={password} onChangeText={setPassword} secureTextEntry style={styles.input} />
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 }}>
-            <Button title="Cancel" onPress={() => { if (onCancel) onCancel(); }} />
-            <Button title={busy ? 'Submitting...' : 'Submit'} onPress={submit} disabled={busy} />
+    <ImageBackground source={require('../assets/bbbg.png')} resizeMode="cover" style={{ flex: 1 }}>
+      <View style={{ flex: 1, padding: 20 }}>
+        {!show2fa ? (
+          <View style={{ flex: 1, justifyContent: 'center' }}>
+            <Text style={{ fontSize: 20, fontWeight: '700', marginBottom: 12 }}>Sign Up</Text>
+            <TextInput placeholder="Full name" value={name} onChangeText={setName} style={styles.input} />
+            <TextInput placeholder="Email" value={email} onChangeText={setEmail} keyboardType="email-address" autoCapitalize="none" style={styles.input} />
+            <TextInput placeholder="Password" value={password} onChangeText={setPassword} secureTextEntry style={styles.input} />
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 }}>
+              <Button title="Cancel" onPress={() => { if (onCancel) onCancel(); }} />
+              <Button title={busy ? 'Submitting...' : 'Submit'} onPress={submit} disabled={busy} />
+            </View>
           </View>
-        </View>
-      ) : (
-        <View style={{ flex: 1, justifyContent: 'center' }}>
-          <Text style={{ fontSize: 18, marginBottom: 8 }}>
-            Enter verification code ({methodLabel}){destinationMask ? ` to ${destinationMask}` : ''}
-          </Text>
-          <TextInput placeholder="123456" value={code} onChangeText={setCode} keyboardType="number-pad" style={styles.input} />
-          <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 }}>
-            <Button title="Back" onPress={() => { setShow2fa(false); setMethod(null); setChallengeId(''); setDestinationMask(''); setCode(''); }} />
-            <Button title="Resend" onPress={resendCode} disabled={busy || !challengeId} />
-            <Button title={busy ? 'Verifying...' : 'Verify'} onPress={verifyCode} disabled={busy} />
+        ) : (
+          <View style={{ flex: 1, justifyContent: 'center' }}>
+            <Text style={{ fontSize: 18, marginBottom: 8 }}>
+              Enter verification code ({methodLabel}){destinationMask ? ` to ${destinationMask}` : ''}
+            </Text>
+            <TextInput placeholder="123456" value={code} onChangeText={setCode} keyboardType="number-pad" style={styles.input} />
+            <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 10 }}>
+              <Button title="Back" onPress={() => { setShow2fa(false); setMethod(null); setChallengeId(''); setDestinationMask(''); setCode(''); }} />
+              <Button title="Resend" onPress={resendCode} disabled={busy || !challengeId} />
+              <Button title={busy ? 'Verifying...' : 'Verify'} onPress={verifyCode} disabled={busy} />
+            </View>
           </View>
-        </View>
-      )}
-    </View>
+        )}
+      </View>
+    </ImageBackground>
   );
 }
 

@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, Alert, ActivityIndicator, TouchableOpacity, Modal, Platform } from 'react-native';
+import { View, Text, TextInput, Button, StyleSheet, Alert, ActivityIndicator, TouchableOpacity, Modal, Platform, ImageBackground } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -275,24 +275,27 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
   }, [auth.loading, showSignUp]);
 
   if (auth.loading) return (
-    <View style={styles.container}><ActivityIndicator size="large" /></View>
+    <ImageBackground source={require('../assets/bbbg.png')} resizeMode="cover" style={{ flex: 1 }}>
+      <View style={styles.container}><ActivityIndicator size="large" /></View>
+    </ImageBackground>
   );
 
   return (
-    <View style={styles.container}>
-      <View style={styles.logoWrap}>
-        <LogoTitle width={360} height={108} />
-      </View>
-      <View style={fieldWidthStyle}>
-        <TextInput
-          value={email}
-          onChangeText={setEmail}
-          style={styles.input}
-          placeholder="Email"
-          keyboardType="email-address"
-          autoCapitalize="none"
-        />
-      </View>
+    <ImageBackground source={require('../assets/bbbg.png')} resizeMode="cover" style={{ flex: 1 }}>
+      <View style={styles.container}>
+        <View style={styles.logoWrap}>
+          <LogoTitle width={360} height={108} />
+        </View>
+        <View style={fieldWidthStyle}>
+          <TextInput
+            value={email}
+            onChangeText={setEmail}
+            style={styles.input}
+            placeholder="Email"
+            keyboardType="email-address"
+            autoCapitalize="none"
+          />
+        </View>
 
       <View style={[fieldWidthStyle, styles.passwordFieldWrap]}>
         <TextInput
@@ -403,7 +406,7 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
           </View>
         ) : null}
       </View>
-    </View>
+    </ImageBackground>
   );
 }
 
