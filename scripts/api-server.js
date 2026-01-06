@@ -360,17 +360,13 @@ CREATE TABLE IF NOT EXISTS urgent_memos (
   proposer_id TEXT,
   actor_role TEXT,
   child_id TEXT,
-  update_type TEXT,
-  proposed_iso TEXT,
-  note TEXT,
-  subject TEXT,
   title TEXT,
   body TEXT,
+  note TEXT,
+  meta_json TEXT,
   memo_json TEXT,
-  status TEXT,
   responded_at TEXT,
   ack INTEGER NOT NULL DEFAULT 0,
-  responded_at TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT
 );
@@ -394,6 +390,19 @@ CREATE TABLE IF NOT EXISTS push_tokens (
   preferences_json TEXT,
   updated_at TEXT NOT NULL
 );
+CREATE TABLE IF NOT EXISTS arrival_pings (
+  id TEXT PRIMARY KEY,
+  user_id TEXT,
+  role TEXT,
+  child_id TEXT,
+  lat REAL,
+  lng REAL,
+  event_id TEXT,
+  when_iso TEXT,
+  created_at TEXT NOT NULL
+);
+`);
+
 function ensureUserProfileColumns() {
   try {
     const cols = db.prepare("PRAGMA table_info('users')").all();
@@ -411,19 +420,6 @@ function ensureUserProfileColumns() {
 }
 
 ensureUserProfileColumns();
-
-CREATE TABLE IF NOT EXISTS arrival_pings (
-  id TEXT PRIMARY KEY,
-  user_id TEXT,
-  role TEXT,
-  child_id TEXT,
-  lat REAL,
-  lng REAL,
-  event_id TEXT,
-  when_iso TEXT,
-  created_at TEXT NOT NULL
-);
-`);
 
 // Lightweight migrations for older databases.
 try {
