@@ -6,6 +6,32 @@ import * as Api from '../Api';
 import * as ImagePicker from 'expo-image-picker';
 import { pravatarUriFor } from '../utils/idVisibility';
 
+function formatPhoneInput(input) {
+  const raw = String(input || '');
+  const trimmed = raw.trimStart();
+  const hasPlus = trimmed.startsWith('+');
+  const digits = raw.replace(/\D/g, '');
+  if (!digits) return hasPlus ? '+' : '';
+  if (hasPlus) return `+${digits}`;
+
+  // Light formatting for common 10-digit numbers; keep other lengths unformatted.
+  if (digits.length <= 3) return digits;
+  if (digits.length <= 6) return `${digits.slice(0, 3)}-${digits.slice(3)}`;
+  if (digits.length <= 10) return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
+  return digits;
+}
+
+function formatAddressInput(input) {
+  let v = String(input || '');
+  // collapse repeated spaces/tabs
+  v = v.replace(/[\t ]{2,}/g, ' ');
+  // normalize commas: "a,b" -> "a, b"
+  v = v.replace(/\s*,\s*/g, ', ');
+  // avoid leading whitespace
+  v = v.replace(/^\s+/g, '');
+  return v;
+}
+
 export default function EditProfileScreen({ navigation }) {
   const { user, setAuth } = useAuth();
 
@@ -162,7 +188,7 @@ export default function EditProfileScreen({ navigation }) {
           <Text style={styles.label}>Phone</Text>
           <TextInput
             value={phone}
-            onChangeText={setPhone}
+            onChangeText={(v) => setPhone(formatPhoneInput(v))}
             style={styles.input}
             placeholder="+15551234567"
             autoCapitalize="none"
@@ -170,7 +196,7 @@ export default function EditProfileScreen({ navigation }) {
           />
 
           <Text style={styles.label}>Address</Text>
-          <TextInput value={address} onChangeText={setAddress} style={styles.input} placeholder="Address" />
+          <TextInput value={address} onChangeText={(v) => setAddress(formatAddressInput(v))} style={styles.input} placeholder="Address" />
 
           <View style={{ height: 12 }} />
 
