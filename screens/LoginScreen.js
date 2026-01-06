@@ -406,6 +406,7 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
           </View>
         ) : null}
       </View>
+    </View>
     </ImageBackground>
   );
 }
