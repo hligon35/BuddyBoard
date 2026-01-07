@@ -1,6 +1,7 @@
 import React from 'react';
 import { View, Text, ScrollView, Button } from 'react-native';
 import { getDebugContext, getRecentLogs, logger } from '../utils/logger';
+import { Sentry } from '../sentry';
 
 function levelColor(level) {
   if (level === 'error') return '#ef4444';
@@ -46,6 +47,16 @@ export default class ErrorBoundary extends React.Component {
       stack: error?.stack,
       componentStack: info?.componentStack,
     });
+
+    try {
+      Sentry.withScope((scope) => {
+        if (info?.componentStack) scope.setExtra('componentStack', info.componentStack);
+        scope.setContext('debug', getDebugContext());
+        Sentry.captureException(error);
+      });
+    } catch (e) {
+      // ignore
+    }
   }
 
   render() {

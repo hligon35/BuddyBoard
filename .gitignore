@@ -45,3 +45,5 @@ appstore_connect.json
 # Local Caddy state
 caddy-central.buddyboard.getsparqd.com.caddy
 
+
+.env.local

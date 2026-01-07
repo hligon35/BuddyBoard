@@ -53,7 +53,10 @@ function envFlag(value, defaultValue = false) {
 }
 
 const ALLOW_SIGNUP = envFlag(process.env.BB_ALLOW_SIGNUP, true);
-const REQUIRE_2FA_ON_SIGNUP = envFlag(process.env.BB_REQUIRE_2FA_ON_SIGNUP, true);
+// IMPORTANT:
+// Requiring 2FA on signup by default will hard-fail account creation when email/SMS delivery
+// isn't configured (e.g. missing BB_SMTP_URL/BB_EMAIL_FROM). Default to OFF unless explicitly enabled.
+const REQUIRE_2FA_ON_SIGNUP = envFlag(process.env.BB_REQUIRE_2FA_ON_SIGNUP, false);
 const DEBUG_2FA_RETURN_CODE = envFlag(process.env.BB_DEBUG_2FA_RETURN_CODE, false);
 const LOG_REQUESTS = envFlag(process.env.BB_DEBUG_REQUESTS, true);
 
@@ -324,6 +327,7 @@ CREATE TABLE IF NOT EXISTS users (
   email TEXT NOT NULL UNIQUE,
   password_hash TEXT NOT NULL,
   name TEXT NOT NULL,
+  avatar TEXT,
   phone TEXT,
   address TEXT,
   role TEXT NOT NULL,
@@ -360,17 +364,13 @@ CREATE TABLE IF NOT EXISTS urgent_memos (
   proposer_id TEXT,
   actor_role TEXT,
   child_id TEXT,
-  update_type TEXT,
-  proposed_iso TEXT,
-  note TEXT,
-  subject TEXT,
   title TEXT,
   body TEXT,
+  note TEXT,
+  meta_json TEXT,
   memo_json TEXT,
-  status TEXT,
   responded_at TEXT,
   ack INTEGER NOT NULL DEFAULT 0,
-  responded_at TEXT,
   created_at TEXT NOT NULL,
   updated_at TEXT
 );
@@ -394,24 +394,6 @@ CREATE TABLE IF NOT EXISTS push_tokens (
   preferences_json TEXT,
   updated_at TEXT NOT NULL
 );
-function ensureUserProfileColumns() {
-  try {
-    const cols = db.prepare("PRAGMA table_info('users')").all();
-    const names = new Set((cols || []).map((c) => String(c.name || '').toLowerCase()));
-
-    if (!names.has('phone')) {
-      db.exec('ALTER TABLE users ADD COLUMN phone TEXT');
-    }
-    if (!names.has('address')) {
-      db.exec('ALTER TABLE users ADD COLUMN address TEXT');
-    }
-  } catch (e) {
-    console.warn('[api] users table migration failed:', e && e.message ? e.message : String(e));
-  }
-}
-
-ensureUserProfileColumns();
-
 CREATE TABLE IF NOT EXISTS arrival_pings (
   id TEXT PRIMARY KEY,
   user_id TEXT,
@@ -424,6 +406,27 @@ CREATE TABLE IF NOT EXISTS arrival_pings (
   created_at TEXT NOT NULL
 );
 `);
+
+function ensureUserProfileColumns() {
+  try {
+    const cols = db.prepare("PRAGMA table_info('users')").all();
+    const names = new Set((cols || []).map((c) => String(c.name || '').toLowerCase()));
+
+    if (!names.has('avatar')) {
+      db.exec('ALTER TABLE users ADD COLUMN avatar TEXT');
+    }
+    if (!names.has('phone')) {
+      db.exec('ALTER TABLE users ADD COLUMN phone TEXT');
+    }
+    if (!names.has('address')) {
+      db.exec('ALTER TABLE users ADD COLUMN address TEXT');
+    }
+  } catch (e) {
+    console.warn('[api] users table migration failed:', e && e.message ? e.message : String(e));
+  }
+}
+
+ensureUserProfileColumns();
 
 // Lightweight migrations for older databases.
 try {
@@ -611,6 +614,7 @@ function userToClient(row) {
     id: row.id,
     email: row.email,
     name: row.name,
+    avatar: row.avatar || '',
     phone: row.phone || '',
     address: row.address || '',
     role: row.role,
@@ -696,7 +700,7 @@ function authMiddleware(req, res, next) {
     const userId = payload && payload.sub ? String(payload.sub) : '';
     if (!userId) return res.status(401).json({ ok: false, error: 'invalid token' });
 
-    const row = db.prepare('SELECT id,email,name,phone,address,role FROM users WHERE id = ?').get(userId);
+    const row = db.prepare('SELECT id,email,name,avatar,phone,address,role FROM users WHERE id = ?').get(userId);
     if (!row) return res.status(401).json({ ok: false, error: 'user not found' });
     req.user = userToClient(row);
     return next();
@@ -795,12 +799,24 @@ app.get('/api/auth/me', authMiddleware, (req, res) => {
 app.put('/api/auth/me', authMiddleware, (req, res) => {
   const name = (req.body && req.body.name != null) ? String(req.body.name).trim() : undefined;
   const email = (req.body && req.body.email != null) ? String(req.body.email).trim().toLowerCase() : undefined;
+  const avatarRaw = (req.body && req.body.avatar != null) ? String(req.body.avatar).trim() : undefined;
   const phoneRaw = (req.body && req.body.phone != null) ? String(req.body.phone).trim() : undefined;
   const address = (req.body && req.body.address != null) ? String(req.body.address).trim() : undefined;
   const newPassword = (req.body && req.body.password != null) ? String(req.body.password) : undefined;
 
   if (name !== undefined && !name) return res.status(400).json({ ok: false, error: 'name cannot be empty' });
   if (email !== undefined && !email) return res.status(400).json({ ok: false, error: 'email cannot be empty' });
+
+  let avatar = avatarRaw;
+  if (avatar !== undefined) {
+    if (!avatar) avatar = '';
+    // Allow:
+    // - absolute URLs (http/https)
+    // - local uploads served by this API (/uploads/...)
+    const ok = avatar.startsWith('http://') || avatar.startsWith('https://') || avatar.startsWith('/uploads/');
+    if (!ok) return res.status(400).json({ ok: false, error: 'avatar must be a valid URL or /uploads/... path' });
+    if (avatar.length > 2048) return res.status(400).json({ ok: false, error: 'avatar URL too long' });
+  }
 
   let phone = phoneRaw;
   if (phone !== undefined) {
@@ -832,6 +848,7 @@ app.put('/api/auth/me', authMiddleware, (req, res) => {
 
     if (name !== undefined) { fields.push('name = ?'); values.push(name); }
     if (email !== undefined) { fields.push('email = ?'); values.push(email); }
+    if (avatar !== undefined) { fields.push('avatar = ?'); values.push(avatar); }
     if (phone !== undefined) { fields.push('phone = ?'); values.push(phone); }
     if (address !== undefined) { fields.push('address = ?'); values.push(address); }
     if (newPassword !== undefined) {
@@ -850,7 +867,7 @@ app.put('/api/auth/me', authMiddleware, (req, res) => {
 
     db.prepare(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`).run(...values);
 
-    const row = db.prepare('SELECT id,email,name,phone,address,role FROM users WHERE id = ?').get(userId);
+    const row = db.prepare('SELECT id,email,name,avatar,phone,address,role FROM users WHERE id = ?').get(userId);
     if (!row) return res.status(404).json({ ok: false, error: 'user not found' });
     if (!JWT_SECRET) return res.status(500).json({ ok: false, error: 'server missing BB_JWT_SECRET' });
 
@@ -878,6 +895,28 @@ app.post('/api/auth/signup', async (req, res) => {
 
   const exists = db.prepare('SELECT id FROM users WHERE lower(email) = ?').get(email);
   if (exists) return res.status(409).json({ ok: false, error: 'email already exists' });
+
+  // If 2FA is required, validate delivery configuration before creating an account.
+  if (REQUIRE_2FA_ON_SIGNUP) {
+    const method = (twoFaMethod === 'sms' || twoFaMethod === 'email') ? twoFaMethod : 'email';
+    if (method === 'sms') {
+      if (!ENABLE_SMS_2FA) return res.status(400).json({ ok: false, error: 'SMS 2FA is currently disabled' });
+      if (!twilioEnabled()) {
+        return res.status(503).json({
+          ok: false,
+          error: '2FA SMS delivery is not configured (set BB_TWILIO_ACCOUNT_SID/BB_TWILIO_AUTH_TOKEN and BB_TWILIO_FROM or BB_TWILIO_MESSAGING_SERVICE_SID)',
+        });
+      }
+    } else {
+      if (!ENABLE_EMAIL_2FA) return res.status(400).json({ ok: false, error: 'Email 2FA is currently disabled' });
+      if (!emailEnabled() && !DEBUG_2FA_RETURN_CODE) {
+        return res.status(503).json({
+          ok: false,
+          error: '2FA email delivery is not configured (set BB_SMTP_URL and BB_EMAIL_FROM, and ensure BB_ENABLE_EMAIL_2FA=1)',
+        });
+      }
+    }
+  }
 
   const id = nanoId();
   const hash = bcrypt.hashSync(password, 12);
