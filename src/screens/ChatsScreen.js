@@ -206,25 +206,23 @@ export default function ChatsScreen({ navigation }) {
       )}
     >
       <CenteredContainer>
-        <View style={{ width: '100%', backgroundColor: '#fff', borderRadius: 16, overflow: 'hidden' }}>
-          {/* Dev buttons moved to DevRoleSwitcher */}
-          <FlatList
-            style={{ width: '100%' }}
-            data={displayList}
-            keyExtractor={(i) => `${i.id}`}
-            renderItem={({ item }) => (
-              <MessageRow item={item} user={user} navigation={navigation} archiveThread={archiveThread} deleteThread={deleteThread} />
-            )}
-            refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
-          />
-          {(!displayList || displayList.length === 0) && (
-            <View style={{ padding: 20, alignItems: 'center' }}>
-              <Text style={{ color: '#6b7280' }}>
-                {dateFilterDays ? `No conversations in last ${dateFilterDays} days.` : 'No conversations yet.'}
-              </Text>
-            </View>
+        {/* Dev buttons moved to DevRoleSwitcher */}
+        <FlatList
+          style={{ width: '100%' }}
+          data={displayList}
+          keyExtractor={(i) => `${i.id}`}
+          renderItem={({ item }) => (
+            <MessageRow item={item} user={user} navigation={navigation} archiveThread={archiveThread} deleteThread={deleteThread} />
           )}
-        </View>
+          refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}
+        />
+        {(!displayList || displayList.length === 0) && (
+          <View style={{ padding: 20, alignItems: 'center' }}>
+            <Text style={{ color: '#6b7280' }}>
+              {dateFilterDays ? `No conversations in last ${dateFilterDays} days.` : 'No conversations yet.'}
+            </Text>
+          </View>
+        )}
       </CenteredContainer>
     </ScreenWrapper>
   );

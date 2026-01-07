@@ -2,7 +2,6 @@ import React, { useEffect, useState } from 'react';
 import { GestureHandlerRootView } from 'react-native-gesture-handler';
 import { StatusBar } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
-import * as SplashScreen from 'expo-splash-screen';
 // Temporarily remove TailwindProvider if not available at runtime
 import { NavigationContainer } from '@react-navigation/native';
 import { createNativeStackNavigator } from '@react-navigation/native-stack';
@@ -43,14 +42,6 @@ import { HelpButton, LogoutButton, BackButton } from './src/components/TopButton
 import { View, Text } from 'react-native';
 import LogoTitle from './src/components/LogoTitle';
 import LoginScreen from './screens/LoginScreen';
-import VideoSplash from './src/components/VideoSplash';
-import { initSentry, Sentry } from './src/sentry';
-
-initSentry();
-
-SplashScreen.preventAutoHideAsync().catch(() => {
-  // ignore
-});
 
 const RootStack = createNativeStackNavigator();
 const AppStack = createNativeStackNavigator();
@@ -201,26 +192,9 @@ function MainRoutes() {
   );
 }
 
-function App() {
+export default function App() {
   const [problem, setProblem] = useState(null);
   const [currentRoute, setCurrentRoute] = useState('Login');
-  const [showVideoSplash, setShowVideoSplash] = useState(true);
-
-  useEffect(() => {
-    if (!showVideoSplash) return;
-
-    // Hide the native splash ASAP; the MP4 overlay becomes the only thing the user sees.
-    SplashScreen.hideAsync().catch(() => {
-      // ignore
-    });
-
-    // Extra guard: if the video never loads, remove the overlay.
-    const stopOverlay = setTimeout(() => setShowVideoSplash(false), 7000);
-
-    return () => {
-      clearTimeout(stopOverlay);
-    };
-  }, [showVideoSplash]);
 
   useEffect(() => {
     try {
@@ -270,64 +244,47 @@ function App() {
       <SafeAreaProvider>
       <AuthProvider>
         <DataProvider>
-          {showVideoSplash && (
-            <VideoSplash
-              source={require('./assets/splash-icon.mp4')}
-              durationMs={5000}
-              scale={0.9}
-              onReady={() => {
-                SplashScreen.hideAsync().catch(() => {
-                  // ignore
-                });
-              }}
-              onDone={() => setShowVideoSplash(false)}
-            />
-          )}
-          {!showVideoSplash && (
+          <NavigationContainer
+            ref={navigationRef}
+            onStateChange={() => {
+              try {
+                const r = navigationRef.getCurrentRoute();
+                if (r && r.name) {
+                  // Map nested route names back to top-level stack keys so BottomNav highlights correctly
+                  const map = {
+                    Main: 'Home',
+                    CommunityMain: 'Home',
+                    PostThread: 'Home',
+                    ChatsList: 'Chats',
+                    ChatThread: 'Chats',
+                    NewThread: 'Chats',
+                    MyChildMain: 'MyChild',
+                    SettingsMain: 'Settings',
+                    MyClassMain: 'MyClass',
+                    ControlsMain: 'Controls',
+                  };
+                  const next = map[r.name] || r.name;
+                  setCurrentRoute(next);
+                  setDebugContext({ route: next });
+                  logger.debug('nav', 'Route change', { route: next });
+                }
+              } catch (e) {
+                // ignore
+              }
+            }}
+          >
+            <AppStack.Navigator screenOptions={{ headerShown: false }} initialRouteName="Login">
+              <AppStack.Screen name="Login">
+                {(props) => <LoginScreen {...props} suppressAutoRedirect={true} />}
+              </AppStack.Screen>
+              <AppStack.Screen name="Main" component={MainRoutes} />
+            </AppStack.Navigator>
+          </NavigationContainer>
+          {currentRoute !== 'Login' && (
             <>
-              <NavigationContainer
-                ref={navigationRef}
-                onStateChange={() => {
-                  try {
-                    const r = navigationRef.getCurrentRoute();
-                    if (r && r.name) {
-                      // Map nested route names back to top-level stack keys so BottomNav highlights correctly
-                      const map = {
-                        Main: 'Home',
-                        CommunityMain: 'Home',
-                        PostThread: 'Home',
-                        ChatsList: 'Chats',
-                        ChatThread: 'Chats',
-                        NewThread: 'Chats',
-                        MyChildMain: 'MyChild',
-                        SettingsMain: 'Settings',
-                        MyClassMain: 'MyClass',
-                        ControlsMain: 'Controls',
-                      };
-                      const next = map[r.name] || r.name;
-                      setCurrentRoute(next);
-                      setDebugContext({ route: next });
-                      logger.debug('nav', 'Route change', { route: next });
-                    }
-                  } catch (e) {
-                    // ignore
-                  }
-                }}
-              >
-                <AppStack.Navigator screenOptions={{ headerShown: false }} initialRouteName="Login">
-                  <AppStack.Screen name="Login">
-                    {(props) => <LoginScreen {...props} suppressAutoRedirect={true} />}
-                  </AppStack.Screen>
-                  <AppStack.Screen name="Main" component={MainRoutes} />
-                </AppStack.Navigator>
-              </NavigationContainer>
-              {currentRoute !== 'Login' && (
-                <>
-                  <BottomNav navigationRef={navigationRef} currentRoute={currentRoute} />
-                  <UrgentMemoOverlay />
-                  <ArrivalDetector />
-                </>
-              )}
+              <BottomNav navigationRef={navigationRef} currentRoute={currentRoute} />
+              <UrgentMemoOverlay />
+              <ArrivalDetector />
             </>
           )}
         </DataProvider>
@@ -337,5 +294,3 @@ function App() {
     </GestureHandlerRootView>
   );
 }
-
-export default Sentry.wrap(App);

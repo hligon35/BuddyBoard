@@ -10,10 +10,6 @@
         "simulator": false
       },
       "env": {
-        "EXPO_PUBLIC_SENTRY_ENVIRONMENT": "internal",
-        "SENTRY_ORG": "sparq-digital",
-        "SENTRY_PROJECT": "sparqplug",
-        "SENTRY_ALLOW_FAILURE": "true",
         "EXPO_PUBLIC_API_BASE_URL": "https://buddyboard.getsparqd.com"
       }
     },
@@ -25,10 +21,6 @@
         "simulator": false
       },
       "env": {
-        "EXPO_PUBLIC_SENTRY_ENVIRONMENT": "development",
-        "SENTRY_ORG": "sparq-digital",
-        "SENTRY_PROJECT": "sparqplug",
-        "SENTRY_ALLOW_FAILURE": "true",
         "EXPO_PUBLIC_API_BASE_URL": "https://buddyboard.getsparqd.com"
       }
     },
@@ -39,10 +31,6 @@
         "simulator": false
       },
       "env": {
-        "EXPO_PUBLIC_SENTRY_ENVIRONMENT": "preview",
-        "SENTRY_ORG": "sparq-digital",
-        "SENTRY_PROJECT": "sparqplug",
-        "SENTRY_ALLOW_FAILURE": "true",
         "EXPO_PUBLIC_API_BASE_URL": "https://buddyboard.getsparqd.com"
       }
     },
@@ -53,21 +41,11 @@
         "simulator": false
       },
       "env": {
-        "EXPO_PUBLIC_SENTRY_ENVIRONMENT": "production",
-        "SENTRY_ORG": "sparq-digital",
-        "SENTRY_PROJECT": "sparqplug",
-        "SENTRY_ALLOW_FAILURE": "true",
         "EXPO_PUBLIC_API_BASE_URL": "https://buddyboard.getsparqd.com"
       }
     }
   },
   "submit": {
-    "internal": {
-      "android": {
-        "serviceAccountKeyPath": "./google-play-service-account.json",
-        "track": "internal"
-      }
-    },
     "production": {
       "ios": {
         "ascAppId": "6756227915",
@@ -75,5 +53,6 @@
       }
     }
   }
+
 }
 

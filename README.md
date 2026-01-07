@@ -25,11 +25,6 @@ Configuration
 - Set `EXPO_PUBLIC_API_BASE_URL` in your environment to change the API base URL (recommended).
 - On Android emulator, if your backend runs on localhost, use `10.0.2.2` as the host.
 - (Optional) For address autocomplete in Admin → Arrival Detection Controls, set `EXPO_PUBLIC_GOOGLE_PLACES_API_KEY` in your environment.
-- For Google sign-in, set these environment variables:
-	- `EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID`
-	- `EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID`
-	- `EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID`
-	- For EAS builds: set them in the EAS dashboard (recommended) or in `eas.json` under the build profile `env`, then rebuild the binary.
 - By default in dev (including Expo Go), the app auto-logs in with a dev token. To test the real login flow in Expo Go, set `EXPO_PUBLIC_DISABLE_DEV_AUTOLOGIN=1`.
 
 Notes
@@ -198,46 +193,6 @@ eas build -p ios --profile internal
 Notes:
 - The app reads the API host from `EXPO_PUBLIC_API_BASE_URL` (see `eas.json`).
 - For web builds, if `EXPO_PUBLIC_API_BASE_URL` is not set, the app falls back to the current browser origin (so accessing the site via an IP/alternate hostname still works when `/api/*` is reverse-proxied).
-
-Crash reporting (Sentry) for internal builds
--------------------------------------------
-For near-real-time debugging while testing internal iOS builds, the app supports Sentry crash/error reporting.
-
-How it works:
-- If `EXPO_PUBLIC_SENTRY_DSN` is set at build time, the app initializes Sentry and attaches an Event ID to captured errors.
-- If the DSN is not set, Sentry is a no-op (safe for dev/local).
-
-Setup (recommended: use EAS secrets)
-
-1) Create a Sentry project (React Native).
-2) Set the DSN as an EAS secret:
-
-```sh
-eas secret:create --name EXPO_PUBLIC_SENTRY_DSN --value "https://...@o0.ingest.sentry.io/123" --type string
-```
-
-Optional (helps separate environments in Sentry):
-
-```sh
-eas secret:create --name EXPO_PUBLIC_SENTRY_ENVIRONMENT --value "internal" --type string
-```
-
-3) Rebuild your internal iOS binary:
-
-```sh
-eas build -p ios --profile internal
-```
-
-What to send when something breaks
-
-Ask testers to send:
-- The Sentry Event ID (or the Sentry issue link)
-- Approx timestamp
-- Exact steps to reproduce (screen name + taps)
-
-Where it’s wired:
-- Sentry init: `src/sentry.js`
-- App wrapper: `App.js`
 
 Production HTTPS (recommended)
 ------------------------------

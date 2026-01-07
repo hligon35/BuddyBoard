@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect } from 'react';
 import { View, Text, Image, StyleSheet, ScrollView, TouchableOpacity, Linking, Modal, TouchableWithoutFeedback, Alert, Platform, Switch } from 'react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -98,110 +98,8 @@ export default function MyChildScreen() {
     Linking.openURL(`mailto:${email}`).catch(() => {});
   };
 
-  const dailySessions = useMemo(() => {
-    const baseDrop = child?.dropoffTimeISO ? new Date(child.dropoffTimeISO) : null;
-    const basePick = child?.pickupTimeISO ? new Date(child.pickupTimeISO) : null;
-
-    const days = [];
-    for (let i = 0; i < 7; i += 1) {
-      const d = new Date();
-      d.setHours(0, 0, 0, 0);
-      d.setDate(d.getDate() + i);
-      days.push(d);
-    }
-
-    function timeOnDay(day, base) {
-      if (!base || Number.isNaN(base.getTime())) return null;
-      const dt = new Date(day);
-      dt.setHours(base.getHours(), base.getMinutes(), 0, 0);
-      return dt;
-    }
-
-    function formatDayLabel(day) {
-      try {
-        return day.toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
-      } catch (e) {
-        return String(day);
-      }
-    }
-
-    function formatTime(t) {
-      if (!t || Number.isNaN(t.getTime())) return '—';
-      try {
-        return t.toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
-      } catch (e) {
-        return t.toLocaleString();
-      }
-    }
-
-    return days.map((day, idx) => {
-      const drop = timeOnDay(day, baseDrop);
-      const pick = timeOnDay(day, basePick);
-      const therapist = (child?.session === 'AM')
-        ? child?.amTherapist
-        : (child?.session === 'PM')
-          ? child?.pmTherapist
-          : (child?.amTherapist || child?.pmTherapist);
-      return {
-        id: `${child?.id || 'child'}_${idx}_${day.toISOString().slice(0, 10)}`,
-        label: formatDayLabel(day),
-        dropoff: formatTime(drop),
-        pickup: formatTime(pick),
-        session: child?.session || 'Session',
-        room: child?.room || '',
-        therapistName: therapist?.name || '',
-      };
-    });
-  }, [child]);
-
-  const programDocs = useMemo(() => {
-    const docsRaw = child?.programDocs;
-    if (!docsRaw) return [];
-    if (Array.isArray(docsRaw)) {
-      return docsRaw
-        .map((d) => {
-          if (!d) return null;
-          if (typeof d === 'string') return { title: 'Program document', url: d };
-          const title = d.title || d.name || 'Program document';
-          const url = d.url || d.href || '';
-          if (!url) return null;
-          return { title: String(title), url: String(url) };
-        })
-        .filter(Boolean);
-    }
-    if (typeof docsRaw === 'string') return [{ title: 'Program document', url: docsRaw }];
-    return [];
-  }, [child]);
-
-  const openDoc = async (url) => {
-    const u = String(url || '').trim();
-    if (!u) return;
-    try {
-      await Linking.openURL(u);
-    } catch (e) {
-      Alert.alert('Could not open document', 'Please try again later.');
-    }
-  };
-
-  const printDoc = (url) => {
-    const u = String(url || '').trim();
-    if (!u) return;
-    if (Platform.OS !== 'web') {
-      // On iOS/Android, opening the document lets users use the OS print/share flows.
-      openDoc(u);
-      return;
-    }
-    try {
-      // Best-effort: open in a new tab/window; users can print from the browser.
-      // Some browsers block programmatic print for cross-origin documents.
-      window.open(u, '_blank', 'noopener,noreferrer');
-    } catch (e) {
-      // ignore
-    }
-  };
-
   return (
-    <ScreenWrapper bannerShowBack={false} style={{ flex: 1 }}>
+    <ScreenWrapper bannerShowBack={false} style={{ flex: 1, backgroundColor: '#f3f4f6' }}>
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 12 }}>
       {/* Child selector - only show if user has multiple children */}
       {childList.length > 1 ? (
@@ -298,27 +196,6 @@ export default function MyChildScreen() {
 
       <View style={styles.scheduleWrap}>
         <Text style={styles.scheduleGroupTitle}>Schedule</Text>
-
-        <View style={[styles.section, { marginTop: 8 }]}>
-          <Text style={styles.sectionTitle}>Daily Sessions</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingVertical: 6 }}>
-            {(dailySessions || []).map((s) => (
-              <View key={s.id} style={styles.sessionCard}>
-                <Text style={styles.sessionDay}>{s.label}</Text>
-                <Text style={styles.sessionMeta}>{s.session}{s.room ? ` • ${s.room}` : ''}</Text>
-                <View style={{ height: 8 }} />
-                <Text style={styles.sessionTimeLabel}>Drop-off</Text>
-                <Text style={styles.sessionTime}>{s.dropoff}</Text>
-                <View style={{ height: 6 }} />
-                <Text style={styles.sessionTimeLabel}>Pick-up</Text>
-                <Text style={styles.sessionTime}>{s.pickup}</Text>
-                {s.therapistName ? (
-                  <Text style={styles.sessionTherapist} numberOfLines={1}>Therapist: {s.therapistName}</Text>
-                ) : null}
-              </View>
-            ))}
-          </ScrollView>
-        </View>
 
         <View style={[styles.section, { marginTop: 8 }]}>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
@@ -424,36 +301,6 @@ export default function MyChildScreen() {
             ))
           ) : (
             <Text style={styles.sectionText}>No meeting scheduled yet.</Text>
-          )}
-        </View>
-
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Program</Text>
-          <Text style={styles.sectionText}>
-            {child?.curriculum || child?.programCurriculum || child?.carePlan || 'No curriculum details available yet.'}
-          </Text>
-
-          <View style={{ height: 10 }} />
-          <Text style={[styles.sectionTitle, { marginBottom: 6 }]}>Curriculum Documents</Text>
-          {(programDocs || []).length ? (
-            (programDocs || []).map((d) => (
-              <View key={d.url} style={styles.docRow}>
-                <View style={{ flex: 1 }}>
-                  <Text style={{ fontWeight: '700' }} numberOfLines={1}>{d.title}</Text>
-                  <Text style={{ color: '#6b7280', fontSize: 12 }} numberOfLines={1}>{d.url}</Text>
-                </View>
-                <TouchableOpacity onPress={() => openDoc(d.url)} style={styles.docBtn} accessibilityLabel={`Download ${d.title}`}>
-                  <MaterialIcons name="file-download" size={18} color="#2563eb" />
-                  <Text style={styles.docBtnText}>Download</Text>
-                </TouchableOpacity>
-                <TouchableOpacity onPress={() => printDoc(d.url)} style={styles.docBtn} accessibilityLabel={`Print ${d.title}`}>
-                  <MaterialIcons name="print" size={18} color="#2563eb" />
-                  <Text style={styles.docBtnText}>Print</Text>
-                </TouchableOpacity>
-              </View>
-            ))
-          ) : (
-            <Text style={styles.sectionText}>No program documents available.</Text>
           )}
         </View>
       </View>
@@ -590,15 +437,6 @@ const styles = StyleSheet.create({
   section: { marginTop: 12, backgroundColor: '#fff', padding: 12, borderRadius: 8 },
   sectionTitle: { fontWeight: '700', marginBottom: 6 },
   sectionText: { color: '#374151' },
-  sessionCard: { width: 180, marginRight: 10, borderWidth: 1, borderColor: '#e5e7eb', backgroundColor: '#fff', borderRadius: 12, padding: 12 },
-  sessionDay: { fontWeight: '800', color: '#111827' },
-  sessionMeta: { color: '#6b7280', marginTop: 4, fontSize: 12 },
-  sessionTimeLabel: { color: '#6b7280', fontSize: 12, fontWeight: '700' },
-  sessionTime: { color: '#111827', fontWeight: '700' },
-  sessionTherapist: { marginTop: 8, color: '#374151', fontSize: 12 },
-  docRow: { flexDirection: 'row', alignItems: 'center', paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#f3f4f6' },
-  docBtn: { flexDirection: 'row', alignItems: 'center', paddingVertical: 6, paddingHorizontal: 10, borderRadius: 10, borderWidth: 1, borderColor: '#e5e7eb', backgroundColor: '#fff', marginLeft: 8 },
-  docBtnText: { marginLeft: 6, color: '#2563eb', fontWeight: '700' },
   scheduleTile: { flex: 1, backgroundColor: '#fff', padding: 12, marginHorizontal: 6, borderRadius: 8, borderWidth: 1, borderColor: '#e5e7eb', alignItems: 'center', justifyContent: 'center', position: 'relative' },
   scheduleLabel: { fontWeight: '700', marginBottom: 6 },
   scheduleDivider: { height: 1, width: '60%', backgroundColor: '#e6e7ea', marginVertical: 6 },
