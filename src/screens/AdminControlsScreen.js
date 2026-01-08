@@ -599,6 +599,8 @@ export default function AdminControlsScreen() {
         </Pressable>
       </Modal>
 
+      <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
+
             <View style={styles.dirGridRow}>
               <TouchableOpacity
                 style={[styles.dirTile, showStudentsPreview ? styles.dirTileActive : null]}
@@ -811,7 +813,6 @@ export default function AdminControlsScreen() {
 
         <View style={{ height: 32 }} />
       </ScrollView>
-      </KeyboardAvoidingView>
     </ScreenWrapper>
   );
 }
