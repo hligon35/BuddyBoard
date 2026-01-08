@@ -63,6 +63,32 @@ export default function AdminControlsScreen() {
   const openFacultyDirectory = () => navigation.navigate('FacultyDirectory');
   const openParentDirectory = () => navigation.navigate('ParentDirectory');
 
+  function HeaderAlertButton() {
+    return (
+      <TouchableOpacity onPress={openAlerts} style={styles.headerIconBtn} accessibilityLabel="Open Alerts">
+        <MaterialIcons name="report" size={22} color="#111827" />
+        {pendingAlertCount > 0 ? (
+          <View style={styles.headerBadge}>
+            <Text style={styles.headerBadgeText}>{pendingAlertCount}</Text>
+          </View>
+        ) : null}
+      </TouchableOpacity>
+    );
+  }
+
+  function HeaderRightButtons() {
+    return (
+      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+        <TouchableOpacity onPress={openImport} style={[styles.headerIconBtn, { marginRight: 10 }]} accessibilityLabel="Import Data">
+          <MaterialIcons name="file-upload" size={22} color="#111827" />
+        </TouchableOpacity>
+        <TouchableOpacity onPress={() => setExportModalVisible(true)} style={styles.headerIconBtn} accessibilityLabel="Export Data">
+          <MaterialIcons name="file-download" size={22} color="#111827" />
+        </TouchableOpacity>
+      </View>
+    );
+  }
+
   function toCSV(rows) {
     if (!rows || !rows.length) return '';
     const keys = Object.keys(rows[0]);
@@ -535,7 +561,12 @@ export default function AdminControlsScreen() {
   }
 
   return (
-    <ScreenWrapper bannerShowBack={false} style={styles.container}>
+    <ScreenWrapper
+      bannerShowBack={false}
+      bannerLeft={<HeaderAlertButton />}
+      bannerRight={<HeaderRightButtons />}
+      style={styles.container}
+    >
       <Modal
         visible={exportModalVisible}
         transparent
@@ -568,157 +599,109 @@ export default function AdminControlsScreen() {
         </Pressable>
       </Modal>
 
-      <Modal
-        visible={importModalVisible}
-        transparent
-        animationType="fade"
-        onRequestClose={() => setImportModalVisible(false)}
-      >
-        <Pressable style={styles.overlayBackdrop} onPress={() => setImportModalVisible(false)}>
-          <Pressable style={styles.overlayCard} onPress={() => {}}>
-            <Text style={styles.overlayTitle}>Import</Text>
-            <Text style={styles.overlaySub}>Select a file to import.</Text>
+            <View style={styles.dirGridRow}>
+              <TouchableOpacity
+                style={[styles.dirTile, showStudentsPreview ? styles.dirTileActive : null]}
+                onPress={() => setShowStudentsPreview((s) => !s)}
+                accessibilityLabel="Toggle Students preview"
+              >
+                <View style={styles.dirTileTop}>
+                  <MaterialIcons name="groups" size={18} color="#111827" />
+                  <View style={styles.dirTileCount}><Text style={styles.dirTileCountText}>{(children || []).length}</Text></View>
+                </View>
+                <Text style={styles.dirTileLabel}>Students</Text>
+                <TouchableOpacity onPress={openStudentDirectory} style={styles.dirTileOpen} accessibilityLabel="Open Students list">
+                  <MaterialIcons name="open-in-new" size={18} color="#2563eb" />
+                </TouchableOpacity>
+              </TouchableOpacity>
 
-            <TouchableOpacity style={styles.overlayOption} onPress={pickImportFile} accessibilityLabel="Select import file">
-              <MaterialIcons name="upload-file" size={18} color="#374151" />
-              <Text style={styles.overlayOptionText}>Choose file</Text>
-            </TouchableOpacity>
+              <TouchableOpacity
+                style={[styles.dirTile, showFacultyPreview ? styles.dirTileActive : null]}
+                onPress={() => setShowFacultyPreview((s) => !s)}
+                accessibilityLabel="Toggle Faculty preview"
+              >
+                <View style={styles.dirTileTop}>
+                  <MaterialIcons name="school" size={18} color="#111827" />
+                  <View style={styles.dirTileCount}><Text style={styles.dirTileCountText}>{facultyCount}</Text></View>
+                </View>
+                <Text style={styles.dirTileLabel}>Faculty</Text>
+                <TouchableOpacity onPress={openFacultyDirectory} style={styles.dirTileOpen} accessibilityLabel="Open Faculty list">
+                  <MaterialIcons name="open-in-new" size={18} color="#2563eb" />
+                </TouchableOpacity>
+              </TouchableOpacity>
 
-            {!!importPickedFile && (
-              <View style={{ marginTop: 10 }}>
-                <Text style={{ color: '#374151' }} numberOfLines={2}>Selected: {importPickedFile.name}</Text>
-              </View>
-            )}
-
-            <View style={styles.overlayActions}>
-              <TouchableOpacity style={styles.overlayCancel} onPress={() => setImportModalVisible(false)}>
-                <Text style={styles.overlayCancelText}>Close</Text>
+              <TouchableOpacity
+                style={[styles.dirTile, { marginRight: 0 }, showParentsPreview ? styles.dirTileActive : null]}
+                onPress={() => setShowParentsPreview((s) => !s)}
+                accessibilityLabel="Toggle Parents preview"
+              >
+                <View style={styles.dirTileTop}>
+                  <MaterialIcons name="person" size={18} color="#111827" />
+                  <View style={styles.dirTileCount}><Text style={styles.dirTileCountText}>{(parents || []).length}</Text></View>
+                </View>
+                <Text style={styles.dirTileLabel}>Parents</Text>
+                <TouchableOpacity onPress={openParentDirectory} style={styles.dirTileOpen} accessibilityLabel="Open Parents list">
+                  <MaterialIcons name="open-in-new" size={18} color="#2563eb" />
+                </TouchableOpacity>
               </TouchableOpacity>
             </View>
-          </Pressable>
-        </Pressable>
-      </Modal>
 
-      <KeyboardAvoidingView
-        style={{ flex: 1 }}
-        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
-        // ScreenWrapper renders a 56px header on mobile; add a bit extra for safe areas.
-        keyboardVerticalOffset={Platform.OS === 'ios' ? 88 : 0}
-      >
-      <ScrollView
-        contentContainerStyle={[styles.content, { paddingBottom: keyboardBottomPad }]}
-        keyboardShouldPersistTaps="handled"
-        keyboardDismissMode={Platform.OS === 'ios' ? 'interactive' : 'on-drag'}
-        automaticallyAdjustKeyboardInsets
-        contentInsetAdjustmentBehavior="automatic"
-      >
-        
-
-        {/* Communications section removed (Alerts retained below Directory) */}
-
-        {/* Quick Actions (Export + Alerts) */}
-        <View style={{ flexDirection: 'row', justifyContent: 'flex-end', marginTop: 12 }}>
-          <TouchableOpacity onPress={() => setExportModalVisible(true)} style={{ marginRight: 12, alignItems: 'center' }} accessibilityLabel="Export Data">
-            <View style={[styles.iconTileBtn, { width: 44, height: 44, borderRadius: 10 }]}>
-              <MaterialIcons name="file-download" size={20} color="#fff" />
-            </View>
-            <Text style={{ fontSize: 12, marginTop: 6 }}>Export</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity onPress={openImport} style={{ marginRight: 12, alignItems: 'center' }} accessibilityLabel="Import Data">
-            <View style={[styles.iconTileBtn, { width: 44, height: 44, borderRadius: 10 }]}>
-              <MaterialIcons name="file-upload" size={20} color="#fff" />
-            </View>
-            <Text style={{ fontSize: 12, marginTop: 6 }}>Import</Text>
-          </TouchableOpacity>
-
-          <TouchableOpacity onPress={openAlerts} style={{ alignItems: 'center' }} accessibilityLabel="Open Alerts">
-            <View style={[styles.iconTileBtn, { width: 44, height: 44, borderRadius: 10 }]}>
-              <MaterialIcons name="report" size={20} color="#fff" />
-              {pendingAlertCount > 0 ? (
-                <View style={[styles.countBadge, { width: 18, height: 18, borderRadius: 9, top: -6, right: -6 }]}><Text style={{ color: '#fff', fontWeight: '700', fontSize: 10 }}>{pendingAlertCount}</Text></View>
-              ) : null}
-            </View>
-            <Text style={{ fontSize: 12, marginTop: 6 }}>Alerts</Text>
-          </TouchableOpacity>
-        </View>
-
-        {/* Directory Section */}
-        <Text style={{ marginTop: 18, fontWeight: '700' }}>Directory</Text>
-
-        <DirectoryBanner
-          label="Students"
-          count={(children || []).length}
-          onOpen={openStudentDirectory}
-          onToggle={() => setShowStudentsPreview((s) => !s)}
-          open={showStudentsPreview}
-          childrenPreview={(
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingBottom: 8 }}>
-                {(children || []).slice(0, 8).map((c) => (
-                <TouchableOpacity key={c.id} style={styles.previewCard} onPress={() => navigation.navigate('ChildDetail', { childId: c.id })}>
-                  <Image source={{ uri: (c?.avatar && !String(c.avatar).includes('pravatar.cc')) ? c.avatar : pravatarUriFor(c, 64) }} style={styles.previewAvatar} />
-                  <Text numberOfLines={1} style={styles.previewName}>{c.name}</Text>
-                  <Text numberOfLines={1} style={styles.previewMeta}>{c.age}</Text>
-                </TouchableOpacity>
-              ))}
-              {!(children || []).length ? (
-                <View style={[styles.previewCard, { alignItems: 'center', justifyContent: 'center' }]}>
-                  <Text style={{ color: '#6b7280', fontSize: 12, textAlign: 'center' }}>No students enrolled yet.</Text>
-                </View>
-              ) : null}
-            </ScrollView>
-          )}
-        />
-
-        <DirectoryBanner
-          label="Faculty"
-          count={facultyCount}
-          onOpen={openFacultyDirectory}
-          onToggle={() => setShowFacultyPreview((s) => !s)}
-          open={showFacultyPreview}
-          childrenPreview={(
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingBottom: 8 }}>
-              {(therapists || []).slice(0, 12).map((f) => (
-                <TouchableOpacity key={f.id} style={styles.previewCard} onPress={() => navigation.navigate('FacultyDetail', { facultyId: f.id })}>
-                  <Image source={{ uri: (f?.avatar && !String(f.avatar).includes('pravatar.cc')) ? f.avatar : pravatarUriFor(f, 64) }} style={styles.previewAvatar} />
-                  <Text numberOfLines={1} style={styles.previewName}>{f.name || (f.firstName ? `${f.firstName} ${f.lastName}` : (f.role || 'Staff'))}</Text>
-                  <View style={styles.previewIconRow}>
-                    <TouchableOpacity activeOpacity={0.85} onPress={() => { if (f.phone) { try { Linking.openURL(`tel:${f.phone}`); } catch (e) {} } else { Alert.alert('No phone', 'No phone number available for this staff member.'); } }} style={styles.previewIconTouch} accessibilityLabel={`Call ${f.name}`}>
-                      <MaterialIcons name="call" size={16} color={f.phone ? '#2563eb' : '#9ca3af'} />
+            {showStudentsPreview ? (
+              <View style={{ marginTop: 10 }}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingBottom: 8 }}>
+                  {(children || []).slice(0, 8).map((c) => (
+                    <TouchableOpacity key={c.id} style={styles.previewCard} onPress={() => navigation.navigate('ChildDetail', { childId: c.id })}>
+                      <Image source={{ uri: (c?.avatar && !String(c.avatar).includes('pravatar.cc')) ? c.avatar : pravatarUriFor(c, 64) }} style={styles.previewAvatar} />
+                      <Text numberOfLines={1} style={styles.previewName}>{c.name}</Text>
+                      <Text numberOfLines={1} style={styles.previewMeta}>{c.age}</Text>
                     </TouchableOpacity>
-                    <TouchableOpacity activeOpacity={0.85} onPress={() => { if (f.email) { try { Linking.openURL(`mailto:${f.email}`); } catch (e) {} } else { Alert.alert('No email', 'No email address available for this staff member.'); } }} style={styles.previewIconTouch} accessibilityLabel={`Email ${f.name}`}>
-                      <MaterialIcons name="email" size={16} color={f.email ? '#2563eb' : '#9ca3af'} />
+                  ))}
+                  {!(children || []).length ? (
+                    <View style={[styles.previewCard, { alignItems: 'center', justifyContent: 'center' }]}>
+                      <Text style={{ color: '#6b7280', fontSize: 12, textAlign: 'center' }}>No students enrolled yet.</Text>
+                    </View>
+                  ) : null}
+                </ScrollView>
+              </View>
+            ) : null}
+
+            {showFacultyPreview ? (
+              <View style={{ marginTop: 10 }}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingBottom: 8 }}>
+                  {(therapists || []).slice(0, 12).map((f) => (
+                    <TouchableOpacity key={f.id} style={styles.previewCard} onPress={() => navigation.navigate('FacultyDetail', { facultyId: f.id })}>
+                      <Image source={{ uri: (f?.avatar && !String(f.avatar).includes('pravatar.cc')) ? f.avatar : pravatarUriFor(f, 64) }} style={styles.previewAvatar} />
+                      <Text numberOfLines={1} style={styles.previewName}>{f.name || (f.firstName ? `${f.firstName} ${f.lastName}` : (f.role || 'Staff'))}</Text>
+                      <View style={styles.previewIconRow}>
+                        <TouchableOpacity activeOpacity={0.85} onPress={() => { if (f.phone) { try { Linking.openURL(`tel:${f.phone}`); } catch (e) {} } else { Alert.alert('No phone', 'No phone number available for this staff member.'); } }} style={styles.previewIconTouch} accessibilityLabel={`Call ${f.name}`}>
+                          <MaterialIcons name="call" size={16} color={f.phone ? '#2563eb' : '#9ca3af'} />
+                        </TouchableOpacity>
+                        <TouchableOpacity activeOpacity={0.85} onPress={() => { if (f.email) { try { Linking.openURL(`mailto:${f.email}`); } catch (e) {} } else { Alert.alert('No email', 'No email address available for this staff member.'); } }} style={styles.previewIconTouch} accessibilityLabel={`Email ${f.name}`}>
+                          <MaterialIcons name="email" size={16} color={f.email ? '#2563eb' : '#9ca3af'} />
+                        </TouchableOpacity>
+                      </View>
                     </TouchableOpacity>
-                  </View>
-                </TouchableOpacity>
-              ))}
-            </ScrollView>
-          )}
-        />
+                  ))}
+                </ScrollView>
+              </View>
+            ) : null}
 
-        
-
-        <DirectoryBanner
-          label="Parents"
-          count={(parents || []).length}
-          onOpen={openParentDirectory}
-          onToggle={() => setShowParentsPreview((s) => !s)}
-          open={showParentsPreview}
-          childrenPreview={(
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingBottom: 8 }}>
-              {(parents || []).slice(0, 12).map((p) => (
-                <TouchableOpacity
-                  key={p.id}
-                  style={styles.previewCard}
-                  onPress={() => {
-                    try {
-                      if (navigation && navigation.push) navigation.push('ParentDetail', { parentId: p.id });
-                      else navigation.navigate('ParentDetail', { parentId: p.id });
-                    } catch (e) {
-                      try { navigation.navigate('ParentDetail', { parentId: p.id }); } catch (e2) { console.warn(e2); }
-                    }
-                  }}
-                >
+            {showParentsPreview ? (
+              <View style={{ marginTop: 10 }}>
+                <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ paddingBottom: 8 }}>
+                  {(parents || []).slice(0, 12).map((p) => (
+                    <TouchableOpacity
+                      key={p.id}
+                      style={styles.previewCard}
+                      onPress={() => {
+                        try {
+                          if (navigation && navigation.push) navigation.push('ParentDetail', { parentId: p.id });
+                          else navigation.navigate('ParentDetail', { parentId: p.id });
+                        } catch (e) {
+                          try { navigation.navigate('ParentDetail', { parentId: p.id }); } catch (e2) { console.warn(e2); }
+                        }
+                      }}
+                    >
                   <Image source={{ uri: (p?.avatar && !String(p.avatar).includes('pravatar.cc')) ? p.avatar : pravatarUriFor(p, 64) }} style={styles.previewAvatar} />
                   <Text numberOfLines={1} style={styles.previewName}>{p.firstName ? `${p.firstName} ${p.lastName}` : p.name}</Text>
                   <View style={styles.previewIconRow}>
@@ -731,10 +714,14 @@ export default function AdminControlsScreen() {
                   </View>
                 </TouchableOpacity>
               ))}
-            </ScrollView>
-          )}
-        />
-
+                  {!(parents || []).length ? (
+                    <View style={[styles.previewCard, { alignItems: 'center', justifyContent: 'center' }]}>
+                      <Text style={{ color: '#6b7280', fontSize: 12, textAlign: 'center' }}>No parents on file yet.</Text>
+                    </View>
+                  ) : null}
+                </ScrollView>
+              </View>
+            ) : null}
         {/* IDs (admin) - moved below Directory */}
         <View style={{ marginTop: 12, borderTopWidth: 1, borderTopColor: '#eef2f7', paddingTop: 12 }}>
           <Text style={{ fontSize: 16, fontWeight: '700', marginBottom: 8 }}>Account IDs</Text>
@@ -831,6 +818,18 @@ export default function AdminControlsScreen() {
 
 const styles = StyleSheet.create({
   container: { flex: 1, backgroundColor: '#fff' },
+  headerIconBtn: { width: 40, height: 40, borderRadius: 10, borderWidth: 1, borderColor: '#e5e7eb', backgroundColor: '#fff', alignItems: 'center', justifyContent: 'center' },
+  headerBadge: { position: 'absolute', top: -6, right: -6, minWidth: 18, height: 18, borderRadius: 9, backgroundColor: '#ef4444', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 4 },
+  headerBadgeText: { color: '#fff', fontWeight: '800', fontSize: 10 },
+
+  dirGridRow: { flexDirection: 'row', justifyContent: 'space-between', marginTop: 12 },
+  dirTile: { flex: 1, borderWidth: 1, borderColor: '#e5e7eb', backgroundColor: '#fff', borderRadius: 12, padding: 12, marginRight: 10 },
+  dirTileActive: { borderColor: '#2563eb' },
+  dirTileTop: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  dirTileCount: { minWidth: 22, height: 22, borderRadius: 11, backgroundColor: '#f3f4f6', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 6 },
+  dirTileCountText: { color: '#111827', fontWeight: '800', fontSize: 12 },
+  dirTileLabel: { marginTop: 8, fontWeight: '800', color: '#111827' },
+  dirTileOpen: { position: 'absolute', right: 10, bottom: 10, width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
   content: { padding: 16 },
   title: { fontSize: 20, fontWeight: '700' },
   paragraph: { marginTop: 8, color: '#374151' },

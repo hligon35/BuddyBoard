@@ -33,7 +33,7 @@ const styles = StyleSheet.create({
   actionText: { color: '#374151', marginLeft: 4 },
   inputTile: { flexDirection: 'row', padding: 10, backgroundColor: '#fff', margin: 12, borderRadius: 10, alignItems: 'flex-start' },
   inputAvatar: { width: 50, height: 50, borderRadius: 25, marginRight: 12 },
-  inputTileCompact: { flexDirection: 'row', padding: 8, backgroundColor: '#fff', marginHorizontal: 0, marginTop: 6, marginBottom: 12, borderRadius: 8, alignItems: 'center', justifyContent: 'space-between' },
+  inputTileCompact: { flexDirection: 'row', padding: 8, backgroundColor: '#fff', marginHorizontal: 0, marginTop: -9, marginBottom: 12, borderRadius: 8, alignItems: 'center', justifyContent: 'space-between' },
   inputAvatarCompact: { width: 50, height: 50, borderRadius: 25 },
   inputFieldsCompact: { flex: 1 },
   inputTextCompact: { borderWidth: 1, borderColor: '#e6e7ea', borderRadius: 8, padding: 6, backgroundColor: '#fff', color: '#111', minHeight: 44 },

@@ -58,6 +58,9 @@ const ALLOW_SIGNUP = envFlag(process.env.BB_ALLOW_SIGNUP, true);
 // isn't configured (e.g. missing BB_SMTP_URL/BB_EMAIL_FROM). Default to OFF unless explicitly enabled.
 const REQUIRE_2FA_ON_SIGNUP = envFlag(process.env.BB_REQUIRE_2FA_ON_SIGNUP, false);
 const DEBUG_2FA_RETURN_CODE = envFlag(process.env.BB_DEBUG_2FA_RETURN_CODE, false);
+// When enabled, include the underlying delivery failure message in API responses.
+// Keep disabled in production by default to avoid leaking implementation details.
+const DEBUG_2FA_DELIVERY_ERRORS = envFlag(process.env.BB_DEBUG_2FA_DELIVERY_ERRORS, false);
 const LOG_REQUESTS = envFlag(process.env.BB_DEBUG_REQUESTS, true);
 
 // 2FA delivery toggles
@@ -964,7 +967,9 @@ app.post('/api/auth/signup', async (req, res) => {
         try { db.prepare('DELETE FROM users WHERE id = ?').run(id); } catch (_) {}
         try { twoFaChallenges.delete(ch.challengeId); } catch (_) {}
         slog.error('auth', '2FA delivery failed', { method, to: maskDest(method, destination), message: e?.message || String(e) });
-        return res.status(500).json({ ok: false, error: '2FA delivery failed; contact support' });
+        const payload = { ok: false, error: '2FA delivery failed; contact support' };
+        if (DEBUG_2FA_DELIVERY_ERRORS) payload.debug = (e?.message || String(e));
+        return res.status(500).json(payload);
       }
     }
 
@@ -1027,7 +1032,9 @@ app.post('/api/auth/2fa/resend', async (req, res) => {
     return res.json({ ok: true, method: updated.method, to: maskDest(updated.method, updated.destination), challengeId });
   } catch (e) {
     slog.error('auth', '2FA resend failed', { method: updated.method, to: maskDest(updated.method, updated.destination), message: e?.message || String(e) });
-    return res.status(500).json({ ok: false, error: '2FA delivery failed; contact support' });
+    const payload = { ok: false, error: '2FA delivery failed; contact support' };
+    if (DEBUG_2FA_DELIVERY_ERRORS) payload.debug = (e?.message || String(e));
+    return res.status(500).json(payload);
   }
 });
 
