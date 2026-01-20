@@ -1,108 +1,17 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, Alert, ActivityIndicator, TouchableOpacity, Modal, Platform } from 'react-native';
+import { View, Text, TextInput, Button, StyleSheet, Alert, ActivityIndicator, TouchableOpacity, Modal, Platform, ImageBackground } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
-import * as AuthSession from 'expo-auth-session';
-import * as Google from 'expo-auth-session/providers/google';
 import SignUpScreen from './SignUpScreen';
 import { useAuth } from '../src/AuthContext';
 import LogoTitle from '../src/components/LogoTitle';
 import { logger } from '../src/utils/logger';
 import { API_BASE_URL } from '../src/Api';
-import * as Api from '../src/Api';
 import { Sentry } from '../src/sentry';
 
 WebBrowser.maybeCompleteAuthSession();
-
-function GoogleSignInController({
-  googleIds,
-  busy,
-  setBusy,
-  auth,
-  navigation,
-}) {
-  const appEnv = String(process.env.EXPO_PUBLIC_SENTRY_ENVIRONMENT || '').toLowerCase();
-  // Internal/dev builds: prefer Expo proxy (simpler + avoids deep-link config issues).
-  let useProxy = appEnv === 'internal' || appEnv === 'development';
-  let redirectUri;
-  try {
-    redirectUri = AuthSession.makeRedirectUri({
-      useProxy,
-      scheme: 'buddyboard',
-    });
-  } catch (e) {
-    // If the app doesn't have a custom scheme configured, fall back to proxy.
-    useProxy = true;
-    redirectUri = AuthSession.makeRedirectUri({ useProxy });
-  }
-
-  const [googleRequest, googleResponse, googlePromptAsync] = Google.useAuthRequest({
-    iosClientId: googleIds.iosClientId,
-    androidClientId: googleIds.androidClientId,
-    webClientId: googleIds.webClientId,
-    scopes: ['profile', 'email'],
-    redirectUri,
-  });
-
-  async function doGoogleLogin() {
-    if (busy) return;
-    try {
-      await googlePromptAsync({ useProxy, showInRecents: true });
-    } catch (e) {
-      const msg = e?.message || 'Could not start Google sign-in.';
-      Alert.alert(
-        'Google sign-in failed',
-        `${msg}\n\nRedirect URI: ${redirectUri}\nProxy: ${useProxy ? 'on' : 'off'}`
-      );
-    }
-  }
-
-  useEffect(() => {
-    let cancelled = false;
-    (async () => {
-      if (!googleResponse) return;
-      if (googleResponse.type !== 'success') return;
-      if (busy) return;
-
-      try {
-        setBusy(true);
-        const idToken = googleResponse?.params?.id_token || googleResponse?.authentication?.idToken;
-        if (!idToken) throw new Error('Google did not return an id_token');
-
-        const res = await Api.loginWithGoogle(idToken);
-        if (!res?.token) throw new Error(res?.error || 'Invalid Google login response');
-
-        await auth.setAuth({ token: res.token, user: res.user });
-        try {
-          await SecureStore.setItemAsync('bb_bio_token', String(res.token));
-          await SecureStore.setItemAsync('bb_bio_user', JSON.stringify(res.user || {}));
-        } catch (e) {}
-
-        navigation.replace('Main');
-      } catch (e) {
-        const msg = e?.response?.data?.error || e?.message || 'Google sign-in failed.';
-        Alert.alert('Google sign-in failed', msg);
-      } finally {
-        if (!cancelled) setBusy(false);
-      }
-    })();
-    return () => {
-      cancelled = true;
-    };
-  }, [googleResponse, busy, setBusy, auth, navigation]);
-
-  return (
-    <View style={{ width: '100%', maxWidth: 360, marginTop: 10 }}>
-      <Button
-        title="Continue with Google"
-        onPress={doGoogleLogin}
-        disabled={!googleRequest || busy}
-      />
-    </View>
-  );
-}
 
 export default function LoginScreen({ navigation, suppressAutoRedirect = false }) {
   const [email, setEmail] = useState('');
@@ -116,19 +25,8 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
   const [showSignUp, setShowSignUp] = useState(false);
   const auth = useAuth();
 
-  const googleIds = {
-    iosClientId: process.env.EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID,
-    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-  };
-
-  const googleRequiredClientId = Platform.OS === 'ios'
-    ? googleIds.iosClientId
-    : Platform.OS === 'android'
-      ? googleIds.androidClientId
-      : googleIds.webClientId;
-
-  const googleEnabled = !!googleRequiredClientId;
+  // Google sign-in is currently disabled per product decision.
+  const googleEnabled = false;
 
   const SENTRY_OTLP_URL = 'https://o4510654674632704.ingest.us.sentry.io/api/4510654676533248/integration/otlp';
   const sentryEnv = String(process.env.EXPO_PUBLIC_SENTRY_ENVIRONMENT || '').toLowerCase();
@@ -138,10 +36,21 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
   const fieldWidthStyle = useMemo(() => ({ width: '100%', maxWidth: 360 }), []);
 
   async function doLogin(){
+    const cleanedEmail = String(email || '').trim();
+    const cleanedPassword = String(password || '');
+    if (!cleanedEmail) {
+      Alert.alert('Missing email', 'Please enter your email.');
+      return;
+    }
+    if (!cleanedPassword) {
+      Alert.alert('Missing password', 'Please enter your password.');
+      return;
+    }
+
     setBusy(true);
     try{
-      logger.debug('auth', 'Login submit', { hasEmail: !!email });
-      const res = await auth.login(email, password);
+      logger.debug('auth', 'Login submit', { hasEmail: !!cleanedEmail });
+      const res = await auth.login(cleanedEmail, cleanedPassword);
       try {
         await SecureStore.setItemAsync('bb_bio_token', String(res?.token || auth?.token || ''));
         await SecureStore.setItemAsync('bb_bio_user', JSON.stringify(res?.user || auth?.user || {}));
@@ -182,6 +91,30 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
       'Google sign-in not configured',
       'Missing the Google Client ID for this platform.\n\nFor EAS builds, add these to your build profile env (or EAS project env vars):\n- EXPO_PUBLIC_GOOGLE_IOS_CLIENT_ID\n- EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID\n- EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID\n\nThen rebuild the app binary.'
     );
+  }
+
+  async function sendInternalSentryTestError() {
+    try {
+      if (!sentryDsn) {
+        Alert.alert(
+          'Sentry not configured',
+          'EXPO_PUBLIC_SENTRY_DSN is empty in this build. Add it to the EAS internal environment and rebuild.'
+        );
+        return;
+      }
+
+      Sentry.withScope((scope) => {
+        scope.setTag('bb_sentry_test', '1');
+        scope.setTag('bb_env', sentryEnv || 'unknown');
+        scope.setExtra('apiBaseUrl', API_BASE_URL || '');
+        scope.setExtra('time', new Date().toISOString());
+        Sentry.captureException(new Error('BuddyBoard Sentry test error (internal build)'));
+      });
+
+      Alert.alert('Sent', 'Sent a test error to Sentry. Check Sentry → Issues (environment: internal).');
+    } catch (e) {
+      Alert.alert('Failed', e?.message || 'Could not send test error.');
+    }
   }
 
   async function doBiometricUnlock() {
@@ -275,141 +208,169 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
   }, [auth.loading, showSignUp]);
 
   if (auth.loading) return (
-    <View style={styles.container}><ActivityIndicator size="large" /></View>
+    <ImageBackground
+      source={require('../assets/bbbg.png')}
+      resizeMode="cover"
+      style={{ flex: 1, backgroundColor: '#fff' }}
+      imageStyle={{ transform: [{ scale: 0.92 }] }}
+    >
+      <View style={styles.container}><ActivityIndicator size="large" /></View>
+    </ImageBackground>
   );
 
   return (
-    <View style={styles.container}>
-      <View style={styles.logoWrap}>
-        <LogoTitle width={360} height={108} />
-      </View>
-      <View style={fieldWidthStyle}>
-        <TextInput
-          value={email}
-          onChangeText={setEmail}
-          style={styles.input}
-          placeholder="Email"
-          keyboardType="email-address"
-          autoCapitalize="none"
-        />
-      </View>
-
-      <View style={[fieldWidthStyle, styles.passwordFieldWrap]}>
-        <TextInput
-          value={password}
-          onChangeText={setPassword}
-          style={[styles.input, styles.passwordInput]}
-          placeholder="Password"
-          secureTextEntry={!showPassword}
-          autoCapitalize="none"
-          autoCorrect={false}
-          textContentType="password"
-        />
-        <TouchableOpacity
-          style={styles.peekIconBtn}
-          onPress={() => setShowPassword((v) => !v)}
-          accessibilityRole="button"
-          accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
-        >
-          <MaterialIcons name={showPassword ? 'visibility-off' : 'visibility'} size={20} color="#2563eb" />
-        </TouchableOpacity>
-      </View>
-
-      <View style={styles.actionsRow}>
-        <View style={{ flex: 0 }}>
-          <Button title={busy ? 'Signing in...' : 'Sign in'} onPress={doLogin} disabled={busy} />
+    <ImageBackground
+      source={require('../assets/bbbg.png')}
+      resizeMode="cover"
+      style={{ flex: 1, backgroundColor: '#fff' }}
+      imageStyle={{ transform: [{ scale: 0.92 }] }}
+    >
+      <View style={styles.container}>
+        <View style={styles.logoWrap}>
+          <LogoTitle width={450} height={135} />
         </View>
-        <View style={{ width: 12 }} />
-        <Button title="Sign up" onPress={() => setShowSignUp(true)} disabled={busy} />
-      </View>
-
-      <Modal visible={showSignUp} animationType="slide" onRequestClose={() => setShowSignUp(false)}>
-        <SignUpScreen
-          onDone={(result) => {
-            setShowSignUp(false);
-            if (result && result.authed) navigation.replace('Main');
-          }}
-          onCancel={() => setShowSignUp(false)}
-        />
-      </Modal>
-
-      {biometricAvailable && hasBiometricAuthStored && (
-        <View style={styles.biometricWrap}>
-          <Button
-            title={biometricBusy ? 'Checking…' : biometricLabel}
-            onPress={doBiometricUnlock}
-            disabled={biometricBusy || busy}
-          />
-        </View>
-      )}
-
-      {/* Google sign-in at the bottom of the form */}
-      <View style={styles.secondaryActions}>
-        {googleEnabled ? (
-          <GoogleSignInController
-            googleIds={googleIds}
-            busy={busy}
-            setBusy={setBusy}
-            auth={auth}
-            navigation={navigation}
-          />
-        ) : (
-          <View style={{ width: '100%', maxWidth: 360, marginTop: 10 }}>
-            <Button title="Continue with Google" onPress={showGoogleConfigHelp} />
-          </View>
-        )}
-
-        <View style={{ width: '100%', maxWidth: 360, marginTop: 10 }}>
-          <Button
-            title="Open Sentry OTLP URL"
-            onPress={() => {
-              try {
-                WebBrowser.openBrowserAsync(SENTRY_OTLP_URL);
-              } catch (e) {
-                Alert.alert('Could not open link', SENTRY_OTLP_URL);
-              }
-            }}
-          />
-        </View>
-
-        {showSentryTestButton ? (
-          <View style={{ width: '100%', maxWidth: 360, marginTop: 10 }}>
-            <Button
-              title="Internal: Send Sentry test error"
-              onPress={() => {
-                try {
-                  if (!sentryDsn) {
-                    Alert.alert(
-                      'Sentry not configured',
-                      'EXPO_PUBLIC_SENTRY_DSN is empty in this build. Add it to the EAS internal environment and rebuild.'
-                    );
-                    return;
-                  }
-
-                  Sentry.withScope((scope) => {
-                    scope.setTag('bb_sentry_test', '1');
-                    scope.setTag('bb_env', sentryEnv || 'unknown');
-                    scope.setExtra('apiBaseUrl', API_BASE_URL || '');
-                    scope.setExtra('time', new Date().toISOString());
-                    Sentry.captureException(new Error('BuddyBoard Sentry test error (internal build)'));
-                  });
-
-                  Alert.alert('Sent', 'Sent a test error to Sentry. Check Sentry → Issues (environment: internal).');
-                } catch (e) {
-                  Alert.alert('Failed', e?.message || 'Could not send test error.');
-                }
-              }}
+        <View style={styles.formCard}>
+          <View style={fieldWidthStyle}>
+            <TextInput
+              value={email}
+              onChangeText={setEmail}
+              style={styles.input}
+              placeholder="Email"
+              keyboardType="email-address"
+              autoCapitalize="none"
             />
           </View>
-        ) : null}
-      </View>
+
+          <View style={[fieldWidthStyle, styles.passwordFieldWrap]}>
+            <TextInput
+              value={password}
+              onChangeText={setPassword}
+              style={[styles.input, styles.passwordInput]}
+              placeholder="Password"
+              secureTextEntry={!showPassword}
+              autoCapitalize="none"
+              autoCorrect={false}
+              textContentType="password"
+            />
+            <TouchableOpacity
+              style={styles.peekIconBtn}
+              onPress={() => setShowPassword((v) => !v)}
+              accessibilityRole="button"
+              accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+            >
+              <MaterialIcons name={showPassword ? 'visibility-off' : 'visibility'} size={20} color="#2563eb" />
+            </TouchableOpacity>
+          </View>
+
+          <View style={styles.actionsRow}>
+            {showSentryTestButton ? (
+              <TouchableOpacity
+                onPress={sendInternalSentryTestError}
+                accessibilityRole="button"
+                accessibilityLabel="Internal: send Sentry test error"
+                style={[styles.iconPushBtn, { marginRight: 10 }]}
+                disabled={busy}
+              >
+                <MaterialIcons name="bug-report" size={20} color="#2563eb" />
+              </TouchableOpacity>
+            ) : null}
+
+            <TouchableOpacity
+              onPress={doLogin}
+              accessibilityRole="button"
+              accessibilityLabel="Sign in"
+              style={[styles.primaryPushBtn, busy ? { opacity: 0.7 } : null]}
+              disabled={busy}
+              activeOpacity={0.9}
+            >
+              <Text style={styles.primaryPushBtnText}>{busy ? 'Signing in…' : 'Sign in'}</Text>
+            </TouchableOpacity>
+
+            {biometricAvailable && hasBiometricAuthStored ? (
+              <TouchableOpacity
+                onPress={doBiometricUnlock}
+                accessibilityRole="button"
+                accessibilityLabel={biometricLabel}
+                style={[styles.iconPushBtn, { marginLeft: 10 }, (biometricBusy || busy) ? { opacity: 0.7 } : null]}
+                disabled={biometricBusy || busy}
+              >
+                <MaterialIcons
+                  name={String(biometricLabel).toLowerCase().includes('face') ? 'face' : 'fingerprint'}
+                  size={22}
+                  color="#2563eb"
+                />
+              </TouchableOpacity>
+            ) : null}
+          </View>
+
+          <View style={styles.linksRow}>
+            <TouchableOpacity
+              onPress={() => {
+                try {
+                  WebBrowser.openBrowserAsync('mailto:support@example.com?subject=BuddyBoard%20Password%20Reset');
+                } catch (e) {
+                  Alert.alert('Password reset', 'Please email support@example.com for help resetting your password.');
+                }
+              }}
+              accessibilityRole="button"
+              disabled={busy}
+            >
+              <Text style={styles.linkText}>Forgot password?</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              onPress={() => setShowSignUp(true)}
+              accessibilityRole="button"
+              disabled={busy}
+            >
+              <Text style={styles.linkText}>Register</Text>
+            </TouchableOpacity>
+          </View>
+
+          <Modal visible={showSignUp} animationType="slide" onRequestClose={() => setShowSignUp(false)}>
+            <SignUpScreen
+              onDone={(result) => {
+                setShowSignUp(false);
+                if (result && result.authed) navigation.replace('Main');
+              }}
+              onCancel={() => setShowSignUp(false)}
+            />
+          </Modal>
+
+          {/* Google sign-in at the bottom of the form */}
+          <View style={styles.secondaryActions}>
+            {/* Google sign-in disabled */}
+            {googleEnabled ? null : null}
+
+            <View style={{ width: '100%', maxWidth: 360, marginTop: 10 }}>
+              <TouchableOpacity
+                onPress={() => {
+                  try {
+                    WebBrowser.openBrowserAsync(SENTRY_OTLP_URL);
+                  } catch (e) {
+                    Alert.alert('Could not open link', SENTRY_OTLP_URL);
+                  }
+                }}
+                accessibilityRole="button"
+                style={styles.secondaryBtn}
+              >
+                <MaterialIcons name="open-in-new" size={18} color="#2563eb" />
+                <Text style={styles.secondaryBtnText}>Open Sentry OTLP URL</Text>
+              </TouchableOpacity>
+            </View>
+
+            {/* Internal Sentry test moved to icon button near Sign In */}
+          </View>
+        </View>
     </View>
+    </ImageBackground>
   );
 }
 
 const styles = StyleSheet.create({
   container: { flex: 1, padding: 20, justifyContent: 'center' },
   logoWrap: { alignItems: 'center', marginBottom: 18 },
+  formCard: { width: '100%', maxWidth: 420, alignSelf: 'center', backgroundColor: '#fff', borderRadius: 16, padding: 16, borderWidth: 1, borderColor: '#e5e7eb' },
   title: { fontSize: 28, fontWeight: '700', marginBottom: 20 },
   input: { borderWidth: 1, borderColor: '#ccc', paddingVertical: 10, paddingHorizontal: 12, marginBottom: 12, borderRadius: 10, backgroundColor: '#fff' },
   registerWrap: { marginTop: 12, alignItems: 'center' },
@@ -418,7 +379,11 @@ const styles = StyleSheet.create({
   passwordInput: { paddingRight: 42 },
   peekIconBtn: { position: 'absolute', right: 10, top: 10, width: 28, height: 28, alignItems: 'center', justifyContent: 'center' },
   actionsRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
-  biometricWrap: { marginTop: 12 },
+  primaryPushBtn: { backgroundColor: '#2563eb', paddingVertical: 12, paddingHorizontal: 18, borderRadius: 10, minWidth: 140, alignItems: 'center' },
+  primaryPushBtnText: { color: '#fff', fontWeight: '800' },
+  iconPushBtn: { width: 44, height: 44, borderRadius: 10, borderWidth: 1, borderColor: '#e5e7eb', backgroundColor: '#f8fafc', alignItems: 'center', justifyContent: 'center' },
+  linksRow: { marginTop: 12, width: '100%', maxWidth: 360, flexDirection: 'row', justifyContent: 'space-between', alignSelf: 'center' },
+  linkText: { color: '#2563eb', fontWeight: '700' },
   secondaryActions: { marginTop: 10, alignItems: 'center' },
   secondaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, borderColor: '#e5e7eb', backgroundColor: '#f8fafc', width: '100%', maxWidth: 360 },
   secondaryBtnText: { marginLeft: 8, color: '#111827', fontWeight: '700' },

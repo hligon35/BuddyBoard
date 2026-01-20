@@ -1,15 +1,15 @@
 {
+  "cli": {
+    "appVersionSource": "local"
+  },
   "expo": {
     "name": "BuddyBoard",
     "slug": "buddyboard-mobile",
     "version": "1.0.1",
     "sdkVersion": "54.0.0",
-    "cli": {
-      "appVersionSource": "local"
-    },
     "ios": {
       "bundleIdentifier": "com.azlabs.buddyboard",
-      "buildNumber": "1.0.10",
+      "buildNumber": "1.0.11",
       "infoPlist": {
         "ITSAppUsesNonExemptEncryption": false,
         "NSFaceIDUsageDescription": "BuddyBoard uses Face ID / Touch ID to help you securely sign in on this device.",
@@ -35,7 +35,6 @@
       ],
       "@react-native-community/datetimepicker",
       "expo-web-browser",
-      "@sentry/react-native",
       [
         "@sentry/react-native/expo",
         {
@@ -53,7 +52,7 @@
     },
     "android": {
       "package": "com.azlabs.buddyboard",
-      "versionCode": 10,
+      "versionCode": 11,
       "softwareKeyboardLayoutMode": "resize",
       "adaptiveIcon": {
         "foregroundImage": "./assets/adaptive-icon.png",
@@ -68,6 +67,6 @@
         "projectId": "38ed77a1-3892-42c8-b7cf-9cebe6d98545"
       }
     },
-    "owner": "azlab-corp"
+    "owner": "ownerligon"
   }
 }

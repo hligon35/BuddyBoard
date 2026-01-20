@@ -3,7 +3,6 @@ import { View, Text, TouchableOpacity, Image, Alert, Switch, ScrollView, Platfor
 import { useAuth } from '../AuthContext';
 import { BASE_URL } from '../config';
 import { MaterialIcons } from '@expo/vector-icons';
-import { useNavigation } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import devToolsFlag from '../utils/devToolsFlag';
 import { ScreenWrapper } from '../components/ScreenWrapper';
@@ -26,10 +25,8 @@ const SHOW_PHONE_KEY = 'settings_show_phone_v1';
 const SHOW_IDS_KEY = 'settings_show_ids_v1';
 const BUSINESS_ADDR_KEY = 'business_address_v1';
 
-export default function SettingsScreen() {
-  const { user, logout } = useAuth();
-  const { setRole } = useAuth();
-  const navigation = useNavigation();
+export default function SettingsScreen({ navigation }) {
+  const { user, logout, setRole } = useAuth();
   const [arrivalEnabled, setArrivalEnabled] = useState(false);
   const [pushEnabled, setPushEnabled] = useState(false);
   const [pushChats, setPushChats] = useState(true);
