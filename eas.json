@@ -5,7 +5,9 @@
   "build": {
     "internal": {
       "distribution": "internal",
-      "android": { "buildType": "apk" },
+      "android": {
+        "buildType": "apk"
+      },
       "ios": {
         "simulator": false
       },
@@ -15,12 +17,15 @@
         "SENTRY_PROJECT": "sparqplug",
         "SENTRY_ALLOW_FAILURE": "true",
         "EXPO_PUBLIC_API_BASE_URL": "https://buddyboard.getsparqd.com"
-      }
+      },
+      "channel": "internal"
     },
     "development": {
       "developmentClient": true,
       "distribution": "internal",
-      "android": { "buildType": "apk" },
+      "android": {
+        "buildType": "apk"
+      },
       "ios": {
         "simulator": false
       },
@@ -30,11 +35,14 @@
         "SENTRY_PROJECT": "sparqplug",
         "SENTRY_ALLOW_FAILURE": "true",
         "EXPO_PUBLIC_API_BASE_URL": "https://buddyboard.getsparqd.com"
-      }
+      },
+      "channel": "development"
     },
     "preview": {
       "distribution": "store",
-      "android": { "buildType": "app-bundle" },
+      "android": {
+        "buildType": "app-bundle"
+      },
       "ios": {
         "simulator": false
       },
@@ -44,11 +52,14 @@
         "SENTRY_PROJECT": "sparqplug",
         "SENTRY_ALLOW_FAILURE": "true",
         "EXPO_PUBLIC_API_BASE_URL": "https://buddyboard.getsparqd.com"
-      }
+      },
+      "channel": "preview"
     },
     "production": {
       "distribution": "store",
-      "android": { "buildType": "app-bundle" },
+      "android": {
+        "buildType": "app-bundle"
+      },
       "ios": {
         "simulator": false
       },
@@ -58,7 +69,8 @@
         "SENTRY_PROJECT": "sparqplug",
         "SENTRY_ALLOW_FAILURE": "true",
         "EXPO_PUBLIC_API_BASE_URL": "https://buddyboard.getsparqd.com"
-      }
+      },
+      "channel": "production"
     }
   },
   "submit": {
@@ -76,4 +88,3 @@
     }
   }
 }
-

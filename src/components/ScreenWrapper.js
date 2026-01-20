@@ -36,10 +36,9 @@ export function ScreenWrapper({ children, style, hideBanner = false, bannerShowB
     <ImageBackground
       source={require('../../assets/bbbg.png')}
       resizeMode="cover"
-      style={{ flex: 1, backgroundColor: '#fff' }}
-      imageStyle={{ transform: [{ scale: 0.92 }] }}
+      style={{ flex: 1, width: '100%', backgroundColor: '#fff' }}
     >
-      <View style={[{ flex: 1, backgroundColor: 'transparent' }, style]}>
+      <View style={[{ flex: 1, width: '100%', backgroundColor: '#fff' }, style]}>
         {/* web: show top WebNav; mobile: show ScreenHeader */}
         {Platform.OS === 'web'
           ? <WebNav />

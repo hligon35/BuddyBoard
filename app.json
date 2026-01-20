@@ -1,8 +1,8 @@
 {
-  "cli": {
-    "appVersionSource": "local"
-  },
   "expo": {
+    "cli": {
+      "appVersionSource": "local"
+    },
     "name": "BuddyBoard",
     "slug": "buddyboard-mobile",
     "version": "1.0.1",
@@ -34,7 +34,7 @@
         }
       ],
       "@react-native-community/datetimepicker",
-      "@sentry/react-native",
+      "expo-web-browser",
       [
         "@sentry/react-native/expo",
         {
@@ -67,6 +67,12 @@
         "projectId": "38ed77a1-3892-42c8-b7cf-9cebe6d98545"
       }
     },
-    "owner": "ownerligon"
+    "owner": "azlab-corp",
+    "runtimeVersion": {
+      "policy": "appVersion"
+    },
+    "updates": {
+      "url": "https://u.expo.dev/38ed77a1-3892-42c8-b7cf-9cebe6d98545"
+    }
   }
 }
