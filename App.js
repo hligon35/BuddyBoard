@@ -55,13 +55,18 @@ SplashScreen.preventAutoHideAsync().catch(() => {
 const RootStack = createNativeStackNavigator();
 const AppStack = createNativeStackNavigator();
 
+const HEADER_LOGO_WIDTH = 240;
+const HEADER_LOGO_HEIGHT = 72;
+const HEADER_HEIGHT = 96;
+
 const MyClassStackNav = createNativeStackNavigator();
 function MyClassStack() {
   return (
     <MyClassStackNav.Navigator
       screenOptions={({ navigation, route, back }) => ({
         headerTitleAlign: 'center',
-        headerTitle: () => <LogoTitle />,
+        headerTitle: () => <LogoTitle width={HEADER_LOGO_WIDTH} height={HEADER_LOGO_HEIGHT} />,
+        headerStyle: { height: HEADER_HEIGHT },
         headerLeft: () => (back ? <BackButton onPress={() => navigation.goBack()} /> : <HelpButton />),
         headerRight: () => <LogoutButton />,
       })}
@@ -77,7 +82,8 @@ function ControlsStack() {
     <ControlsStackNav.Navigator
       screenOptions={({ navigation, route, back }) => ({
         headerTitleAlign: 'center',
-        headerTitle: () => <LogoTitle />,
+        headerTitle: () => <LogoTitle width={HEADER_LOGO_WIDTH} height={HEADER_LOGO_HEIGHT} />,
+        headerStyle: { height: HEADER_HEIGHT },
         headerLeft: () => (back ? <BackButton onPress={() => navigation.goBack()} /> : <HelpButton />),
         headerRight: () => <LogoutButton />,
       })}
@@ -110,7 +116,8 @@ function CommunityStack() {
       screenOptions={({ navigation, route, back }) => ({
         headerShown: true,
         headerTitleAlign: 'center',
-        headerTitle: () => <LogoTitle />,
+        headerTitle: () => <LogoTitle width={HEADER_LOGO_WIDTH} height={HEADER_LOGO_HEIGHT} />,
+        headerStyle: { height: HEADER_HEIGHT },
         headerLeft: () => (back ? <BackButton onPress={() => navigation.goBack()} /> : <HelpButton />),
         headerRight: () => <LogoutButton />,
       })}
@@ -127,7 +134,8 @@ function MyChildStack() {
     <MyChildStackNav.Navigator
       screenOptions={({ navigation, route, back }) => ({
         headerTitleAlign: 'center',
-        headerTitle: () => <LogoTitle />,
+        headerTitle: () => <LogoTitle width={HEADER_LOGO_WIDTH} height={HEADER_LOGO_HEIGHT} />,
+        headerStyle: { height: HEADER_HEIGHT },
         headerLeft: () => (back ? <BackButton onPress={() => navigation.goBack()} /> : <HelpButton />),
         headerRight: () => <LogoutButton />,
       })}
@@ -143,7 +151,8 @@ function ChatsStack() {
     <ChatsStackNav.Navigator
       screenOptions={({ navigation, route, back }) => ({
         headerTitleAlign: 'center',
-        headerTitle: () => <LogoTitle />,
+        headerTitle: () => <LogoTitle width={HEADER_LOGO_WIDTH} height={HEADER_LOGO_HEIGHT} />,
+        headerStyle: { height: HEADER_HEIGHT },
         headerLeft: () => (back ? <BackButton onPress={() => navigation.goBack()} /> : <HelpButton />),
         headerRight: () => <LogoutButton />,
       })}
@@ -161,7 +170,8 @@ function SettingsStack() {
     <SettingsStackNav.Navigator
       screenOptions={({ navigation, route, back }) => ({
         headerTitleAlign: 'center',
-        headerTitle: () => <LogoTitle />,
+        headerTitle: () => <LogoTitle width={HEADER_LOGO_WIDTH} height={HEADER_LOGO_HEIGHT} />,
+        headerStyle: { height: HEADER_HEIGHT },
         headerLeft: () => (back ? <BackButton onPress={() => navigation.goBack()} /> : <HelpButton />),
         headerRight: () => <LogoutButton />,
       })}

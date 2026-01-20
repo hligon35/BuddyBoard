@@ -1,10 +1,20 @@
 import React, { useMemo, useState } from 'react';
 import { Alert, KeyboardAvoidingView, Platform, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, Image, ActivityIndicator } from 'react-native';
+import { MaterialIcons } from '@expo/vector-icons';
 import { ScreenWrapper } from '../components/ScreenWrapper';
 import { useAuth } from '../AuthContext';
 import * as Api from '../Api';
 import * as ImagePicker from 'expo-image-picker';
 import { pravatarUriFor } from '../utils/idVisibility';
+
+function passwordPolicy(pw) {
+  const v = String(pw || '');
+  const hasMinLen = v.length >= 8;
+  const hasUpper = /[A-Z]/.test(v);
+  const hasSpecial = /[^A-Za-z0-9]/.test(v);
+  const score = [hasMinLen, hasUpper, hasSpecial].filter(Boolean).length;
+  return { hasMinLen, hasUpper, hasSpecial, score };
+}
 
 function formatPhoneInput(input) {
   const raw = String(input || '');
@@ -112,7 +122,10 @@ export default function EditProfileScreen({ navigation }) {
 
     const wantsPasswordChange = String(password || '').length > 0 || String(passwordConfirm || '').length > 0;
     if (wantsPasswordChange) {
-      if (!password || password.length < 6) return Alert.alert('Password', 'Password must be at least 6 characters.');
+      const pol = passwordPolicy(password);
+      if (!pol.hasMinLen) return Alert.alert('Password', 'Password must be at least 8 characters.');
+      if (!pol.hasUpper) return Alert.alert('Password', 'Password must include at least 1 capital letter.');
+      if (!pol.hasSpecial) return Alert.alert('Password', 'Password must include at least 1 special character.');
       if (password !== passwordConfirm) return Alert.alert('Password', 'Passwords do not match.');
     }
 
@@ -206,6 +219,34 @@ export default function EditProfileScreen({ navigation }) {
           <Text style={styles.label}>New password</Text>
           <TextInput value={password} onChangeText={setPassword} style={styles.input} secureTextEntry placeholder="••••••" />
 
+          {String(password || '').length > 0 ? (() => {
+            const pol = passwordPolicy(password);
+            const barColor = pol.score <= 1 ? '#ef4444' : pol.score === 2 ? '#F59E0B' : '#10B981';
+            const barWidth = pol.score === 0 ? '10%' : pol.score === 1 ? '35%' : pol.score === 2 ? '70%' : '100%';
+            return (
+              <View style={{ marginTop: 8 }}>
+                <View style={styles.pwBarTrack}>
+                  <View style={[styles.pwBarFill, { width: barWidth, backgroundColor: barColor }]} />
+                </View>
+
+                <View style={{ marginTop: 10 }}>
+                  <View style={styles.pwRuleRow}>
+                    <MaterialIcons name={pol.hasMinLen ? 'check-circle' : 'cancel'} size={18} color={pol.hasMinLen ? '#10B981' : '#ef4444'} />
+                    <Text style={styles.pwRuleText}>8+ characters</Text>
+                  </View>
+                  <View style={styles.pwRuleRow}>
+                    <MaterialIcons name={pol.hasUpper ? 'check-circle' : 'cancel'} size={18} color={pol.hasUpper ? '#10B981' : '#ef4444'} />
+                    <Text style={styles.pwRuleText}>1 capital letter</Text>
+                  </View>
+                  <View style={styles.pwRuleRow}>
+                    <MaterialIcons name={pol.hasSpecial ? 'check-circle' : 'cancel'} size={18} color={pol.hasSpecial ? '#10B981' : '#ef4444'} />
+                    <Text style={styles.pwRuleText}>1 special character</Text>
+                  </View>
+                </View>
+              </View>
+            );
+          })() : null}
+
           <Text style={styles.label}>Confirm new password</Text>
           <TextInput value={passwordConfirm} onChangeText={setPasswordConfirm} style={styles.input} secureTextEntry placeholder="••••••" />
 
@@ -240,4 +281,8 @@ const styles = StyleSheet.create({
   cancelText: { color: '#2563eb', fontWeight: '800' },
   saveBtn: { backgroundColor: '#2563eb', borderRadius: 10, paddingVertical: 10, paddingHorizontal: 14 },
   saveText: { color: '#fff', fontWeight: '800' },
+  pwBarTrack: { width: '100%', height: 8, borderRadius: 4, backgroundColor: '#e5e7eb', overflow: 'hidden' },
+  pwBarFill: { height: 8, borderRadius: 4 },
+  pwRuleRow: { flexDirection: 'row', alignItems: 'center', marginTop: 6 },
+  pwRuleText: { marginLeft: 8, color: '#374151', fontWeight: '700' },
 });

@@ -6,7 +6,7 @@ import { MaterialIcons } from '@expo/vector-icons';
 
 export default function HelpScreen() {
   return (
-    <ScreenWrapper style={styles.container}>
+    <ScreenWrapper hideBanner style={styles.container}>
       <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
 
         <Text style={styles.sectionTitle}>Arrival Detection</Text>
