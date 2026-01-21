@@ -214,10 +214,10 @@ This repo includes an ARM64-friendly helper that exports iOS bundles with `--no-
 
 ```sh
 # Publish an iOS OTA update to the preview channel (ARM64-safe)
-npm run update:ios:preview:arm -- --message "Testing ready"
+npm run update:ios:preview:arm -- -m "Testing ready"
 
 # Or publish to production
-npm run update:ios:production:arm -- --message "Hotfix"
+npm run update:ios:production:arm -- -m "Hotfix"
 ```
 
 Under the hood this runs `npx expo export --no-bytecode` and then `eas update --skip-bundler --input-dir dist`.

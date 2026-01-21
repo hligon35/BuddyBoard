@@ -31,8 +31,18 @@ while [[ $# -gt 0 ]]; do
       shift 2
       ;;
     --message|-m)
-      message="$2"
-      shift 2
+      shift
+      if [[ $# -lt 1 ]]; then
+        echo "--message requires a value" >&2
+        exit 2
+      fi
+      message="$1"
+      shift
+      # Allow multi-word messages even if the caller didn't quote them.
+      while [[ $# -gt 0 && "$1" != --* && "$1" != -* ]]; do
+        message+=" $1"
+        shift
+      done
       ;;
     --input-dir)
       input_dir="$2"

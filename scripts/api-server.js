@@ -1591,8 +1591,40 @@ app.post('/api/auth/2fa/resend', async (req, res) => {
 // Board / Posts
 app.get('/api/board', authMiddleware, (req, res) => {
   const rows = db.prepare('SELECT * FROM posts ORDER BY datetime(created_at) DESC').all();
+
+  // Attach the latest avatar URL from the users table (author_json may be a snapshot).
+  let avatarByUserId = {};
+  try {
+    const authorIds = Array.from(
+      new Set(
+        rows
+          .map((r) => {
+            const a = safeJsonParse(r.author_json, null);
+            return a && a.id ? String(a.id) : '';
+          })
+          .filter(Boolean)
+      )
+    );
+
+    if (authorIds.length) {
+      const placeholders = authorIds.map(() => '?').join(',');
+      const urows = db.prepare(`SELECT id, avatar FROM users WHERE id IN (${placeholders})`).all(...authorIds);
+      avatarByUserId = (urows || []).reduce((acc, u) => {
+        const id = u && u.id ? String(u.id) : '';
+        if (id) acc[id] = u && u.avatar ? String(u.avatar) : '';
+        return acc;
+      }, {});
+    }
+  } catch (e) {
+    // ignore; fallback to pravatar client-side
+  }
+
   const out = rows.map((r) => {
-    const author = safeJsonParse(r.author_json, null);
+    let author = safeJsonParse(r.author_json, null);
+    if (author && author.id) {
+      const a = avatarByUserId[String(author.id)] || '';
+      if (a) author = { ...author, avatar: a };
+    }
     const comments = safeJsonParse(r.comments_json, []);
     return {
       id: r.id,
@@ -1617,7 +1649,7 @@ app.post('/api/board', authMiddleware, (req, res) => {
 
   const id = nanoId();
   const t = nowISO();
-  const author = req.user ? { id: req.user.id, name: req.user.name } : null;
+  const author = req.user ? { id: req.user.id, name: req.user.name, avatar: req.user.avatar || '' } : null;
   db.prepare('INSERT INTO posts (id, author_json, title, body, image, likes, shares, comments_json, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)')
     .run(id, JSON.stringify(author), title, body, image, 0, 0, JSON.stringify([]), t, t);
 
@@ -1661,7 +1693,7 @@ app.post('/api/board/comments', authMiddleware, (req, res) => {
 
   const comments = safeJsonParse(row.comments_json, []);
 
-  const author = { id: req.user.id, name: req.user.name };
+  const author = { id: req.user.id, name: req.user.name, avatar: req.user.avatar || '' };
   const createdAt = nowISO();
 
   let body = '';
@@ -1754,15 +1786,54 @@ app.post('/api/board/comments/react', authMiddleware, (req, res) => {
 // Messages / Chats
 app.get('/api/messages', authMiddleware, (req, res) => {
   const rows = db.prepare('SELECT * FROM messages ORDER BY datetime(created_at) ASC').all();
-  const out = rows.map((r) => ({
-    id: r.id,
-    threadId: r.thread_id || undefined,
-    body: r.body,
-    sender: safeJsonParse(r.sender_json, null),
-    to: safeJsonParse(r.to_json, []),
-    createdAt: r.created_at,
-  }));
-  res.json(out);
+  const parsed = rows.map((r) => {
+    const sender = safeJsonParse(r.sender_json, null);
+    const to = safeJsonParse(r.to_json, []);
+    return {
+      id: r.id,
+      threadId: r.thread_id || undefined,
+      body: r.body,
+      sender,
+      to,
+      createdAt: r.created_at,
+    };
+  });
+
+  // Overlay latest avatars so identity stays correct even if profile avatars change.
+  try {
+    const ids = new Set();
+    for (const m of parsed) {
+      if (m?.sender?.id) ids.add(String(m.sender.id));
+      if (Array.isArray(m?.to)) {
+        for (const t of m.to) {
+          if (t?.id) ids.add(String(t.id));
+        }
+      }
+    }
+    const idList = Array.from(ids);
+    if (idList.length) {
+      const placeholders = idList.map(() => '?').join(',');
+      const urows = db.prepare(`SELECT id, avatar FROM users WHERE id IN (${placeholders})`).all(...idList);
+      const avatarById = new Map(urows.map((u) => [String(u.id), u.avatar]));
+      for (const m of parsed) {
+        if (m?.sender?.id) {
+          const a = avatarById.get(String(m.sender.id));
+          if (a) m.sender = { ...m.sender, avatar: a };
+        }
+        if (Array.isArray(m?.to)) {
+          m.to = m.to.map((t) => {
+            if (!t?.id) return t;
+            const a = avatarById.get(String(t.id));
+            return a ? { ...t, avatar: a } : t;
+          });
+        }
+      }
+    }
+  } catch (e) {
+    // Non-fatal: messages still return without avatar overlay.
+  }
+
+  res.json(parsed);
 });
 
 app.post('/api/messages', authMiddleware, (req, res) => {
@@ -1773,7 +1844,7 @@ app.post('/api/messages', authMiddleware, (req, res) => {
 
   const id = nanoId();
   const t = nowISO();
-  const sender = req.user ? { id: req.user.id, name: req.user.name } : null;
+  const sender = req.user ? { id: req.user.id, name: req.user.name, avatar: req.user.avatar } : null;
 
   db.prepare('INSERT INTO messages (id, thread_id, body, sender_json, to_json, created_at) VALUES (?,?,?,?,?,?)')
     .run(id, threadId, body, JSON.stringify(sender), JSON.stringify(to), t);

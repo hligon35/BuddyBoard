@@ -244,7 +244,6 @@ export default function HomeScreen() {
         data={feedItems}
         onTouchStart={() => Keyboard.dismiss()}
         keyExtractor={(i) => (i && i.id ? String(i.id) : String(i?.__type || Math.random()))}
-        stickyHeaderIndices={[1]}
         keyboardShouldPersistTaps="handled"
         keyboardDismissMode="on-drag"
         refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} />}

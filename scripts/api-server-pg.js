@@ -1520,8 +1520,36 @@ app.post('/api/auth/2fa/resend', async (req, res) => {
 // Board / Posts
 app.get('/api/board', authMiddleware, async (req, res) => {
   const rows = await pgQueryAll('SELECT * FROM posts ORDER BY created_at DESC', []);
+
+  // Attach the latest avatar URL from the users table (author_json stores only a snapshot).
+  const authorIds = Array.from(
+    new Set(
+      rows
+        .map((r) => (r && r.author_json && typeof r.author_json === 'object' ? safeString(r.author_json.id) : ''))
+        .filter(Boolean)
+    )
+  );
+
+  const avatarByUserId = {};
+  if (authorIds.length) {
+    try {
+      const urows = await pgQueryAll('SELECT id, avatar FROM users WHERE id = ANY($1::text[])', [authorIds]);
+      for (const u of (urows || [])) {
+        const id = safeString(u && u.id);
+        if (!id) continue;
+        avatarByUserId[id] = safeString(u && u.avatar) || '';
+      }
+    } catch (e) {
+      // ignore; fallback to pravatar client-side
+    }
+  }
+
   const out = rows.map((r) => {
-    const author = r.author_json && typeof r.author_json === 'object' ? r.author_json : null;
+    let author = r.author_json && typeof r.author_json === 'object' ? r.author_json : null;
+    if (author && author.id) {
+      const a = avatarByUserId[String(author.id)] || '';
+      if (a) author = { ...author, avatar: a };
+    }
     const comments = Array.isArray(r.comments_json) ? r.comments_json : (r.comments_json && typeof r.comments_json === 'object' ? r.comments_json : []);
     return {
       id: r.id,
@@ -1546,7 +1574,7 @@ app.post('/api/board', authMiddleware, async (req, res) => {
 
   const id = nanoId();
   const t = new Date();
-  const author = req.user ? { id: req.user.id, name: req.user.name } : null;
+  const author = req.user ? { id: req.user.id, name: req.user.name, avatar: req.user.avatar || '' } : null;
 
   await pool.query(
     'INSERT INTO posts (id, author_json, title, body, image, likes, shares, comments_json, created_at, updated_at) VALUES ($1,$2::jsonb,$3,$4,$5,$6,$7,$8::jsonb,$9,$10)',
@@ -1593,7 +1621,7 @@ app.post('/api/board/comments', authMiddleware, async (req, res) => {
 
   const comments = Array.isArray(row.comments_json) ? row.comments_json : [];
 
-  const author = { id: req.user.id, name: req.user.name };
+  const author = { id: req.user.id, name: req.user.name, avatar: req.user.avatar || '' };
   const createdAt = nowISO();
 
   let body = '';
@@ -1693,6 +1721,41 @@ app.get('/api/messages', authMiddleware, async (req, res) => {
     to: Array.isArray(r.to_json) ? r.to_json : [],
     createdAt: toIso(r.created_at),
   }));
+
+  // Overlay latest avatars so identity stays correct even if profile avatars change.
+  try {
+    const ids = new Set();
+    for (const m of out) {
+      if (m?.sender?.id) ids.add(String(m.sender.id));
+      if (Array.isArray(m?.to)) {
+        for (const t of m.to) {
+          if (t?.id) ids.add(String(t.id));
+        }
+      }
+    }
+
+    const idList = Array.from(ids);
+    if (idList.length) {
+      const urows = await pgQueryAll('SELECT id, avatar FROM users WHERE id = ANY($1::text[])', [idList]);
+      const avatarById = new Map(urows.map((u) => [String(u.id), u.avatar]));
+      for (const m of out) {
+        if (m?.sender?.id) {
+          const a = avatarById.get(String(m.sender.id));
+          if (a) m.sender = { ...m.sender, avatar: a };
+        }
+        if (Array.isArray(m?.to)) {
+          m.to = m.to.map((t) => {
+            if (!t?.id) return t;
+            const a = avatarById.get(String(t.id));
+            return a ? { ...t, avatar: a } : t;
+          });
+        }
+      }
+    }
+  } catch (e) {
+    // Non-fatal: messages still return without avatar overlay.
+  }
+
   res.json(out);
 });
 
@@ -1704,7 +1767,7 @@ app.post('/api/messages', authMiddleware, async (req, res) => {
 
   const id = nanoId();
   const t = new Date();
-  const sender = req.user ? { id: req.user.id, name: req.user.name } : null;
+  const sender = req.user ? { id: req.user.id, name: req.user.name, avatar: req.user.avatar } : null;
 
   await pool.query(
     'INSERT INTO messages (id, thread_id, body, sender_json, to_json, created_at) VALUES ($1,$2,$3,$4::jsonb,$5::jsonb,$6)',
