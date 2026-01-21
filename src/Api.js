@@ -268,6 +268,18 @@ export async function resend2fa(payload) {
   return res.data;
 }
 
+export async function requestPasswordReset(email) {
+  const res = await client.post('/api/auth/forgot-password', { email: normalizeEmailInput(email) });
+  return res.data;
+}
+
+export async function resetPassword(payload) {
+  const send = { ...(payload || {}) };
+  if (Object.prototype.hasOwnProperty.call(send, 'email')) send.email = normalizeEmailInput(send.email);
+  const res = await client.post('/api/auth/reset-password', send);
+  return res.data;
+}
+
 export async function me() {
   const res = await client.get('/api/auth/me');
   return res.data;

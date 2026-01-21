@@ -22,7 +22,7 @@ const DEFAULT_SERVER_URL = 'https://buddyboard.getsparqd.com';
 
 const USERS = [
   // NOTE: Fill in the passwords before running this script.
-  { name: 'Harold Ligon', email: 'hligon35@gmail.com', password: 'Parent123!', role: 'parent', twoFaMethod: 'email' },
+  { name: 'Harold Ligon', email: 'hligon35@gmail.com', password: 'Zing@r088', role: 'parent', twoFaMethod: 'email' },
 ];
 
 function postJson(fullUrl, json) {

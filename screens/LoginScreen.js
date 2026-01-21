@@ -5,6 +5,7 @@ import * as SecureStore from 'expo-secure-store';
 import { MaterialIcons } from '@expo/vector-icons';
 import * as WebBrowser from 'expo-web-browser';
 import SignUpScreen from './SignUpScreen';
+import ForgotPasswordScreen from './ForgotPasswordScreen';
 import { useAuth } from '../src/AuthContext';
 import LogoTitle from '../src/components/LogoTitle';
 import { logger } from '../src/utils/logger';
@@ -23,6 +24,7 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
   const [biometricLabel, setBiometricLabel] = useState('Use biometrics');
   const [hasBiometricAuthStored, setHasBiometricAuthStored] = useState(false);
   const [showSignUp, setShowSignUp] = useState(false);
+  const [showForgotPassword, setShowForgotPassword] = useState(false);
   const auth = useAuth();
 
   // Google sign-in is currently disabled per product decision.
@@ -316,11 +318,7 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
           <View style={styles.linksRow}>
             <TouchableOpacity
               onPress={() => {
-                try {
-                  WebBrowser.openBrowserAsync('mailto:support@example.com?subject=BuddyBoard%20Password%20Reset');
-                } catch (e) {
-                  Alert.alert('Password reset', 'Please email support@example.com for help resetting your password.');
-                }
+                setShowForgotPassword(true);
               }}
               accessibilityRole="button"
               disabled={busy}
@@ -344,6 +342,13 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
                 if (result && result.authed) navigation.replace('Main');
               }}
               onCancel={() => setShowSignUp(false)}
+            />
+          </Modal>
+
+          <Modal visible={showForgotPassword} animationType="slide" onRequestClose={() => setShowForgotPassword(false)}>
+            <ForgotPasswordScreen
+              onDone={() => setShowForgotPassword(false)}
+              onCancel={() => setShowForgotPassword(false)}
             />
           </Modal>
 

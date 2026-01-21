@@ -6,6 +6,7 @@ const express = require('express');
 const bodyParser = require('body-parser');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
+const crypto = require('crypto');
 const jwt = require('jsonwebtoken');
 const Database = require('better-sqlite3');
 const multer = require('multer');
@@ -85,6 +86,10 @@ const TWILIO_MESSAGING_SERVICE_SID = (process.env.BB_TWILIO_MESSAGING_SERVICE_SI
 const SMTP_URL = (process.env.BB_SMTP_URL || '').trim();
 const EMAIL_FROM = (process.env.BB_EMAIL_FROM || '').trim();
 const EMAIL_2FA_SUBJECT = (process.env.BB_EMAIL_2FA_SUBJECT || 'BuddyBoard verification code').trim();
+const EMAIL_PASSWORD_RESET_SUBJECT = (process.env.BB_EMAIL_PASSWORD_RESET_SUBJECT || 'BuddyBoard password reset').trim();
+
+const RETURN_PASSWORD_RESET_CODE = envFlag(process.env.BB_RETURN_PASSWORD_RESET_CODE, NODE_ENV !== 'production');
+const PASSWORD_RESET_TTL_MINUTES = Math.max(5, Number(process.env.BB_PASSWORD_RESET_TTL_MINUTES || 30));
 
 const slog = require('./logger');
 
@@ -453,13 +458,67 @@ CREATE TABLE IF NOT EXISTS arrival_pings (
   when_iso TEXT,
   created_at TEXT NOT NULL
 );
+
+CREATE TABLE IF NOT EXISTS password_resets (
+  id TEXT PRIMARY KEY,
+  user_id TEXT NOT NULL,
+  token_hash TEXT NOT NULL,
+  expires_at TEXT NOT NULL,
+  used_at TEXT,
+  created_at TEXT NOT NULL
+);
 `);
 
 try {
   db.exec('CREATE INDEX IF NOT EXISTS aba_supervision_bcba_idx ON aba_supervision (bcba_id)');
   db.exec('CREATE INDEX IF NOT EXISTS child_aba_assignments_aba_idx ON child_aba_assignments (aba_id)');
+  db.exec('CREATE INDEX IF NOT EXISTS password_resets_user_id_idx ON password_resets (user_id)');
 } catch (_) {
   // ignore
+}
+
+function passwordResetEmailConfigured() {
+  return !!(SMTP_URL && EMAIL_FROM);
+}
+
+let passwordResetTransporter = null;
+function getPasswordResetEmailTransporter() {
+  if (!passwordResetEmailConfigured()) return null;
+  if (passwordResetTransporter) return passwordResetTransporter;
+  const nodemailer = getNodemailerLib();
+  if (!nodemailer) {
+    throw new Error("Missing dependency 'nodemailer' in this server build. Rebuild your Docker image after installing dependencies (npm ci) so the nodemailer package is included.");
+  }
+  passwordResetTransporter = nodemailer.createTransport(SMTP_URL);
+  return passwordResetTransporter;
+}
+
+function hashResetCode(code) {
+  const raw = String(code || '');
+  return crypto.createHash('sha256').update(`${raw}:${JWT_SECRET}`).digest('hex');
+}
+
+function generateResetCode() {
+  // 12 hex chars (~48 bits). Short enough to type; large enough to avoid guessing.
+  return crypto.randomBytes(6).toString('hex');
+}
+
+async function sendPasswordResetEmail({ to, code }) {
+  const destination = normalizeEmail(to);
+  if (!destination) throw new Error('Invalid email destination');
+
+  const transporter = getPasswordResetEmailTransporter();
+  if (!transporter) {
+    throw new Error('Password reset email delivery is not configured (set BB_SMTP_URL and BB_EMAIL_FROM)');
+  }
+
+  const text = `BuddyBoard password reset code: ${code}.\n\nEnter this code in the app to set a new password.\n\nThis code expires in ${PASSWORD_RESET_TTL_MINUTES} minutes.`;
+  await transporter.sendMail({
+    from: EMAIL_FROM,
+    to: destination,
+    subject: EMAIL_PASSWORD_RESET_SUBJECT,
+    text,
+  });
 }
 
 function isAdminRole(role) {
@@ -1290,6 +1349,86 @@ app.post('/api/auth/login', (req, res) => {
   const token = signToken(user);
   slog.info('auth', 'Login success', { userId: user?.id, email: maskEmail(email) });
   res.json({ token, user });
+});
+
+// Password reset (request a reset code)
+app.post('/api/auth/forgot-password', async (req, res) => {
+  const email = (req.body && req.body.email) ? String(req.body.email).trim().toLowerCase() : '';
+  if (!email) return res.status(400).json({ ok: false, error: 'email required' });
+  if (!JWT_SECRET) return res.status(500).json({ ok: false, error: 'server missing BB_JWT_SECRET' });
+
+  // Always return ok to avoid account enumeration.
+  try {
+    const row = db.prepare('SELECT id,email FROM users WHERE lower(email) = ?').get(email);
+    if (row && row.id) {
+      const resetCode = generateResetCode();
+      const tokenHash = hashResetCode(resetCode);
+      const createdAt = nowISO();
+      const expiresAt = new Date(Date.now() + (PASSWORD_RESET_TTL_MINUTES * 60 * 1000)).toISOString();
+
+      try {
+        db.prepare('INSERT INTO password_resets (id, user_id, token_hash, expires_at, used_at, created_at) VALUES (?,?,?,?,?,?)')
+          .run(nanoId(), String(row.id), tokenHash, expiresAt, null, createdAt);
+      } catch (e) {
+        // Non-fatal: still attempt delivery.
+      }
+
+      // Try to deliver via email if configured; otherwise log.
+      try {
+        if (passwordResetEmailConfigured()) {
+          await sendPasswordResetEmail({ to: email, code: resetCode });
+        } else {
+          slog.warn('auth', 'Password reset requested but SMTP not configured; logging reset code', { email: maskEmail(email), resetCode });
+        }
+      } catch (e) {
+        slog.error('auth', 'Password reset delivery failed', { email: maskEmail(email), message: e?.message || String(e) });
+        // Fall back to logging for internal/dev convenience.
+        slog.warn('auth', 'Password reset code (fallback)', { email: maskEmail(email), resetCode });
+      }
+
+      const payload = { ok: true };
+      if (RETURN_PASSWORD_RESET_CODE) payload.resetCode = resetCode;
+      return res.json(payload);
+    }
+  } catch (e) {
+    // ignore
+  }
+
+  return res.json({ ok: true });
+});
+
+// Password reset (consume code and set a new password)
+app.post('/api/auth/reset-password', (req, res) => {
+  const email = (req.body && req.body.email) ? String(req.body.email).trim().toLowerCase() : '';
+  const resetCode = (req.body && (req.body.resetCode || req.body.code || req.body.token)) ? String(req.body.resetCode || req.body.code || req.body.token).trim() : '';
+  const newPassword = (req.body && req.body.newPassword) ? String(req.body.newPassword) : '';
+  if (!email || !resetCode || !newPassword) return res.status(400).json({ ok: false, error: 'email, resetCode, newPassword required' });
+  if (String(newPassword).length < 6) return res.status(400).json({ ok: false, error: 'password must be at least 6 characters' });
+  if (!JWT_SECRET) return res.status(500).json({ ok: false, error: 'server missing BB_JWT_SECRET' });
+
+  try {
+    const user = db.prepare('SELECT id,email FROM users WHERE lower(email) = ?').get(email);
+    if (!user || !user.id) return res.status(400).json({ ok: false, error: 'invalid code' });
+
+    const tokenHash = hashResetCode(resetCode);
+    const now = nowISO();
+    const row = db.prepare(
+      'SELECT * FROM password_resets WHERE user_id = ? AND token_hash = ? AND used_at IS NULL AND expires_at > ? ORDER BY created_at DESC LIMIT 1'
+    ).get(String(user.id), tokenHash, now);
+
+    if (!row) return res.status(400).json({ ok: false, error: 'invalid or expired code' });
+
+    const hash = bcrypt.hashSync(newPassword, 12);
+    const tx = db.transaction(() => {
+      db.prepare('UPDATE users SET password_hash = ?, updated_at = ? WHERE id = ?').run(hash, now, String(user.id));
+      db.prepare('UPDATE password_resets SET used_at = ? WHERE id = ?').run(now, String(row.id));
+    });
+    tx();
+
+    return res.json({ ok: true });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e?.message || String(e) });
+  }
 });
 
 app.post('/api/auth/google', async (req, res) => {
