@@ -8,6 +8,8 @@
     "android": "expo run:android",
     "ios": "expo run:ios",
     "web": "expo start --web",
+    "update:ios:preview:arm": "bash ./scripts/eas-update-ios-arm.sh --channel preview",
+    "update:ios:production:arm": "bash ./scripts/eas-update-ios-arm.sh --channel production",
     "build:android:internal": "eas build -p android --profile internal --non-interactive",
     "build:android:internal:interactive": "eas build -p android --profile internal",
     "submit:android:internal": "eas submit -p android --latest --non-interactive --key ./google-play-service-account.json",

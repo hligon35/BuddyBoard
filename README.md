@@ -206,6 +206,22 @@ Notes:
 - The app reads the API host from `EXPO_PUBLIC_API_BASE_URL` (see `eas.json`).
 - For web builds, if `EXPO_PUBLIC_API_BASE_URL` is not set, the app falls back to the current browser origin (so accessing the site via an IP/alternate hostname still works when `/api/*` is reverse-proxied).
 
+EAS Update (OTA) from ARM64 Linux
+--------------------------------
+If you're running on ARM64 Linux (e.g. Raspberry Pi), `eas update` can fail because React Native's bundled `hermesc` binary in `node_modules` is x86_64.
+
+This repo includes an ARM64-friendly helper that exports iOS bundles with `--no-bytecode` and then publishes them with `--skip-bundler`:
+
+```sh
+# Publish an iOS OTA update to the preview channel (ARM64-safe)
+npm run update:ios:preview:arm -- --message "Testing ready"
+
+# Or publish to production
+npm run update:ios:production:arm -- --message "Hotfix"
+```
+
+Under the hood this runs `npx expo export --no-bytecode` and then `eas update --skip-bundler --input-dir dist`.
+
 Crash reporting (Sentry) for internal builds
 -------------------------------------------
 For near-real-time debugging while testing internal iOS builds, the app supports Sentry crash/error reporting.
