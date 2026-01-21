@@ -328,15 +328,14 @@ export function DataProvider({ children: reactChildren }) {
       setTimeChangeProposals(Array.isArray(proposals) ? proposals : (proposals?.proposals || []));
     } catch (e) { console.warn('getTimeChangeProposals failed', e.message); }
 
-    // Directory sync (admin-only endpoint). Canonical source is the server when available.
+    // Directory sync. Admins can read/seed the full directory; non-admins use /api/directory/me.
     try {
-      let dir = await Api.getDirectory();
+      const isAdmin = (user && user.role) ? ['admin', 'administrator'].includes(String(user.role).toLowerCase()) : false;
+      let dir = isAdmin ? await Api.getDirectory() : await Api.getDirectoryMe();
       if (dir && dir.ok) {
         let remoteChildren = Array.isArray(dir.children) ? dir.children : [];
         let remoteParents = Array.isArray(dir.parents) ? dir.parents : [];
         let remoteTherapists = Array.isArray(dir.therapists) ? dir.therapists : [];
-
-        const isAdmin = (user && user.role) ? ['admin', 'administrator'].includes(String(user.role).toLowerCase()) : false;
 
         // If server directory is empty and this is an admin session, seed it from local (persisted + additions).
         if (isAdmin && !remoteChildren.length && !remoteParents.length && !remoteTherapists.length) {

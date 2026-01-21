@@ -403,6 +403,18 @@ export async function getDirectory() {
   }
 }
 
+// Directory scope for the current user (parent/therapist). Safe for non-admins.
+export async function getDirectoryMe() {
+  try {
+    const res = await client.get('/api/directory/me');
+    return res.data;
+  } catch (err) {
+    const status = err && err.response && err.response.status;
+    if (status === 404 || status === 403) return null;
+    throw err;
+  }
+}
+
 export async function mergeDirectory(payload) {
   try {
     const res = await client.post('/api/directory/merge', payload);

@@ -901,6 +901,47 @@ function authMiddleware(req, res, next) {
   }
 }
 
+function isParentRole(role) {
+  const r = safeString(role).trim().toLowerCase();
+  return r.includes('parent');
+}
+
+function isTherapistRole(role) {
+  const r = safeString(role).trim().toLowerCase();
+  return r.includes('therapist') || r.includes('bcba');
+}
+
+function isBcbaRole(role) {
+  const r = safeString(role).trim().toLowerCase();
+  return r.includes('bcba');
+}
+
+function pickDirectoryRecordForUser(user, records) {
+  const uid = safeString(user && user.id).trim();
+  if (uid) {
+    const byId = (records || []).find((r) => r && safeString(r.id).trim() === uid);
+    if (byId) return byId;
+  }
+  const uEmail = normalizeEmail(user && user.email);
+  if (uEmail) {
+    const matches = (records || []).filter((r) => r && normalizeEmail(r.email) === uEmail);
+    if (matches.length) return matches[0];
+  }
+  return null;
+}
+
+function childHasParentId(child, parentId) {
+  const pid = safeString(parentId).trim();
+  if (!pid) return false;
+  const list = Array.isArray(child && child.parents) ? child.parents : [];
+  return list.some((p) => {
+    if (!p) return false;
+    if (typeof p === 'string' || typeof p === 'number') return safeString(p).trim() === pid;
+    if (typeof p === 'object' && p.id != null) return safeString(p.id).trim() === pid;
+    return false;
+  });
+}
+
 app.get('/api/health', (req, res) => {
   res.json({ ok: true, uptime: process.uptime() });
 });
@@ -927,6 +968,180 @@ app.get('/api/directory', authMiddleware, requireAdmin, (req, res) => {
       .map((r) => ({ abaId: r.aba_id, bcbaId: r.bcba_id }));
 
     return res.json({ ok: true, children, parents, therapists, aba: { assignments, supervision } });
+  } catch (e) {
+    return res.status(500).json({ ok: false, error: e?.message || String(e) });
+  }
+});
+
+// Directory scope for the current user (safe for non-admins).
+app.get('/api/directory/me', authMiddleware, (req, res) => {
+  try {
+    const allChildren = db.prepare('SELECT data_json FROM directory_children ORDER BY updated_at DESC').all()
+      .map((r) => {
+        try { return JSON.parse(String(r.data_json || '')); } catch (e) { return null; }
+      }).filter(Boolean);
+    const allParents = db.prepare('SELECT data_json FROM directory_parents ORDER BY updated_at DESC').all()
+      .map((r) => {
+        try { return JSON.parse(String(r.data_json || '')); } catch (e) { return null; }
+      }).filter(Boolean);
+    const allTherapists = db.prepare('SELECT data_json FROM directory_therapists ORDER BY updated_at DESC').all()
+      .map((r) => {
+        try { return JSON.parse(String(r.data_json || '')); } catch (e) { return null; }
+      }).filter(Boolean);
+
+    const allAssignments = db.prepare('SELECT child_id, session, aba_id FROM child_aba_assignments ORDER BY child_id ASC').all()
+      .map((r) => ({ childId: r.child_id, session: r.session, abaId: r.aba_id }));
+    const allSupervision = db.prepare('SELECT aba_id, bcba_id FROM aba_supervision ORDER BY aba_id ASC').all()
+      .map((r) => ({ abaId: r.aba_id, bcbaId: r.bcba_id }));
+
+    if (req.user && isAdminRole(req.user.role)) {
+      return res.json({ ok: true, children: allChildren, parents: allParents, therapists: allTherapists, aba: { assignments: allAssignments, supervision: allSupervision } });
+    }
+
+    const role = safeString(req.user && req.user.role);
+    const wantParent = isParentRole(role);
+    const wantTherapist = isTherapistRole(role);
+    const wantBcba = isBcbaRole(role);
+
+    const outChildIds = new Set();
+    const outParentIds = new Set();
+    const outTherapistIds = new Set();
+
+    const supervisionByAba = new Map();
+    (allSupervision || []).forEach((s) => {
+      const abaId = safeString(s && s.abaId).trim();
+      const bcbaId = safeString(s && s.bcbaId).trim();
+      if (abaId && bcbaId) supervisionByAba.set(abaId, bcbaId);
+    });
+
+    const assignmentsByChild = new Map();
+    (allAssignments || []).forEach((a) => {
+      const childId = safeString(a && a.childId).trim();
+      const abaId = safeString(a && a.abaId).trim();
+      const session = safeString(a && a.session).trim().toUpperCase();
+      if (!childId || !abaId) return;
+      const list = assignmentsByChild.get(childId) || [];
+      list.push({ childId, session, abaId });
+      assignmentsByChild.set(childId, list);
+    });
+
+    if (wantParent) {
+      const meParent = pickDirectoryRecordForUser(req.user, allParents);
+      if (!meParent) {
+        return res.json({ ok: true, children: [], parents: [], therapists: [], aba: { assignments: [], supervision: [] }, unlinked: true });
+      }
+
+      const meParentId = safeString(meParent.id).trim();
+      (allChildren || []).forEach((c) => {
+        const childId = safeString(c && c.id).trim();
+        if (!childId) return;
+        if (!childHasParentId(c, meParentId)) return;
+        outChildIds.add(childId);
+
+        const parentList = Array.isArray(c && c.parents) ? c.parents : [];
+        parentList.forEach((p) => {
+          const pid = (typeof p === 'object' && p && p.id != null) ? safeString(p.id).trim() : safeString(p).trim();
+          if (pid) outParentIds.add(pid);
+        });
+
+        const childAssignments = assignmentsByChild.get(childId) || [];
+        childAssignments.forEach((a) => {
+          if (a.abaId) outTherapistIds.add(a.abaId);
+        });
+
+        const rawAssigned = (c && (c.assignedABA || c.assigned_ABA || c.assigned)) || [];
+        const assignedArr = Array.isArray(rawAssigned) ? rawAssigned : [rawAssigned];
+        assignedArr.forEach((id) => {
+          const tid = safeString(id).trim();
+          if (tid) outTherapistIds.add(tid);
+        });
+      });
+
+      Array.from(outTherapistIds).forEach((abaId) => {
+        const bcbaId = supervisionByAba.get(abaId);
+        if (bcbaId) outTherapistIds.add(bcbaId);
+      });
+    } else if (wantTherapist) {
+      const meTherapist = pickDirectoryRecordForUser(req.user, allTherapists);
+      if (!meTherapist) {
+        return res.json({ ok: true, children: [], parents: [], therapists: [], aba: { assignments: [], supervision: [] }, unlinked: true });
+      }
+
+      const meTherapistId = safeString(meTherapist.id).trim();
+      if (meTherapistId) outTherapistIds.add(meTherapistId);
+
+      if (wantBcba) {
+        (allSupervision || []).forEach((s) => {
+          if (safeString(s && s.bcbaId).trim() === meTherapistId) {
+            const abaId = safeString(s && s.abaId).trim();
+            if (abaId) outTherapistIds.add(abaId);
+          }
+        });
+      } else {
+        const bcbaId = supervisionByAba.get(meTherapistId) || safeString(meTherapist.supervisedBy || meTherapist.supervised_by).trim();
+        if (bcbaId) outTherapistIds.add(bcbaId);
+      }
+
+      (allAssignments || []).forEach((a) => {
+        const childId = safeString(a && a.childId).trim();
+        const abaId = safeString(a && a.abaId).trim();
+        if (!childId || !abaId) return;
+        if (wantBcba) {
+          if (outTherapistIds.has(abaId) && abaId !== meTherapistId) outChildIds.add(childId);
+        } else {
+          if (abaId === meTherapistId) outChildIds.add(childId);
+        }
+      });
+
+      (allChildren || []).forEach((c) => {
+        const childId = safeString(c && c.id).trim();
+        if (!childId || !outChildIds.has(childId)) return;
+
+        const parentList = Array.isArray(c && c.parents) ? c.parents : [];
+        parentList.forEach((p) => {
+          const pid = (typeof p === 'object' && p && p.id != null) ? safeString(p.id).trim() : safeString(p).trim();
+          if (pid) outParentIds.add(pid);
+        });
+
+        const childAssignments = assignmentsByChild.get(childId) || [];
+        childAssignments.forEach((aa) => {
+          if (aa.abaId) outTherapistIds.add(aa.abaId);
+        });
+      });
+
+      Array.from(outTherapistIds).forEach((abaId) => {
+        const bcbaId = supervisionByAba.get(abaId);
+        if (bcbaId) outTherapistIds.add(bcbaId);
+      });
+    } else {
+      return res.json({ ok: true, children: [], parents: [], therapists: [], aba: { assignments: [], supervision: [] } });
+    }
+
+    const children = (allChildren || []).filter((c) => {
+      const id = safeString(c && c.id).trim();
+      return id && outChildIds.has(id);
+    });
+    const parents = (allParents || []).filter((p) => {
+      const id = safeString(p && p.id).trim();
+      return id && outParentIds.has(id);
+    });
+    const therapists = (allTherapists || []).filter((t) => {
+      const id = safeString(t && t.id).trim();
+      return id && outTherapistIds.has(id);
+    });
+
+    const abaAssignments = (allAssignments || []).filter((a) => {
+      const childId = safeString(a && a.childId).trim();
+      const abaId = safeString(a && a.abaId).trim();
+      return childId && abaId && outChildIds.has(childId) && outTherapistIds.has(abaId);
+    });
+    const abaSupervision = (allSupervision || []).filter((s) => {
+      const abaId = safeString(s && s.abaId).trim();
+      const bcbaId = safeString(s && s.bcbaId).trim();
+      return abaId && bcbaId && outTherapistIds.has(abaId) && outTherapistIds.has(bcbaId);
+    });
+
+    return res.json({ ok: true, children, parents, therapists, aba: { assignments: abaAssignments, supervision: abaSupervision } });
   } catch (e) {
     return res.status(500).json({ ok: false, error: e?.message || String(e) });
   }
