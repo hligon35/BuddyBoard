@@ -317,6 +317,18 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
 
           <View style={styles.linksRow}>
             <TouchableOpacity
+              onPress={() => setShowSignUp(true)}
+              accessibilityRole="button"
+              disabled={busy}
+            >
+              <Text style={styles.linkText}>Register</Text>
+            </TouchableOpacity>
+
+            <Text style={styles.linkSeparator} accessibilityElementsHidden accessibilityIgnoresInvertColors>
+              /
+            </Text>
+
+            <TouchableOpacity
               onPress={() => {
                 setShowForgotPassword(true);
               }}
@@ -324,14 +336,6 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
               disabled={busy}
             >
               <Text style={styles.linkText}>Forgot password?</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity
-              onPress={() => setShowSignUp(true)}
-              accessibilityRole="button"
-              disabled={busy}
-            >
-              <Text style={styles.linkText}>Register</Text>
             </TouchableOpacity>
           </View>
 
@@ -399,8 +403,9 @@ const styles = StyleSheet.create({
   primaryPushBtn: { backgroundColor: '#2563eb', paddingVertical: 12, paddingHorizontal: 18, borderRadius: 10, minWidth: 140, alignItems: 'center' },
   primaryPushBtnText: { color: '#fff', fontWeight: '800' },
   iconPushBtn: { width: 44, height: 44, borderRadius: 10, borderWidth: 1, borderColor: '#e5e7eb', backgroundColor: '#f8fafc', alignItems: 'center', justifyContent: 'center' },
-  linksRow: { marginTop: 12, width: '100%', maxWidth: 360, flexDirection: 'row', justifyContent: 'space-between', alignSelf: 'center' },
+  linksRow: { marginTop: 12, width: '100%', maxWidth: 360, flexDirection: 'row', justifyContent: 'center', alignSelf: 'center', alignItems: 'center' },
   linkText: { color: '#2563eb', fontWeight: '700' },
+  linkSeparator: { marginHorizontal: 10, color: '#6b7280', fontWeight: '700' },
   secondaryActions: { marginTop: 10, alignItems: 'center' },
   secondaryBtn: { flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 10, paddingHorizontal: 12, borderRadius: 10, borderWidth: 1, borderColor: '#e5e7eb', backgroundColor: '#f8fafc', width: '100%', maxWidth: 360 },
   secondaryBtnText: { marginLeft: 8, color: '#111827', fontWeight: '700' },
