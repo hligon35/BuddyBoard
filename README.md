@@ -189,6 +189,7 @@ Prereqs:
 
 Recommended profiles:
 - `internal` (Android APK, easy sideload / testers)
+- `testflight-internal` (iOS TestFlight internal testing)
 - `preview` (Android App Bundle)
 - `production` (store-ready)
 
@@ -200,6 +201,16 @@ eas build -p android --profile internal
 
 # iOS internal build (requires Apple Developer account + device provisioning)
 eas build -p ios --profile internal
+
+# iOS TestFlight internal build (App Store Connect upload)
+eas build -p ios --profile testflight-internal
+```
+
+Submit (TestFlight):
+
+```sh
+# Submit the latest TestFlight internal build to App Store Connect
+eas submit -p ios --profile testflight-internal --latest
 ```
 
 Notes:
@@ -218,6 +229,12 @@ npm run update:ios:preview:arm -- -m "Testing ready"
 
 # Or publish to production
 npm run update:ios:production:arm -- -m "Hotfix"
+
+# Publish to ad-hoc/internal distribution builds (channel: internal)
+npm run update:ios:internal:arm -- -m "Internal hotfix"
+
+# Publish to TestFlight internal builds (channel: testflight-internal)
+npm run update:ios:testflight-internal:arm -- -m "TestFlight hotfix"
 ```
 
 Under the hood this runs `npx expo export --no-bytecode` and then `eas update --skip-bundler --input-dir dist`.
