@@ -46,6 +46,7 @@ Local API + smoke tests (Windows)
 This repo includes two backends you can run locally:
 
 - Real API server: `scripts/api-server.js` (SQLite) — default port `3005`
+- Real API server (Postgres): `scripts/api-server-pg.js` — enabled when `BB_DATABASE_URL` is set
 - Mock API server: `scripts/api-mock.js` (in-memory) — default port `3006`
 
 The end-to-end smoke runner calls auth → posts/comments/reactions → urgent memos → time changes → link preview → push/arrival → media upload and prints a color-coded PASS/FAIL summary.
@@ -114,9 +115,13 @@ Required (recommended):
 Optional:
 - `EXPO_PUBLIC_GOOGLE_PLACES_API_KEY` — enables address autocomplete.
 
-API server (SQLite) settings:
-- `BB_DATA_DIR` — host directory where BuddyBoard stores its SQLite DB (defaults to `./.data`).
+API server DB settings:
+- `BB_DATA_DIR` — host directory where BuddyBoard stores runtime data (defaults to `./.data`).
 - Uploads are stored under `${BB_DATA_DIR}/uploads` and served at `/uploads/*` from the API.
+- By default, the API uses SQLite at `${BB_DATA_DIR}/buddyboard.sqlite`.
+- To use Postgres instead, set `BB_DATABASE_URL`.
+	- If you want Compose to run the bundled Postgres container, start it with `--profile postgres`.
+	- Persist Postgres data on the 1TB drive by setting `BB_PGDATA_DIR` (e.g. `/mnt/bigdrive/buddyboard/postgres`).
 - `BB_PUBLIC_BASE_URL` — optional; forces the base URL used in uploaded media links (useful behind a reverse proxy/HTTPS).
 - `BB_JWT_SECRET` — required for real logins; set a long random value.
 - `BB_ADMIN_EMAIL` / `BB_ADMIN_PASSWORD` / `BB_ADMIN_NAME` — optional admin seed on first run.
@@ -151,6 +156,8 @@ Example `.env`:
 EXPO_PUBLIC_API_BASE_URL=http://YOUR_SERVER_IP:3005
 EXPO_PUBLIC_GOOGLE_PLACES_API_KEY=
 BB_DATA_DIR=/mnt/bigdrive/buddyboard
+BB_DATABASE_URL=
+BB_PGDATA_DIR=/mnt/bigdrive/buddyboard/postgres
 BB_JWT_SECRET=replace-with-long-random
 BB_ALLOW_SIGNUP=0
 BB_REQUIRE_2FA_ON_SIGNUP=1

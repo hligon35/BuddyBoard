@@ -1,5 +1,5 @@
 import React, { useMemo, useState, useEffect } from 'react';
-import { View, Text, TextInput, Button, StyleSheet, Alert, ActivityIndicator, TouchableOpacity, Modal, Platform, ImageBackground } from 'react-native';
+import { View, Text, TextInput, Button, StyleSheet, Alert, ActivityIndicator, TouchableOpacity, Modal, Platform, ImageBackground, KeyboardAvoidingView, ScrollView, TouchableWithoutFeedback, Keyboard } from 'react-native';
 import * as LocalAuthentication from 'expo-local-authentication';
 import * as SecureStore from 'expo-secure-store';
 import { MaterialIcons } from '@expo/vector-icons';
@@ -225,42 +225,52 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
       style={{ flex: 1, backgroundColor: '#fff' }}
       imageStyle={{ transform: [{ scale: 0.92 }] }}
     >
-      <View style={styles.container}>
-        <View style={styles.logoWrap}>
-          <LogoTitle width={450} height={135} />
-        </View>
-        <View style={styles.formCard}>
-          <View style={fieldWidthStyle}>
-            <TextInput
-              value={email}
-              onChangeText={setEmail}
-              style={styles.input}
-              placeholder="Email"
-              keyboardType="email-address"
-              autoCapitalize="none"
-            />
-          </View>
+      <KeyboardAvoidingView
+        style={{ flex: 1 }}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+        keyboardVerticalOffset={0}
+      >
+        <TouchableWithoutFeedback onPress={Keyboard.dismiss} accessible={false}>
+          <ScrollView
+            contentContainerStyle={styles.container}
+            keyboardShouldPersistTaps="handled"
+            keyboardDismissMode="on-drag"
+          >
+            <View style={styles.logoWrap}>
+              <LogoTitle width={450} height={135} />
+            </View>
+            <View style={styles.formCard}>
+              <View style={fieldWidthStyle}>
+                <TextInput
+                  value={email}
+                  onChangeText={setEmail}
+                  style={styles.input}
+                  placeholder="Email"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                />
+              </View>
 
-          <View style={[fieldWidthStyle, styles.passwordFieldWrap]}>
-            <TextInput
-              value={password}
-              onChangeText={setPassword}
-              style={[styles.input, styles.passwordInput]}
-              placeholder="Password"
-              secureTextEntry={!showPassword}
-              autoCapitalize="none"
-              autoCorrect={false}
-              textContentType="password"
-            />
-            <TouchableOpacity
-              style={styles.peekIconBtn}
-              onPress={() => setShowPassword((v) => !v)}
-              accessibilityRole="button"
-              accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
-            >
-              <MaterialIcons name={showPassword ? 'visibility-off' : 'visibility'} size={20} color="#2563eb" />
-            </TouchableOpacity>
-          </View>
+              <View style={[fieldWidthStyle, styles.passwordFieldWrap]}>
+                <TextInput
+                  value={password}
+                  onChangeText={setPassword}
+                  style={[styles.input, styles.passwordInput]}
+                  placeholder="Password"
+                  secureTextEntry={!showPassword}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  textContentType="password"
+                />
+                <TouchableOpacity
+                  style={styles.peekIconBtn}
+                  onPress={() => setShowPassword((v) => !v)}
+                  accessibilityRole="button"
+                  accessibilityLabel={showPassword ? 'Hide password' : 'Show password'}
+                >
+                  <MaterialIcons name={showPassword ? 'visibility-off' : 'visibility'} size={20} color="#2563eb" />
+                </TouchableOpacity>
+              </View>
 
           <View style={styles.actionsRow}>
             {showSentryTestButton ? (
@@ -361,9 +371,11 @@ export default function LoginScreen({ navigation, suppressAutoRedirect = false }
 
             {/* Internal Sentry test moved to icon button near Sign In */}
           </View>
-        </View>
-    </View>
-    </ImageBackground>
+              </View>
+            </ScrollView>
+          </TouchableWithoutFeedback>
+        </KeyboardAvoidingView>
+      </ImageBackground>
   );
 }
 

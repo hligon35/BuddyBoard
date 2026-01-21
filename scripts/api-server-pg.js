@@ -7,14 +7,13 @@ const bodyParser = require('body-parser');
 const cors = require('cors');
 const bcrypt = require('bcryptjs');
 const jwt = require('jsonwebtoken');
-const Database = require('better-sqlite3');
+const { Pool } = require('pg');
 const multer = require('multer');
+
 let twilioLib = null;
 function getTwilioLib() {
   if (twilioLib) return twilioLib;
   try {
-    // Lazy require so the server can still boot even if the dependency
-    // is missing in a given deployment image.
     // eslint-disable-next-line global-require
     twilioLib = require('twilio');
     return twilioLib;
@@ -27,8 +26,6 @@ let nodemailerLib = null;
 function getNodemailerLib() {
   if (nodemailerLib) return nodemailerLib;
   try {
-    // Lazy require so the server can still boot even if the dependency
-    // is missing in a given deployment image.
     // eslint-disable-next-line global-require
     nodemailerLib = require('nodemailer');
     return nodemailerLib;
@@ -38,7 +35,20 @@ function getNodemailerLib() {
 }
 
 const PORT = Number(process.env.PORT || 3005);
-const DB_PATH = process.env.BB_DB_PATH || path.join(process.cwd(), '.data', 'buddyboard.sqlite');
+const DATA_DIR = process.env.BB_DATA_DIR
+  ? String(process.env.BB_DATA_DIR)
+  : path.join(process.cwd(), '.data');
+const DATABASE_URL = (process.env.BB_DATABASE_URL || process.env.DATABASE_URL || '').trim();
+
+if (!DATABASE_URL) {
+  // This file is only intended to run when BB_DATABASE_URL is configured.
+  // The docker-compose entrypoint uses api-server.js for SQLite mode.
+  // Keep this hard-fail to avoid silently running without persistence.
+  // eslint-disable-next-line no-console
+  console.error('[api] Missing BB_DATABASE_URL (or DATABASE_URL).');
+  process.exit(1);
+}
+
 const JWT_SECRET = process.env.BB_JWT_SECRET || '';
 const NODE_ENV = String(process.env.NODE_ENV || '').trim().toLowerCase();
 const PUBLIC_BASE_URL = (process.env.BB_PUBLIC_BASE_URL || '').trim();
@@ -53,40 +63,114 @@ function envFlag(value, defaultValue = false) {
 }
 
 const ALLOW_SIGNUP = envFlag(process.env.BB_ALLOW_SIGNUP, true);
-// IMPORTANT:
-// Requiring 2FA on signup by default will hard-fail account creation when email/SMS delivery
-// isn't configured (e.g. missing BB_SMTP_URL/BB_EMAIL_FROM). Default to OFF unless explicitly enabled.
 const REQUIRE_2FA_ON_SIGNUP = envFlag(process.env.BB_REQUIRE_2FA_ON_SIGNUP, false);
 const DEBUG_2FA_RETURN_CODE = envFlag(process.env.BB_DEBUG_2FA_RETURN_CODE, false);
-// When enabled, include the underlying delivery failure message in API responses.
-// Keep disabled in production by default to avoid leaking implementation details.
 const DEBUG_2FA_DELIVERY_ERRORS = envFlag(process.env.BB_DEBUG_2FA_DELIVERY_ERRORS, false);
 const LOG_REQUESTS = envFlag(process.env.BB_DEBUG_REQUESTS, true);
 
 // 2FA delivery toggles
-// Default: email enabled, SMS disabled.
 const ENABLE_EMAIL_2FA = envFlag(process.env.BB_ENABLE_EMAIL_2FA, true);
 const ENABLE_SMS_2FA = envFlag(process.env.BB_ENABLE_SMS_2FA, false);
 
 // 2FA delivery (SMS only).
-// Configure Twilio in production/TestFlight:
-// - BB_TWILIO_ACCOUNT_SID
-// - BB_TWILIO_AUTH_TOKEN
-// - BB_TWILIO_FROM (E.164, e.g. +15551234567) OR BB_TWILIO_MESSAGING_SERVICE_SID
 const TWILIO_ACCOUNT_SID = (process.env.BB_TWILIO_ACCOUNT_SID || '').trim();
 const TWILIO_AUTH_TOKEN = (process.env.BB_TWILIO_AUTH_TOKEN || '').trim();
 const TWILIO_FROM = (process.env.BB_TWILIO_FROM || '').trim();
 const TWILIO_MESSAGING_SERVICE_SID = (process.env.BB_TWILIO_MESSAGING_SERVICE_SID || '').trim();
 
 // 2FA delivery (Email)
-// Configure SMTP:
-// - BB_SMTP_URL (e.g. smtp://user:pass@smtp.example.com:587)
-// - BB_EMAIL_FROM (e.g. BuddyBoard <no-reply@example.com>)
 const SMTP_URL = (process.env.BB_SMTP_URL || '').trim();
 const EMAIL_FROM = (process.env.BB_EMAIL_FROM || '').trim();
 const EMAIL_2FA_SUBJECT = (process.env.BB_EMAIL_2FA_SUBJECT || 'BuddyBoard verification code').trim();
 
 const slog = require('./logger');
+
+function ensureDir(p) {
+  fs.mkdirSync(p, { recursive: true });
+}
+
+ensureDir(DATA_DIR);
+
+const UPLOAD_DIR = process.env.BB_UPLOAD_DIR
+  ? String(process.env.BB_UPLOAD_DIR)
+  : path.join(DATA_DIR, 'uploads');
+
+ensureDir(UPLOAD_DIR);
+
+function nowISO() {
+  return new Date().toISOString();
+}
+
+function toIso(value) {
+  if (!value) return null;
+  if (value instanceof Date) return value.toISOString();
+  const s = String(value);
+  // If it looks like an ISO string already, keep it.
+  if (s.includes('T') && s.endsWith('Z')) return s;
+  return s;
+}
+
+function nanoId() {
+  return `id_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function normalizeEmail(input) {
+  const e = String(input || '').trim().toLowerCase();
+  return e.includes('@') ? e : '';
+}
+
+function jsonb(value) {
+  if (value == null) return null;
+  return JSON.stringify(value);
+}
+
+function maskEmail(email) {
+  const e = String(email || '');
+  const at = e.indexOf('@');
+  if (at <= 1) return '***';
+  return `${e.slice(0, 1)}***${e.slice(at)}`;
+}
+
+function safeString(v) {
+  try {
+    if (v == null) return '';
+    return String(v);
+  } catch (_) {
+    return '';
+  }
+}
+
+function roleLower(u) {
+  try { return String(u && u.role ? u.role : '').trim().toLowerCase(); } catch (_) { return ''; }
+}
+
+function isAdminUser(u) {
+  const r = roleLower(u);
+  return r === 'admin' || r === 'administrator';
+}
+
+function hasExpoPushToken(token) {
+  const t = safeString(token).trim();
+  return t.startsWith('ExponentPushToken[') || t.startsWith('ExpoPushToken[');
+}
+
+function pushPrefAllows(preferences, kind) {
+  if (!preferences || typeof preferences !== 'object') return true;
+  const keys = Object.keys(preferences);
+  if (!keys.length) return true;
+  if (kind === 'updates') return Boolean(preferences.updates ?? preferences.other ?? true);
+  if (kind === 'other') return Boolean(preferences.other ?? preferences.updates ?? true);
+  return true;
+}
+
+function normalizeE164Phone(input) {
+  const raw = String(input || '').trim();
+  if (!raw) return '';
+  const cleaned = raw.replace(/[\s\-().]/g, '');
+  if (!cleaned.startsWith('+')) return '';
+  if (!/^\+[1-9]\d{7,14}$/.test(cleaned)) return '';
+  return cleaned;
+}
 
 function twilioEnabled() {
   if (!ENABLE_SMS_2FA) return false;
@@ -112,131 +196,67 @@ function getTwilioClient() {
   return twilioClient;
 }
 
-function normalizeE164Phone(input) {
-  const raw = String(input || '').trim();
-  if (!raw) return '';
-  // allow spaces/dashes/parentheses; require leading + for international safety
-  const cleaned = raw.replace(/[\s\-().]/g, '');
-  if (!cleaned.startsWith('+')) return '';
-  const digits = cleaned.slice(1).replace(/\D/g, '');
-  const out = `+${digits}`;
-  if (!/^\+\d{10,15}$/.test(out)) return '';
-  return out;
-}
-
-async function send2faCodeSms({ to, code }) {
-  const client = getTwilioClient();
-  if (!client) {
-    throw new Error('2FA SMS delivery is not configured (set BB_TWILIO_ACCOUNT_SID/BB_TWILIO_AUTH_TOKEN and BB_TWILIO_FROM or BB_TWILIO_MESSAGING_SERVICE_SID)');
-  }
-
-  const body = `BuddyBoard verification code: ${code}. Expires in 5 minutes.`;
-  const msg = {
-    to,
-    body,
-  };
-  if (TWILIO_MESSAGING_SERVICE_SID) msg.messagingServiceSid = TWILIO_MESSAGING_SERVICE_SID;
-  else msg.from = TWILIO_FROM;
-
-  await client.messages.create(msg);
-}
-
-let emailTransporter = null;
-function getEmailTransporter() {
+let emailTransport = null;
+function getEmailTransport() {
   if (!emailEnabled()) return null;
-  if (emailTransporter) return emailTransporter;
+  if (emailTransport) return emailTransport;
   const nodemailer = getNodemailerLib();
   if (!nodemailer) {
     throw new Error("Missing dependency 'nodemailer' in this server build. Rebuild your Docker image after installing dependencies (npm ci) so the nodemailer package is included.");
   }
-  emailTransporter = nodemailer.createTransport(SMTP_URL);
-  return emailTransporter;
+  emailTransport = nodemailer.createTransport(SMTP_URL);
+  return emailTransport;
 }
 
-function normalizeEmail(input) {
-  const v = String(input || '').trim().toLowerCase();
-  if (!v) return '';
-  // Minimal sanity check; avoid strict RFC parsing.
-  if (!/^\S+@\S+\.[^\s@]+$/.test(v)) return '';
-  return v;
-}
-
-async function send2faCodeEmail({ to, code }) {
-  const destination = normalizeEmail(to);
-  if (!destination) throw new Error('Invalid email destination');
-
-  const transporter = getEmailTransporter();
-  if (!transporter) {
-    throw new Error('2FA email delivery is not configured (set BB_SMTP_URL and BB_EMAIL_FROM, and ensure BB_ENABLE_EMAIL_2FA=1)');
+function maskDest(method, dest) {
+  if (method === 'sms') {
+    const d = String(dest || '');
+    if (d.length <= 4) return '***';
+    return `***${d.slice(-4)}`;
   }
-
-  const text = `BuddyBoard verification code: ${code}. Expires in 5 minutes.`;
-  await transporter.sendMail({
-    from: EMAIL_FROM,
-    to: destination,
-    subject: EMAIL_2FA_SUBJECT,
-    text,
-  });
+  return maskEmail(dest);
 }
 
 async function deliver2faCode({ method, destination, code }) {
-  const m = String(method || '').trim().toLowerCase();
-  if (m === 'sms') {
-    if (!ENABLE_SMS_2FA) throw new Error('SMS 2FA is disabled');
-    return send2faCodeSms({ to: destination, code });
-  }
-  if (m === 'email') {
-    if (!ENABLE_EMAIL_2FA) throw new Error('Email 2FA is disabled');
-    return send2faCodeEmail({ to: destination, code });
-  }
-  throw new Error('Unsupported 2FA method');
-}
-
-// Ephemeral 2FA challenges for dev/testing.
-// NOTE: This is in-memory and resets when the server restarts.
-const twoFaChallenges = new Map();
-
-const TWOFA_CODE_TTL_MS = 5 * 60 * 1000;
-const TWOFA_RESEND_COOLDOWN_MS = 5 * 60 * 1000;
-
-function nanoIdShort() {
-  // nanoId() exists in this file; keep challenge IDs short/unique.
-  // Avoid external deps to keep scripts self-contained.
-  return `ch_${nanoId().slice(-10)}`;
-}
-
-function maskDest(method, value) {
-  const v = String(value || '');
-  if (!v) return '';
   if (method === 'sms') {
-    const last = v.replace(/\D/g, '').slice(-4);
-    return last ? `***-***-${last}` : '***';
+    const client = getTwilioClient();
+    if (!client) throw new Error('SMS 2FA not configured');
+    const msg = { body: `Your BuddyBoard verification code is ${code}` };
+    if (TWILIO_MESSAGING_SERVICE_SID) msg.messagingServiceSid = TWILIO_MESSAGING_SERVICE_SID;
+    else msg.from = TWILIO_FROM;
+    msg.to = destination;
+    await client.messages.create(msg);
+    return;
   }
-  // email
-  const at = v.indexOf('@');
-  if (at <= 1) return '***';
-  return `${v[0]}***${v.slice(at)}`;
+
+  const transport = getEmailTransport();
+  if (!transport && !DEBUG_2FA_RETURN_CODE) throw new Error('Email 2FA not configured');
+  if (!transport) return;
+
+  await transport.sendMail({
+    from: EMAIL_FROM,
+    to: destination,
+    subject: EMAIL_2FA_SUBJECT,
+    text: `Your BuddyBoard verification code is ${code}`,
+  });
 }
 
-function maskEmail(email) {
-  const v = String(email || '').trim().toLowerCase();
-  const at = v.indexOf('@');
-  if (at <= 1) return '***';
-  return `${v[0]}***${v.slice(at)}`;
-}
+// 2FA (in-memory)
+const twoFaChallenges = new Map();
+const TWOFA_CODE_TTL_MS = 10 * 60 * 1000;
+const TWOFA_RESEND_COOLDOWN_MS = 30 * 1000;
 
 function newOtpCode() {
-  // 6-digit numeric code.
   return String(Math.floor(100000 + Math.random() * 900000));
 }
 
 function create2faChallenge({ userId, method, destination }) {
-  const challengeId = nanoIdShort();
-  const code = newOtpCode();
+  const challengeId = nanoId();
   const now = Date.now();
-  const expiresAt = now + TWOFA_CODE_TTL_MS;
-  twoFaChallenges.set(challengeId, { userId, method, destination, code, expiresAt, attempts: 0, lastSentAt: now });
-  return { challengeId, code, expiresAt };
+  const code = newOtpCode();
+  const ch = { challengeId, userId, method, destination, code, expiresAt: now + TWOFA_CODE_TTL_MS, attempts: 0, lastSentAt: now };
+  twoFaChallenges.set(challengeId, ch);
+  return ch;
 }
 
 function resend2faChallenge(challengeId) {
@@ -281,8 +301,8 @@ function consume2faChallenge(challengeId, code) {
   twoFaChallenges.delete(challengeId);
   return { ok: true, userId: ch.userId, method: ch.method };
 }
-// Dev compatibility: allow the mobile app's __DEV__ auto-login token.
-// Default: enabled outside production, disabled in production.
+
+// Dev compatibility token
 const ALLOW_DEV_TOKEN = envFlag(process.env.BB_ALLOW_DEV_TOKEN, NODE_ENV !== 'production');
 
 const ADMIN_EMAIL = process.env.BB_ADMIN_EMAIL || '';
@@ -298,506 +318,6 @@ try {
   }
 } catch (e) {
   googleClient = null;
-}
-
-function ensureDir(p) {
-  fs.mkdirSync(p, { recursive: true });
-}
-
-function nowISO() {
-  return new Date().toISOString();
-}
-
-function nanoId() {
-  // simple, dependency-free id
-  return `id_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
-}
-
-ensureDir(path.dirname(DB_PATH));
-const db = new Database(DB_PATH);
-
-const UPLOAD_DIR = process.env.BB_UPLOAD_DIR
-  ? String(process.env.BB_UPLOAD_DIR)
-  : path.join(path.dirname(DB_PATH), 'uploads');
-
-ensureDir(UPLOAD_DIR);
-
-db.pragma('journal_mode = WAL');
-
-db.exec(`
-CREATE TABLE IF NOT EXISTS users (
-  id TEXT PRIMARY KEY,
-  email TEXT NOT NULL UNIQUE,
-  password_hash TEXT NOT NULL,
-  name TEXT NOT NULL,
-  avatar TEXT,
-  phone TEXT,
-  address TEXT,
-  role TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS directory_children (
-  id TEXT PRIMARY KEY,
-  data_json TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS directory_parents (
-  id TEXT PRIMARY KEY,
-  data_json TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS directory_therapists (
-  id TEXT PRIMARY KEY,
-  data_json TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-
--- Normalized ABA relationships (derived from directory JSON).
-CREATE TABLE IF NOT EXISTS aba_supervision (
-  aba_id TEXT PRIMARY KEY,
-  bcba_id TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS child_aba_assignments (
-  child_id TEXT NOT NULL,
-  session TEXT NOT NULL,
-  aba_id TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL,
-  PRIMARY KEY (child_id, session)
-);
-
-CREATE TABLE IF NOT EXISTS org_settings (
-  id TEXT PRIMARY KEY,
-  data_json TEXT NOT NULL,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS posts (
-  id TEXT PRIMARY KEY,
-  author_json TEXT,
-  title TEXT,
-  body TEXT,
-  image TEXT,
-  likes INTEGER NOT NULL DEFAULT 0,
-  shares INTEGER NOT NULL DEFAULT 0,
-  comments_json TEXT,
-  created_at TEXT NOT NULL,
-  updated_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS messages (
-  id TEXT PRIMARY KEY,
-  thread_id TEXT,
-  body TEXT NOT NULL,
-  sender_json TEXT,
-  to_json TEXT,
-  created_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS urgent_memos (
-  id TEXT PRIMARY KEY,
-  type TEXT,
-  status TEXT,
-  proposer_id TEXT,
-  actor_role TEXT,
-  child_id TEXT,
-  title TEXT,
-  body TEXT,
-  note TEXT,
-  meta_json TEXT,
-  memo_json TEXT,
-  responded_at TEXT,
-  ack INTEGER NOT NULL DEFAULT 0,
-  created_at TEXT NOT NULL,
-  updated_at TEXT
-);
-
-CREATE TABLE IF NOT EXISTS time_change_proposals (
-  id TEXT PRIMARY KEY,
-  child_id TEXT,
-  type TEXT,
-  proposed_iso TEXT,
-  note TEXT,
-  proposer_id TEXT,
-  action TEXT,
-  created_at TEXT NOT NULL
-);
-
-CREATE TABLE IF NOT EXISTS push_tokens (
-  token TEXT PRIMARY KEY,
-  user_id TEXT,
-  platform TEXT,
-  enabled INTEGER NOT NULL DEFAULT 1,
-  preferences_json TEXT,
-  updated_at TEXT NOT NULL
-);
-CREATE TABLE IF NOT EXISTS arrival_pings (
-  id TEXT PRIMARY KEY,
-  user_id TEXT,
-  role TEXT,
-  child_id TEXT,
-  lat REAL,
-  lng REAL,
-  event_id TEXT,
-  when_iso TEXT,
-  created_at TEXT NOT NULL
-);
-`);
-
-try {
-  db.exec('CREATE INDEX IF NOT EXISTS aba_supervision_bcba_idx ON aba_supervision (bcba_id)');
-  db.exec('CREATE INDEX IF NOT EXISTS child_aba_assignments_aba_idx ON child_aba_assignments (aba_id)');
-} catch (_) {
-  // ignore
-}
-
-function isAdminRole(role) {
-  const r = safeString(role).trim().toLowerCase();
-  return r === 'admin' || r === 'administrator';
-}
-
-function requireAdmin(req, res, next) {
-  try {
-    if (req.user && isAdminRole(req.user.role)) return next();
-  } catch (e) {}
-  return res.status(403).json({ ok: false, error: 'admin required' });
-}
-
-function ensureUserProfileColumns() {
-  try {
-    const cols = db.prepare("PRAGMA table_info('users')").all();
-    const names = new Set((cols || []).map((c) => String(c.name || '').toLowerCase()));
-
-    if (!names.has('avatar')) {
-      db.exec('ALTER TABLE users ADD COLUMN avatar TEXT');
-    }
-    if (!names.has('phone')) {
-      db.exec('ALTER TABLE users ADD COLUMN phone TEXT');
-    }
-    if (!names.has('address')) {
-      db.exec('ALTER TABLE users ADD COLUMN address TEXT');
-    }
-  } catch (e) {
-    console.warn('[api] users table migration failed:', e && e.message ? e.message : String(e));
-  }
-}
-
-ensureUserProfileColumns();
-
-function ensureUserEmailCaseInsensitiveUniqueness() {
-  try {
-    // If duplicates already exist (older DBs), creating a unique index will fail.
-    const dups = db
-      .prepare("SELECT lower(email) AS email_lc, COUNT(*) AS c FROM users GROUP BY lower(email) HAVING c > 1")
-      .all();
-    if (Array.isArray(dups) && dups.length) {
-      slog.warn('db', 'Duplicate user emails detected; cannot enforce case-insensitive uniqueness until cleaned up', { duplicates: dups.length });
-      return;
-    }
-
-    // Enforce case-insensitive uniqueness going forward.
-    db.exec("CREATE UNIQUE INDEX IF NOT EXISTS users_email_nocase_idx ON users(email COLLATE NOCASE)");
-  } catch (e) {
-    slog.warn('db', 'users email NOCASE uniqueness index skipped', { message: e?.message || String(e) });
-  }
-}
-
-ensureUserEmailCaseInsensitiveUniqueness();
-
-// Lightweight migrations for older databases.
-try {
-  const cols = db.prepare("PRAGMA table_info('urgent_memos')").all().map((c) => String(c.name));
-  const ensureCol = (name, ddl) => { if (!cols.includes(name)) db.exec(ddl); };
-  ensureCol('memo_json', "ALTER TABLE urgent_memos ADD COLUMN memo_json TEXT");
-  ensureCol('status', "ALTER TABLE urgent_memos ADD COLUMN status TEXT");
-  ensureCol('responded_at', "ALTER TABLE urgent_memos ADD COLUMN responded_at TEXT");
-} catch (e) {
-  slog.warn('db', 'urgent_memos migration skipped', { message: e?.message || String(e) });
-}
-
-function safeJsonParse(text, fallback) {
-  try {
-    if (!text) return fallback;
-    return JSON.parse(text);
-  } catch (_) {
-    return fallback;
-  }
-}
-
-function normalizeSession(value) {
-  const s = safeString(value).trim().toUpperCase();
-  if (s === 'AM' || s === 'PM') return s;
-  return null;
-}
-
-function normalizeId(value) {
-  const s = safeString(value).trim();
-  return s || null;
-}
-
-function deriveChildAbaAssignments(child) {
-  try {
-    const childId = normalizeId(child && child.id);
-    if (!childId) return [];
-
-    const rawAssigned = (child && (child.assignedABA || child.assigned_ABA || child.assigned)) || [];
-    const assignedArr = Array.isArray(rawAssigned) ? rawAssigned : [rawAssigned];
-    const assigned = assignedArr
-      .map((x) => normalizeId(x))
-      .filter(Boolean);
-
-    if (!assigned.length) return [];
-
-    const sess = normalizeSession(child && child.session);
-
-    if (assigned.length === 1) {
-      if (sess) return [{ childId, session: sess, abaId: assigned[0] }];
-      return [{ childId, session: 'AM', abaId: assigned[0] }];
-    }
-
-    if (sess === 'AM') {
-      return [
-        { childId, session: 'AM', abaId: assigned[0] },
-        { childId, session: 'PM', abaId: assigned[1] },
-      ];
-    }
-    if (sess === 'PM') {
-      return [
-        { childId, session: 'PM', abaId: assigned[0] },
-        { childId, session: 'AM', abaId: assigned[1] },
-      ];
-    }
-    return [
-      { childId, session: 'AM', abaId: assigned[0] },
-      { childId, session: 'PM', abaId: assigned[1] },
-    ];
-  } catch (_) {
-    return [];
-  }
-}
-
-function rebuildAbaRelationshipsFromDirectorySqlite(now) {
-  const therapistRows = db.prepare('SELECT data_json FROM directory_therapists').all();
-  const therapists = (therapistRows || [])
-    .map((r) => safeJsonParse(String(r && r.data_json ? r.data_json : ''), null))
-    .filter(Boolean);
-
-  const supervision = new Map();
-  for (const t of therapists) {
-    const abaId = normalizeId(t && t.id);
-    const bcbaId = normalizeId(t && (t.supervisedBy || t.supervised_by));
-    if (abaId && bcbaId) supervision.set(abaId, bcbaId);
-  }
-
-  const childRows = db.prepare('SELECT data_json FROM directory_children').all();
-  const children = (childRows || [])
-    .map((r) => safeJsonParse(String(r && r.data_json ? r.data_json : ''), null))
-    .filter(Boolean);
-
-  const assignments = new Map();
-  for (const c of children) {
-    const pairs = deriveChildAbaAssignments(c);
-    for (const p of pairs) assignments.set(`${p.childId}|${p.session}`, p);
-  }
-
-  db.prepare('DELETE FROM child_aba_assignments').run();
-  db.prepare('DELETE FROM aba_supervision').run();
-
-  const upsertSupervision = db.prepare(
-    'INSERT INTO aba_supervision (aba_id, bcba_id, created_at, updated_at) VALUES (?,?,?,?)\n' +
-    'ON CONFLICT(aba_id) DO UPDATE SET bcba_id=excluded.bcba_id, updated_at=excluded.updated_at'
-  );
-  const upsertAssignment = db.prepare(
-    'INSERT INTO child_aba_assignments (child_id, session, aba_id, created_at, updated_at) VALUES (?,?,?,?,?)\n' +
-    'ON CONFLICT(child_id, session) DO UPDATE SET aba_id=excluded.aba_id, updated_at=excluded.updated_at'
-  );
-
-  for (const [abaId, bcbaId] of supervision.entries()) {
-    upsertSupervision.run(abaId, bcbaId, now, now);
-  }
-  for (const p of assignments.values()) {
-    upsertAssignment.run(p.childId, p.session, p.abaId, now, now);
-  }
-
-  return { supervision: supervision.size, assignments: assignments.size };
-}
-
-// Best-effort: keep ABA relationship tables in sync at startup.
-try {
-  rebuildAbaRelationshipsFromDirectorySqlite(nowISO());
-} catch (_) {
-  // ignore
-}
-
-function roleLower(u) {
-  try { return String(u && u.role ? u.role : '').trim().toLowerCase(); } catch (_) { return ''; }
-}
-
-function isAdminUser(u) {
-  const r = roleLower(u);
-  return r === 'admin' || r === 'administrator';
-}
-
-function safeString(v) {
-  try {
-    if (v == null) return '';
-    return String(v);
-  } catch (_) {
-    return '';
-  }
-}
-
-function hasExpoPushToken(token) {
-  const t = safeString(token).trim();
-  return t.startsWith('ExponentPushToken[') || t.startsWith('ExpoPushToken[');
-}
-
-function pushPrefAllows(preferences, kind) {
-  // Preferences are opt-in toggles stored by the mobile Settings screen.
-  // If preferences are missing/empty, default to allowing pushes.
-  if (!preferences || typeof preferences !== 'object') return true;
-  const keys = Object.keys(preferences);
-  if (!keys.length) return true;
-  if (kind === 'updates') return Boolean(preferences.updates ?? preferences.other ?? true);
-  if (kind === 'other') return Boolean(preferences.other ?? preferences.updates ?? true);
-  // fallback
-  return true;
-}
-
-async function sendExpoPush(tokens, { title, body, data } = {}) {
-  try {
-    if (!Array.isArray(tokens) || !tokens.length) return { ok: true, skipped: true, reason: 'no-tokens' };
-    if (typeof fetch !== 'function') {
-      console.warn('[api] fetch() not available; skipping push send');
-      return { ok: false, skipped: true, reason: 'no-fetch' };
-    }
-
-    const unique = Array.from(new Set(tokens.map((t) => safeString(t).trim()))).filter(hasExpoPushToken);
-    if (!unique.length) return { ok: true, skipped: true, reason: 'no-valid-tokens' };
-
-    const messages = unique.map((to) => ({
-      to,
-      title: safeString(title || 'BuddyBoard'),
-      body: safeString(body || ''),
-      data: (data && typeof data === 'object') ? data : {},
-      sound: 'default',
-    }));
-
-    const resp = await fetch('https://exp.host/--/api/v2/push/send', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(messages),
-    });
-
-    const json = await resp.json().catch(() => null);
-
-    // Best-effort cleanup for invalid/unregistered tokens.
-    // Expo returns tickets in the same order as the messages array.
-    try {
-      const tickets = json && Array.isArray(json.data) ? json.data : null;
-      if (resp.ok && tickets && tickets.length === messages.length) {
-        const tokensToDelete = [];
-        for (let i = 0; i < tickets.length; i += 1) {
-          if (shouldDeleteTokenForExpoError(tickets[i])) tokensToDelete.push(messages[i].to);
-        }
-        const deleted = deletePushTokens(tokensToDelete);
-        if (deleted) console.log(`[api] push cleanup: deleted ${deleted} invalid token(s)`);
-      }
-    } catch (_) {
-      // ignore cleanup failures
-    }
-
-    return { ok: resp.ok, status: resp.status, expo: json };
-  } catch (e) {
-    console.warn('[api] push send failed', e && e.message ? e.message : String(e));
-    return { ok: false, error: e && e.message ? e.message : String(e) };
-  }
-}
-
-function getAdminUserIds() {
-  try {
-    const rows = db.prepare('SELECT id, role FROM users').all();
-    const ids = [];
-    for (const r of rows) {
-      const role = safeString(r.role).trim().toLowerCase();
-      if (role === 'admin' || role === 'administrator') ids.push(String(r.id));
-    }
-    // Dev convenience: allow dev-token users to receive admin pushes.
-    ids.push('dev');
-    return Array.from(new Set(ids.filter(Boolean)));
-  } catch (_) {
-    return ['dev'];
-  }
-}
-
-function getPushTokensForUsers(userIds, { kind } = {}) {
-  try {
-    if (!Array.isArray(userIds) || !userIds.length) return [];
-    const placeholders = userIds.map(() => '?').join(',');
-    const rows = db.prepare(
-      `SELECT token, enabled, preferences_json FROM push_tokens WHERE enabled = 1 AND user_id IN (${placeholders})`
-    ).all(...userIds.map(String));
-
-    const out = [];
-    for (const row of rows) {
-      const token = safeString(row.token).trim();
-      if (!token) continue;
-      const prefs = safeJsonParse(row.preferences_json, {});
-      if (kind && !pushPrefAllows(prefs, kind)) continue;
-      out.push(token);
-    }
-    return Array.from(new Set(out));
-  } catch (_) {
-    return [];
-  }
-}
-
-function deletePushTokens(tokens) {
-  try {
-    if (!Array.isArray(tokens) || !tokens.length) return 0;
-    const unique = Array.from(new Set(tokens.map((t) => safeString(t).trim()))).filter(Boolean);
-    if (!unique.length) return 0;
-    const placeholders = unique.map(() => '?').join(',');
-    const info = db.prepare(`DELETE FROM push_tokens WHERE token IN (${placeholders})`).run(...unique);
-    return Number(info && typeof info.changes === 'number' ? info.changes : 0);
-  } catch (_) {
-    return 0;
-  }
-}
-
-function shouldDeleteTokenForExpoError(expoTicket) {
-  // Expo ticket format: { status: 'error', message, details: { error: 'DeviceNotRegistered' | ... } }
-  try {
-    if (!expoTicket || expoTicket.status !== 'error') return false;
-    const details = expoTicket.details && typeof expoTicket.details === 'object' ? expoTicket.details : {};
-    const code = safeString(details.error).trim();
-    // Only delete for terminal token problems.
-    return code === 'DeviceNotRegistered' || code === 'InvalidExpoPushToken';
-  } catch (_) {
-    return false;
-  }
-}
-
-function normalizeRecipients(input) {
-  if (!Array.isArray(input)) return [];
-  const ids = [];
-  for (const item of input) {
-    if (!item) continue;
-    if (typeof item === 'string' || typeof item === 'number') ids.push(String(item));
-    else if (typeof item === 'object' && item.id != null) ids.push(String(item.id));
-  }
-  return Array.from(new Set(ids.filter(Boolean)));
 }
 
 function userToClient(row) {
@@ -823,35 +343,447 @@ function signToken(user) {
 
 function requireJwtConfigured() {
   if (!JWT_SECRET) {
+    // eslint-disable-next-line no-console
     console.warn('[api] Missing BB_JWT_SECRET. Set this in server environment for production.');
   }
 }
 
 requireJwtConfigured();
 
-// Seed admin user if configured
-try {
-  if (ADMIN_EMAIL && ADMIN_PASSWORD) {
-    const normalizedAdminEmail = String(ADMIN_EMAIL).trim().toLowerCase();
-    const existing = db.prepare('SELECT id FROM users WHERE lower(email) = ?').get(normalizedAdminEmail);
-    if (!existing) {
-      const id = nanoId();
-      const hash = bcrypt.hashSync(ADMIN_PASSWORD, 12);
-      const t = nowISO();
-      db.prepare('INSERT INTO users (id,email,password_hash,name,role,created_at,updated_at) VALUES (?,?,?,?,?,?,?)')
-        .run(id, normalizedAdminEmail, hash, ADMIN_NAME, 'ADMIN', t, t);
-      console.log('[api] Seeded admin user:', normalizedAdminEmail);
+function isPgUniqueViolation(e) {
+  return String(e && e.code ? e.code : '') === '23505';
+}
+
+const pool = new Pool({ connectionString: DATABASE_URL });
+
+async function pgQueryOne(sql, params) {
+  const result = await pool.query(sql, params);
+  return result && Array.isArray(result.rows) ? result.rows[0] : null;
+}
+
+async function pgQueryAll(sql, params) {
+  const result = await pool.query(sql, params);
+  return result && Array.isArray(result.rows) ? result.rows : [];
+}
+
+async function initDb() {
+  await pool.query(`
+    CREATE TABLE IF NOT EXISTS users (
+      id TEXT PRIMARY KEY,
+      email TEXT NOT NULL,
+      password_hash TEXT NOT NULL,
+      name TEXT NOT NULL,
+      avatar TEXT,
+      phone TEXT,
+      address TEXT,
+      role TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS directory_children (
+      id TEXT PRIMARY KEY,
+      data_json JSONB NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS directory_parents (
+      id TEXT PRIMARY KEY,
+      data_json JSONB NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS directory_therapists (
+      id TEXT PRIMARY KEY,
+      data_json JSONB NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL
+    );
+
+    -- Normalized ABA relationships (derived from directory JSON).
+    -- Supervision: ABA -> BCBA
+    CREATE TABLE IF NOT EXISTS aba_supervision (
+      aba_id TEXT PRIMARY KEY,
+      bcba_id TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL
+    );
+
+    -- Session-based child -> ABA assignment
+    CREATE TABLE IF NOT EXISTS child_aba_assignments (
+      child_id TEXT NOT NULL,
+      session TEXT NOT NULL CHECK (session IN ('AM','PM')),
+      aba_id TEXT NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL,
+      PRIMARY KEY (child_id, session)
+    );
+
+    CREATE TABLE IF NOT EXISTS org_settings (
+      id TEXT PRIMARY KEY,
+      data_json JSONB NOT NULL,
+      created_at TIMESTAMPTZ NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS posts (
+      id TEXT PRIMARY KEY,
+      author_json JSONB,
+      title TEXT,
+      body TEXT,
+      image TEXT,
+      likes INTEGER NOT NULL DEFAULT 0,
+      shares INTEGER NOT NULL DEFAULT 0,
+      comments_json JSONB,
+      created_at TIMESTAMPTZ NOT NULL,
+      updated_at TIMESTAMPTZ NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS messages (
+      id TEXT PRIMARY KEY,
+      thread_id TEXT,
+      body TEXT NOT NULL,
+      sender_json JSONB,
+      to_json JSONB,
+      created_at TIMESTAMPTZ NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS urgent_memos (
+      id TEXT PRIMARY KEY,
+      type TEXT,
+      status TEXT,
+      proposer_id TEXT,
+      actor_role TEXT,
+      child_id TEXT,
+      title TEXT,
+      body TEXT,
+      note TEXT,
+      meta_json JSONB,
+      memo_json JSONB,
+      responded_at TIMESTAMPTZ,
+      ack INTEGER NOT NULL DEFAULT 0,
+      created_at TIMESTAMPTZ NOT NULL,
+      updated_at TIMESTAMPTZ
+    );
+
+    CREATE TABLE IF NOT EXISTS time_change_proposals (
+      id TEXT PRIMARY KEY,
+      child_id TEXT,
+      type TEXT,
+      proposed_iso TEXT,
+      note TEXT,
+      proposer_id TEXT,
+      action TEXT,
+      created_at TIMESTAMPTZ NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS push_tokens (
+      token TEXT PRIMARY KEY,
+      user_id TEXT,
+      platform TEXT,
+      enabled INTEGER NOT NULL DEFAULT 1,
+      preferences_json JSONB,
+      updated_at TIMESTAMPTZ NOT NULL
+    );
+
+    CREATE TABLE IF NOT EXISTS arrival_pings (
+      id TEXT PRIMARY KEY,
+      user_id TEXT,
+      role TEXT,
+      child_id TEXT,
+      lat DOUBLE PRECISION,
+      lng DOUBLE PRECISION,
+      event_id TEXT,
+      when_iso TEXT,
+      created_at TIMESTAMPTZ NOT NULL
+    );
+  `);
+
+  try {
+    const dups = await pgQueryAll(
+      'SELECT lower(email) AS email_lc, COUNT(*) AS c FROM users GROUP BY lower(email) HAVING COUNT(*) > 1',
+      []
+    );
+    if (Array.isArray(dups) && dups.length) {
+      slog.warn('db', 'Duplicate user emails detected; cannot enforce case-insensitive uniqueness until cleaned up', { duplicates: dups.length });
+    } else {
+      await pool.query('CREATE UNIQUE INDEX IF NOT EXISTS users_email_lower_idx ON users ((lower(email)))');
+    }
+  } catch (e) {
+    slog.warn('db', 'users lower(email) uniqueness index skipped', { message: e?.message || String(e) });
+  }
+
+  await pool.query('CREATE INDEX IF NOT EXISTS urgent_memos_created_at_idx ON urgent_memos (created_at DESC)');
+  await pool.query('CREATE INDEX IF NOT EXISTS urgent_memos_type_idx ON urgent_memos (type)');
+  await pool.query('CREATE INDEX IF NOT EXISTS posts_created_at_idx ON posts (created_at DESC)');
+  await pool.query('CREATE INDEX IF NOT EXISTS messages_created_at_idx ON messages (created_at ASC)');
+
+  await pool.query('CREATE INDEX IF NOT EXISTS aba_supervision_bcba_idx ON aba_supervision (bcba_id)');
+  await pool.query('CREATE INDEX IF NOT EXISTS child_aba_assignments_aba_idx ON child_aba_assignments (aba_id)');
+}
+
+function isAdminRole(role) {
+  const r = safeString(role).trim().toLowerCase();
+  return r === 'admin' || r === 'administrator';
+}
+
+function normalizeSession(value) {
+  const s = safeString(value).trim().toUpperCase();
+  if (s === 'AM' || s === 'PM') return s;
+  return null;
+}
+
+function safeJsonObject(value) {
+  try {
+    if (!value) return null;
+    if (typeof value === 'object') return value;
+    return JSON.parse(String(value));
+  } catch (_) {
+    return null;
+  }
+}
+
+function normalizeId(value) {
+  const s = safeString(value).trim();
+  return s || null;
+}
+
+function deriveChildAbaAssignments(child) {
+  try {
+    const childId = normalizeId(child && child.id);
+    if (!childId) return [];
+
+    const rawAssigned = (child && (child.assignedABA || child.assigned_ABA || child.assigned)) || [];
+    const assignedArr = Array.isArray(rawAssigned) ? rawAssigned : [rawAssigned];
+    const assigned = assignedArr
+      .map((x) => normalizeId(x))
+      .filter(Boolean);
+
+    if (!assigned.length) return [];
+
+    const sess = normalizeSession(child && child.session);
+
+    if (assigned.length === 1) {
+      if (sess) return [{ childId, session: sess, abaId: assigned[0] }];
+      // No session info: default to AM.
+      return [{ childId, session: 'AM', abaId: assigned[0] }];
+    }
+
+    // Two or more ids: treat first two as AM/PM pair.
+    if (sess === 'AM') {
+      return [
+        { childId, session: 'AM', abaId: assigned[0] },
+        { childId, session: 'PM', abaId: assigned[1] },
+      ];
+    }
+    if (sess === 'PM') {
+      return [
+        { childId, session: 'PM', abaId: assigned[0] },
+        { childId, session: 'AM', abaId: assigned[1] },
+      ];
+    }
+    return [
+      { childId, session: 'AM', abaId: assigned[0] },
+      { childId, session: 'PM', abaId: assigned[1] },
+    ];
+  } catch (_) {
+    return [];
+  }
+}
+
+async function rebuildAbaRelationshipsFromDirectoryPg(client) {
+  const now = new Date();
+
+  const therapistRows = await client.query('SELECT data_json FROM directory_therapists', []);
+  const therapists = (therapistRows && Array.isArray(therapistRows.rows) ? therapistRows.rows : [])
+    .map((r) => safeJsonObject(r.data_json))
+    .filter(Boolean);
+
+  const supervision = new Map();
+  for (const t of therapists) {
+    const abaId = normalizeId(t && t.id);
+    const bcbaId = normalizeId(t && (t.supervisedBy || t.supervised_by));
+    if (abaId && bcbaId) supervision.set(abaId, bcbaId);
+  }
+
+  const childRows = await client.query('SELECT data_json FROM directory_children', []);
+  const children = (childRows && Array.isArray(childRows.rows) ? childRows.rows : [])
+    .map((r) => safeJsonObject(r.data_json))
+    .filter(Boolean);
+
+  const assignments = new Map();
+  for (const c of children) {
+    const pairs = deriveChildAbaAssignments(c);
+    for (const p of pairs) {
+      assignments.set(`${p.childId}|${p.session}`, p);
     }
   }
-} catch (e) {
-  console.warn('[api] Admin seed failed:', e && e.message ? e.message : String(e));
+
+  // Rebuild semantics: keep tables in sync with directory JSON.
+  await client.query('DELETE FROM child_aba_assignments', []);
+  await client.query('DELETE FROM aba_supervision', []);
+
+  for (const [abaId, bcbaId] of supervision.entries()) {
+    await client.query(
+      `INSERT INTO aba_supervision (aba_id, bcba_id, created_at, updated_at)
+       VALUES ($1,$2,$3,$4)
+       ON CONFLICT (aba_id) DO UPDATE SET bcba_id = EXCLUDED.bcba_id, updated_at = EXCLUDED.updated_at`,
+      [abaId, bcbaId, now, now]
+    );
+  }
+
+  for (const p of assignments.values()) {
+    await client.query(
+      `INSERT INTO child_aba_assignments (child_id, session, aba_id, created_at, updated_at)
+       VALUES ($1,$2,$3,$4,$5)
+       ON CONFLICT (child_id, session) DO UPDATE SET aba_id = EXCLUDED.aba_id, updated_at = EXCLUDED.updated_at`,
+      [p.childId, p.session, p.abaId, now, now]
+    );
+  }
+
+  return { supervision: supervision.size, assignments: assignments.size };
+}
+
+async function seedAdminUser() {
+  try {
+    if (!(ADMIN_EMAIL && ADMIN_PASSWORD)) return;
+    const normalizedAdminEmail = String(ADMIN_EMAIL).trim().toLowerCase();
+    const existing = await pgQueryOne('SELECT id FROM users WHERE lower(email) = $1', [normalizedAdminEmail]);
+    if (existing) return;
+
+    const id = nanoId();
+    const hash = bcrypt.hashSync(ADMIN_PASSWORD, 12);
+    const t = new Date();
+
+    await pool.query(
+      'INSERT INTO users (id,email,password_hash,name,role,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7)',
+      [id, normalizedAdminEmail, hash, ADMIN_NAME, 'ADMIN', t, t]
+    );
+    // eslint-disable-next-line no-console
+    console.log('[api] Seeded admin user:', normalizedAdminEmail);
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[api] Admin seed failed:', e && e.message ? e.message : String(e));
+  }
+}
+
+async function getAdminUserIds() {
+  try {
+    const rows = await pgQueryAll('SELECT id, role FROM users', []);
+    const ids = [];
+    for (const r of rows) {
+      const role = safeString(r.role).trim().toLowerCase();
+      if (role === 'admin' || role === 'administrator') ids.push(String(r.id));
+    }
+    ids.push('dev');
+    return Array.from(new Set(ids.filter(Boolean)));
+  } catch (_) {
+    return ['dev'];
+  }
+}
+
+async function getPushTokensForUsers(userIds, { kind } = {}) {
+  try {
+    if (!Array.isArray(userIds) || !userIds.length) return [];
+    const rows = await pgQueryAll(
+      'SELECT token, enabled, preferences_json FROM push_tokens WHERE enabled = 1 AND user_id = ANY($1::text[])',
+      [userIds.map(String)]
+    );
+
+    const out = [];
+    for (const row of rows) {
+      const token = safeString(row.token).trim();
+      if (!token) continue;
+      const prefs = row.preferences_json && typeof row.preferences_json === 'object' ? row.preferences_json : {};
+      if (kind && !pushPrefAllows(prefs, kind)) continue;
+      out.push(token);
+    }
+    return Array.from(new Set(out));
+  } catch (_) {
+    return [];
+  }
+}
+
+async function deletePushTokens(tokens) {
+  try {
+    if (!Array.isArray(tokens) || !tokens.length) return 0;
+    const unique = Array.from(new Set(tokens.map((t) => safeString(t).trim()))).filter(Boolean);
+    if (!unique.length) return 0;
+    const info = await pool.query('DELETE FROM push_tokens WHERE token = ANY($1::text[])', [unique]);
+    return Number(info && typeof info.rowCount === 'number' ? info.rowCount : 0);
+  } catch (_) {
+    return 0;
+  }
+}
+
+function shouldDeleteTokenForExpoError(expoTicket) {
+  try {
+    if (!expoTicket || expoTicket.status !== 'error') return false;
+    const details = expoTicket.details && typeof expoTicket.details === 'object' ? expoTicket.details : {};
+    const code = safeString(details.error).trim();
+    return code === 'DeviceNotRegistered' || code === 'InvalidExpoPushToken';
+  } catch (_) {
+    return false;
+  }
+}
+
+async function sendExpoPush(tokens, { title, body, data } = {}) {
+  try {
+    if (!Array.isArray(tokens) || !tokens.length) return { ok: true, skipped: true, reason: 'no-tokens' };
+    if (typeof fetch !== 'function') {
+      // eslint-disable-next-line no-console
+      console.warn('[api] fetch() not available; skipping push send');
+      return { ok: false, skipped: true, reason: 'no-fetch' };
+    }
+
+    const unique = Array.from(new Set(tokens.map((t) => safeString(t).trim()))).filter(hasExpoPushToken);
+    if (!unique.length) return { ok: true, skipped: true, reason: 'no-valid-tokens' };
+
+    const messages = unique.map((to) => ({
+      to,
+      title: safeString(title || 'BuddyBoard'),
+      body: safeString(body || ''),
+      data: (data && typeof data === 'object') ? data : {},
+      sound: 'default',
+    }));
+
+    const resp = await fetch('https://exp.host/--/api/v2/push/send', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(messages),
+    });
+
+    const json = await resp.json().catch(() => null);
+
+    try {
+      const tickets = json && Array.isArray(json.data) ? json.data : null;
+      if (resp.ok && tickets && tickets.length === messages.length) {
+        const tokensToDelete = [];
+        for (let i = 0; i < tickets.length; i += 1) {
+          if (shouldDeleteTokenForExpoError(tickets[i])) tokensToDelete.push(messages[i].to);
+        }
+        const deleted = await deletePushTokens(tokensToDelete);
+        if (deleted) console.log(`[api] push cleanup: deleted ${deleted} invalid token(s)`);
+      }
+    } catch (_) {
+      // ignore
+    }
+
+    return { ok: resp.ok, status: resp.status, expo: json };
+  } catch (e) {
+    // eslint-disable-next-line no-console
+    console.warn('[api] push send failed', e && e.message ? e.message : String(e));
+    return { ok: false, error: e && e.message ? e.message : String(e) };
+  }
 }
 
 const app = express();
 app.use(cors());
 app.use(bodyParser.json({ limit: '2mb' }));
 
-// Serve uploaded media. Files are stored under the same host-mounted .data dir.
+// Serve uploads
 app.use('/uploads', express.static(UPLOAD_DIR));
 
 function buildPublicUrl(req, pathname) {
@@ -872,10 +804,10 @@ const upload = multer({
       cb(null, `${nanoId()}_${safeBase}${ext}`);
     },
   }),
-  limits: { fileSize: 15 * 1024 * 1024 }, // 15MB
+  limits: { fileSize: 15 * 1024 * 1024 },
 });
 
-function authMiddleware(req, res, next) {
+async function authMiddleware(req, res, next) {
   const header = req.headers.authorization || req.headers.Authorization || '';
   const token = String(header).startsWith('Bearer ') ? String(header).slice(7) : '';
 
@@ -892,7 +824,7 @@ function authMiddleware(req, res, next) {
     const userId = payload && payload.sub ? String(payload.sub) : '';
     if (!userId) return res.status(401).json({ ok: false, error: 'invalid token' });
 
-    const row = db.prepare('SELECT id,email,name,avatar,phone,address,role FROM users WHERE id = ?').get(userId);
+    const row = await pgQueryOne('SELECT id,email,name,avatar,phone,address,role FROM users WHERE id = $1', [userId]);
     if (!row) return res.status(401).json({ ok: false, error: 'user not found' });
     req.user = userToClient(row);
     return next();
@@ -901,38 +833,43 @@ function authMiddleware(req, res, next) {
   }
 }
 
+function requireAdmin(req, res, next) {
+  try {
+    if (req.user && isAdminRole(req.user.role)) return next();
+  } catch (e) {}
+  return res.status(403).json({ ok: false, error: 'admin required' });
+}
+
 app.get('/api/health', (req, res) => {
   res.json({ ok: true, uptime: process.uptime() });
 });
 
-// Directory (SQLite-backed). Admin-only for now.
-app.get('/api/directory', authMiddleware, requireAdmin, (req, res) => {
+// Directory (Postgres-backed). Admin-only for now.
+app.get('/api/directory', authMiddleware, requireAdmin, async (req, res) => {
   try {
-    const children = db.prepare('SELECT data_json FROM directory_children ORDER BY updated_at DESC').all()
-      .map((r) => {
-        try { return JSON.parse(String(r.data_json || '')); } catch (e) { return null; }
-      }).filter(Boolean);
-    const parents = db.prepare('SELECT data_json FROM directory_parents ORDER BY updated_at DESC').all()
-      .map((r) => {
-        try { return JSON.parse(String(r.data_json || '')); } catch (e) { return null; }
-      }).filter(Boolean);
-    const therapists = db.prepare('SELECT data_json FROM directory_therapists ORDER BY updated_at DESC').all()
-      .map((r) => {
-        try { return JSON.parse(String(r.data_json || '')); } catch (e) { return null; }
-      }).filter(Boolean);
+    const [childrenRows, parentRows, therapistRows, assignRows, supervisionRows] = await Promise.all([
+      pgQueryAll('SELECT data_json FROM directory_children ORDER BY updated_at DESC', []),
+      pgQueryAll('SELECT data_json FROM directory_parents ORDER BY updated_at DESC', []),
+      pgQueryAll('SELECT data_json FROM directory_therapists ORDER BY updated_at DESC', []),
+      pgQueryAll('SELECT child_id, session, aba_id FROM child_aba_assignments ORDER BY child_id ASC', []),
+      pgQueryAll('SELECT aba_id, bcba_id FROM aba_supervision ORDER BY aba_id ASC', []),
+    ]);
+    const children = (childrenRows || []).map((r) => r.data_json).filter(Boolean);
+    const parents = (parentRows || []).map((r) => r.data_json).filter(Boolean);
+    const therapists = (therapistRows || []).map((r) => r.data_json).filter(Boolean);
 
-    const assignments = db.prepare('SELECT child_id, session, aba_id FROM child_aba_assignments ORDER BY child_id ASC').all()
-      .map((r) => ({ childId: r.child_id, session: r.session, abaId: r.aba_id }));
-    const supervision = db.prepare('SELECT aba_id, bcba_id FROM aba_supervision ORDER BY aba_id ASC').all()
-      .map((r) => ({ abaId: r.aba_id, bcbaId: r.bcba_id }));
+    const aba = {
+      assignments: (assignRows || []).map((r) => ({ childId: r.child_id, session: r.session, abaId: r.aba_id })),
+      supervision: (supervisionRows || []).map((r) => ({ abaId: r.aba_id, bcbaId: r.bcba_id })),
+    };
 
-    return res.json({ ok: true, children, parents, therapists, aba: { assignments, supervision } });
+    return res.json({ ok: true, children, parents, therapists, aba });
   } catch (e) {
     return res.status(500).json({ ok: false, error: e?.message || String(e) });
   }
 });
 
-app.post('/api/directory/merge', authMiddleware, requireAdmin, (req, res) => {
+app.post('/api/directory/merge', authMiddleware, requireAdmin, async (req, res) => {
   const body = req.body && typeof req.body === 'object' ? req.body : {};
   const children = Array.isArray(body.children) ? body.children : [];
   const parents = Array.isArray(body.parents) ? body.parents : [];
@@ -952,64 +889,78 @@ app.post('/api/directory/merge', authMiddleware, requireAdmin, (req, res) => {
   const c = normalize(children);
   const p = normalize(parents);
   const t = normalize(therapists);
-  const now = nowISO();
+  const now = new Date();
 
-  const upsertChild = db.prepare(
-    'INSERT INTO directory_children (id, data_json, created_at, updated_at) VALUES (?,?,?,?)\n' +
-    'ON CONFLICT(id) DO UPDATE SET data_json=excluded.data_json, updated_at=excluded.updated_at'
-  );
-  const upsertParent = db.prepare(
-    'INSERT INTO directory_parents (id, data_json, created_at, updated_at) VALUES (?,?,?,?)\n' +
-    'ON CONFLICT(id) DO UPDATE SET data_json=excluded.data_json, updated_at=excluded.updated_at'
-  );
-  const upsertTherapist = db.prepare(
-    'INSERT INTO directory_therapists (id, data_json, created_at, updated_at) VALUES (?,?,?,?)\n' +
-    'ON CONFLICT(id) DO UPDATE SET data_json=excluded.data_json, updated_at=excluded.updated_at'
-  );
-
-  const tx = db.transaction(() => {
-    for (const row of c) upsertChild.run(row.id, JSON.stringify(row.item), now, now);
-    for (const row of p) upsertParent.run(row.id, JSON.stringify(row.item), now, now);
-    for (const row of t) upsertTherapist.run(row.id, JSON.stringify(row.item), now, now);
-
-    rebuildAbaRelationshipsFromDirectorySqlite(now);
-  });
-
+  const client = await pool.connect();
   try {
-    tx();
+    await client.query('BEGIN');
+
+    for (const row of c) {
+      await client.query(
+        `INSERT INTO directory_children (id, data_json, created_at, updated_at)
+         VALUES ($1, $2::jsonb, $3, $4)
+         ON CONFLICT (id) DO UPDATE SET data_json = EXCLUDED.data_json, updated_at = EXCLUDED.updated_at`,
+        [row.id, JSON.stringify(row.item), now, now]
+      );
+    }
+    for (const row of p) {
+      await client.query(
+        `INSERT INTO directory_parents (id, data_json, created_at, updated_at)
+         VALUES ($1, $2::jsonb, $3, $4)
+         ON CONFLICT (id) DO UPDATE SET data_json = EXCLUDED.data_json, updated_at = EXCLUDED.updated_at`,
+        [row.id, JSON.stringify(row.item), now, now]
+      );
+    }
+    for (const row of t) {
+      await client.query(
+        `INSERT INTO directory_therapists (id, data_json, created_at, updated_at)
+         VALUES ($1, $2::jsonb, $3, $4)
+         ON CONFLICT (id) DO UPDATE SET data_json = EXCLUDED.data_json, updated_at = EXCLUDED.updated_at`,
+        [row.id, JSON.stringify(row.item), now, now]
+      );
+    }
+
+    // Keep normalized ABA relationships in sync with directory JSON.
+    await rebuildAbaRelationshipsFromDirectoryPg(client);
+
+    await client.query('COMMIT');
     return res.json({ ok: true, upserted: { children: c.length, parents: p.length, therapists: t.length } });
   } catch (e) {
+    try { await client.query('ROLLBACK'); } catch (e2) {}
     return res.status(500).json({ ok: false, error: e?.message || String(e) });
+  } finally {
+    client.release();
   }
 });
 
 // ABA relationship maintenance (admin-only)
-app.post('/api/aba/refresh', authMiddleware, requireAdmin, (req, res) => {
-  const now = nowISO();
+app.post('/api/aba/refresh', authMiddleware, requireAdmin, async (req, res) => {
+  const client = await pool.connect();
   try {
-    const tx = db.transaction(() => rebuildAbaRelationshipsFromDirectorySqlite(now));
-    const rebuilt = tx();
-    return res.json({ ok: true, rebuilt });
+    await client.query('BEGIN');
+    const counts = await rebuildAbaRelationshipsFromDirectoryPg(client);
+    await client.query('COMMIT');
+    return res.json({ ok: true, rebuilt: counts });
   } catch (e) {
+    try { await client.query('ROLLBACK'); } catch (e2) {}
     return res.status(500).json({ ok: false, error: e?.message || String(e) });
+  } finally {
+    client.release();
   }
 });
 
 // Org settings (arrival/business location). Readable by any authed user; writable by admins.
-app.get('/api/org-settings', authMiddleware, (req, res) => {
+app.get('/api/org-settings', authMiddleware, async (req, res) => {
   try {
-    const row = db.prepare('SELECT data_json FROM org_settings WHERE id = ?').get('default');
-    let item = null;
-    if (row && row.data_json) {
-      try { item = JSON.parse(String(row.data_json)); } catch (e) { item = null; }
-    }
+    const row = await pgQueryOne('SELECT data_json FROM org_settings WHERE id = $1', ['default']);
+    const item = row && row.data_json ? row.data_json : null;
     return res.json({ ok: true, item });
   } catch (e) {
     return res.status(500).json({ ok: false, error: e?.message || String(e) });
   }
 });
 
-app.put('/api/org-settings', authMiddleware, requireAdmin, (req, res) => {
+app.put('/api/org-settings', authMiddleware, requireAdmin, async (req, res) => {
   const payload = req.body && typeof req.body === 'object' ? req.body : {};
   const address = payload.address != null ? String(payload.address) : '';
   const lat = payload.lat != null ? Number(payload.lat) : null;
@@ -1024,31 +975,32 @@ app.put('/api/org-settings', authMiddleware, requireAdmin, (req, res) => {
     dropZoneMiles: Number.isFinite(dropZoneMiles) ? dropZoneMiles : null,
     orgArrivalEnabled: orgArrivalEnabled,
   };
-  const now = nowISO();
 
+  const now = new Date();
   try {
-    db.prepare(
-      'INSERT INTO org_settings (id, data_json, created_at, updated_at) VALUES (?,?,?,?)\n' +
-      'ON CONFLICT(id) DO UPDATE SET data_json=excluded.data_json, updated_at=excluded.updated_at'
-    ).run('default', JSON.stringify(item), now, now);
+    await pool.query(
+      `INSERT INTO org_settings (id, data_json, created_at, updated_at)
+       VALUES ($1, $2::jsonb, $3, $4)
+       ON CONFLICT (id) DO UPDATE SET data_json = EXCLUDED.data_json, updated_at = EXCLUDED.updated_at`,
+      ['default', JSON.stringify(item), now, now]
+    );
     return res.json({ ok: true, item });
   } catch (e) {
     return res.status(500).json({ ok: false, error: e?.message || String(e) });
   }
 });
 
-// Request logging (dev-friendly)
 if (LOG_REQUESTS) {
   app.use((req, res, next) => {
     const startedAt = Date.now();
-    const path = req.originalUrl || req.url;
+    const p = req.originalUrl || req.url;
     const method = (req.method || 'GET').toUpperCase();
 
-    slog.debug('req', `${method} ${path}`, { hasAuth: !!(req.headers && req.headers.authorization) });
+    slog.debug('req', `${method} ${p}`, { hasAuth: !!(req.headers && req.headers.authorization) });
 
     res.on('finish', () => {
       const ms = Date.now() - startedAt;
-      slog.info('req', `${method} ${path} -> ${res.statusCode} (${ms}ms)`);
+      slog.info('req', `${method} ${p} -> ${res.statusCode} (${ms}ms)`);
     });
 
     next();
@@ -1056,15 +1008,14 @@ if (LOG_REQUESTS) {
 }
 
 // Auth
-app.post('/api/auth/login', (req, res) => {
+app.post('/api/auth/login', async (req, res) => {
   const email = (req.body && req.body.email) ? String(req.body.email).trim().toLowerCase() : '';
   const password = (req.body && req.body.password) ? String(req.body.password) : '';
   if (!email || !password) return res.status(400).json({ ok: false, error: 'email and password required' });
 
   slog.debug('auth', 'Login attempt', { email: maskEmail(email) });
 
-  // Treat emails case-insensitively (SQLite comparisons are case-sensitive by default).
-  const row = db.prepare('SELECT * FROM users WHERE lower(email) = ?').get(email);
+  const row = await pgQueryOne('SELECT * FROM users WHERE lower(email) = $1', [email]);
   if (!row) return res.status(401).json({ ok: false, error: 'invalid credentials' });
   const ok = bcrypt.compareSync(password, row.password_hash);
   if (!ok) return res.status(401).json({ ok: false, error: 'invalid credentials' });
@@ -1074,7 +1025,7 @@ app.post('/api/auth/login', (req, res) => {
   const user = userToClient(row);
   const token = signToken(user);
   slog.info('auth', 'Login success', { userId: user?.id, email: maskEmail(email) });
-  res.json({ token, user });
+  return res.json({ token, user });
 });
 
 app.post('/api/auth/google', async (req, res) => {
@@ -1095,21 +1046,20 @@ app.post('/api/auth/google', async (req, res) => {
 
     if (!email) return res.status(400).json({ ok: false, error: 'Google token missing email' });
 
-    let row = db.prepare('SELECT * FROM users WHERE lower(email) = ?').get(email);
+    let row = await pgQueryOne('SELECT * FROM users WHERE lower(email) = $1', [email]);
     if (!row) {
       const id = nanoId();
-      const t = nowISO();
-      // Users created via Google still need a password_hash due to schema constraints.
-      // Generate an unguessable random hash.
+      const t = new Date();
       const randomSecret = `${nanoId()}_${Math.random().toString(36).slice(2)}_${Date.now()}`;
       const hash = bcrypt.hashSync(randomSecret, 12);
       try {
-        db.prepare('INSERT INTO users (id,email,password_hash,name,phone,address,role,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?,?)')
-          .run(id, email, hash, name || 'User', '', '', 'parent', t, t);
-        row = db.prepare('SELECT * FROM users WHERE id = ?').get(id);
+        await pool.query(
+          'INSERT INTO users (id,email,password_hash,name,phone,address,role,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+          [id, email, hash, name || 'User', '', '', 'parent', t, t]
+        );
+        row = await pgQueryOne('SELECT * FROM users WHERE id = $1', [id]);
       } catch (e) {
-        // If a duplicate email slipped in (race, older DB collation), fall back to the existing account.
-        row = db.prepare('SELECT * FROM users WHERE lower(email) = ?').get(email);
+        row = await pgQueryOne('SELECT * FROM users WHERE lower(email) = $1', [email]);
       }
     }
 
@@ -1125,7 +1075,7 @@ app.get('/api/auth/me', authMiddleware, (req, res) => {
   res.json({ ok: true, user: req.user });
 });
 
-app.put('/api/auth/me', authMiddleware, (req, res) => {
+app.put('/api/auth/me', authMiddleware, async (req, res) => {
   const name = (req.body && req.body.name != null) ? String(req.body.name).trim() : undefined;
   const email = (req.body && req.body.email != null) ? String(req.body.email).trim().toLowerCase() : undefined;
   const avatarRaw = (req.body && req.body.avatar != null) ? String(req.body.avatar).trim() : undefined;
@@ -1139,9 +1089,6 @@ app.put('/api/auth/me', authMiddleware, (req, res) => {
   let avatar = avatarRaw;
   if (avatar !== undefined) {
     if (!avatar) avatar = '';
-    // Allow:
-    // - absolute URLs (http/https)
-    // - local uploads served by this API (/uploads/...)
     const ok = avatar.startsWith('http://') || avatar.startsWith('https://') || avatar.startsWith('/uploads/');
     if (!ok) return res.status(400).json({ ok: false, error: 'avatar must be a valid URL or /uploads/... path' });
     if (avatar.length > 2048) return res.status(400).json({ ok: false, error: 'avatar URL too long' });
@@ -1152,9 +1099,7 @@ app.put('/api/auth/me', authMiddleware, (req, res) => {
     if (!phone) phone = '';
     else {
       const normalized = normalizeE164Phone(phone);
-      if (!normalized) {
-        return res.status(400).json({ ok: false, error: 'phone must be in E.164 format (e.g. +15551234567)' });
-      }
+      if (!normalized) return res.status(400).json({ ok: false, error: 'phone must be in E.164 format (e.g. +15551234567)' });
       phone = normalized;
     }
   }
@@ -1168,35 +1113,36 @@ app.put('/api/auth/me', authMiddleware, (req, res) => {
     const userId = String(req.user.id);
 
     if (email !== undefined) {
-      const existing = db.prepare('SELECT id FROM users WHERE lower(email) = ? AND id <> ?').get(email, userId);
+      const existing = await pgQueryOne('SELECT id FROM users WHERE lower(email) = $1 AND id <> $2', [email, userId]);
       if (existing) return res.status(409).json({ ok: false, error: 'email already exists' });
     }
 
-    const fields = [];
+    const sets = [];
     const values = [];
+    let i = 1;
 
-    if (name !== undefined) { fields.push('name = ?'); values.push(name); }
-    if (email !== undefined) { fields.push('email = ?'); values.push(email); }
-    if (avatar !== undefined) { fields.push('avatar = ?'); values.push(avatar); }
-    if (phone !== undefined) { fields.push('phone = ?'); values.push(phone); }
-    if (address !== undefined) { fields.push('address = ?'); values.push(address); }
+    if (name !== undefined) { sets.push(`name = $${i}`); values.push(name); i += 1; }
+    if (email !== undefined) { sets.push(`email = $${i}`); values.push(email); i += 1; }
+    if (avatar !== undefined) { sets.push(`avatar = $${i}`); values.push(avatar); i += 1; }
+    if (phone !== undefined) { sets.push(`phone = $${i}`); values.push(phone); i += 1; }
+    if (address !== undefined) { sets.push(`address = $${i}`); values.push(address); i += 1; }
     if (newPassword !== undefined) {
       const hash = bcrypt.hashSync(newPassword, 12);
-      fields.push('password_hash = ?');
+      sets.push(`password_hash = $${i}`);
       values.push(hash);
+      i += 1;
     }
 
-    if (!fields.length) {
-      return res.status(400).json({ ok: false, error: 'no fields to update' });
-    }
+    if (!sets.length) return res.status(400).json({ ok: false, error: 'no fields to update' });
 
-    fields.push('updated_at = ?');
-    values.push(nowISO());
+    sets.push(`updated_at = $${i}`);
+    values.push(new Date());
+    i += 1;
+
     values.push(userId);
+    await pool.query(`UPDATE users SET ${sets.join(', ')} WHERE id = $${i}`, values);
 
-    db.prepare(`UPDATE users SET ${fields.join(', ')} WHERE id = ?`).run(...values);
-
-    const row = db.prepare('SELECT id,email,name,avatar,phone,address,role FROM users WHERE id = ?').get(userId);
+    const row = await pgQueryOne('SELECT id,email,name,avatar,phone,address,role FROM users WHERE id = $1', [userId]);
     if (!row) return res.status(404).json({ ok: false, error: 'user not found' });
     if (!JWT_SECRET) return res.status(500).json({ ok: false, error: 'server missing BB_JWT_SECRET' });
 
@@ -1208,7 +1154,6 @@ app.put('/api/auth/me', authMiddleware, (req, res) => {
   }
 });
 
-// Optional signup (off by default)
 app.post('/api/auth/signup', async (req, res) => {
   if (!ALLOW_SIGNUP) return res.status(403).json({ ok: false, error: 'signup disabled' });
 
@@ -1222,10 +1167,9 @@ app.post('/api/auth/signup', async (req, res) => {
   if (!email || !password || !name) return res.status(400).json({ ok: false, error: 'name, email, password required' });
   if (!JWT_SECRET) return res.status(500).json({ ok: false, error: 'server missing BB_JWT_SECRET' });
 
-  const exists = db.prepare('SELECT id FROM users WHERE lower(email) = ?').get(email);
+  const exists = await pgQueryOne('SELECT id FROM users WHERE lower(email) = $1', [email]);
   if (exists) return res.status(409).json({ ok: false, error: 'email already exists' });
 
-  // If 2FA is required, validate delivery configuration before creating an account.
   if (REQUIRE_2FA_ON_SIGNUP) {
     const method = (twoFaMethod === 'sms' || twoFaMethod === 'email') ? twoFaMethod : 'email';
     if (method === 'sms') {
@@ -1249,48 +1193,37 @@ app.post('/api/auth/signup', async (req, res) => {
 
   const id = nanoId();
   const hash = bcrypt.hashSync(password, 12);
-  const t = nowISO();
+  const t = new Date();
+
   try {
-    db.prepare('INSERT INTO users (id,email,password_hash,name,phone,role,created_at,updated_at) VALUES (?,?,?,?,?,?,?,?)')
-      .run(id, email, hash, name, phone, role, t, t);
+    await pool.query(
+      'INSERT INTO users (id,email,password_hash,name,phone,role,created_at,updated_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+      [id, email, hash, name, phone, role, t, t]
+    );
   } catch (e) {
-    // If a duplicate email got created concurrently, return a consistent error.
-    const msg = String(e?.message || '').toLowerCase();
-    if (msg.includes('unique') || msg.includes('constraint')) {
-      return res.status(409).json({ ok: false, error: 'email already exists' });
-    }
+    if (isPgUniqueViolation(e)) return res.status(409).json({ ok: false, error: 'email already exists' });
     return res.status(500).json({ ok: false, error: e?.message || 'signup failed' });
   }
 
   const user = { id, email, name, role };
 
-  // For end-to-end testing, default to requiring 2FA on signup.
   if (REQUIRE_2FA_ON_SIGNUP) {
     const method = (twoFaMethod === 'sms' || twoFaMethod === 'email') ? twoFaMethod : 'email';
-    if (method === 'sms' && !ENABLE_SMS_2FA) {
-      return res.status(400).json({ ok: false, error: 'SMS 2FA is currently disabled' });
-    }
-    if (method === 'email' && !ENABLE_EMAIL_2FA) {
-      return res.status(400).json({ ok: false, error: 'Email 2FA is currently disabled' });
-    }
+    if (method === 'sms' && !ENABLE_SMS_2FA) return res.status(400).json({ ok: false, error: 'SMS 2FA is currently disabled' });
+    if (method === 'email' && !ENABLE_EMAIL_2FA) return res.status(400).json({ ok: false, error: 'Email 2FA is currently disabled' });
 
     let destination = '';
     if (method === 'sms') {
       destination = normalizeE164Phone(phone);
-      if (!destination) {
-        return res.status(400).json({ ok: false, error: 'phone required for sms 2fa (E.164 format, e.g. +15551234567)' });
-      }
+      if (!destination) return res.status(400).json({ ok: false, error: 'phone required for sms 2fa (E.164 format, e.g. +15551234567)' });
     } else {
       destination = normalizeEmail(email);
-      if (!destination) {
-        return res.status(400).json({ ok: false, error: 'valid email required for email 2fa' });
-      }
+      if (!destination) return res.status(400).json({ ok: false, error: 'valid email required for email 2fa' });
     }
 
     const ch = create2faChallenge({ userId: id, method, destination });
     slog.info('auth', '2FA challenge created (signup)', { method, to: maskDest(method, destination), userId: id });
 
-    // Deliver the code (production/TestFlight). Only log/return the code when explicitly enabled.
     if (DEBUG_2FA_RETURN_CODE) {
       slog.debug('auth', '2FA code (dev)', { challengeId: ch.challengeId, code: ch.code });
     } else {
@@ -1298,8 +1231,7 @@ app.post('/api/auth/signup', async (req, res) => {
         await deliver2faCode({ method, destination, code: ch.code });
         slog.info('auth', '2FA code delivered', { method, to: maskDest(method, destination), challengeId: ch.challengeId });
       } catch (e) {
-        // Roll back created user on delivery failure to avoid orphan accounts.
-        try { db.prepare('DELETE FROM users WHERE id = ?').run(id); } catch (_) {}
+        try { await pool.query('DELETE FROM users WHERE id = $1', [id]); } catch (_) {}
         try { twoFaChallenges.delete(ch.challengeId); } catch (_) {}
         slog.error('auth', '2FA delivery failed', { method, to: maskDest(method, destination), message: e?.message || String(e) });
         const payload = { ok: false, error: '2FA delivery failed; contact support' };
@@ -1308,14 +1240,7 @@ app.post('/api/auth/signup', async (req, res) => {
       }
     }
 
-    const payload = {
-      ok: true,
-      user,
-      requires2fa: true,
-      method,
-      to: maskDest(method, destination),
-      challengeId: ch.challengeId,
-    };
+    const payload = { ok: true, user, requires2fa: true, method, to: maskDest(method, destination), challengeId: ch.challengeId };
     if (DEBUG_2FA_RETURN_CODE) payload.devCode = ch.code;
     return res.status(201).json(payload);
   }
@@ -1324,8 +1249,7 @@ app.post('/api/auth/signup', async (req, res) => {
   return res.status(201).json({ token, user, requires2fa: false });
 });
 
-// Verify 2FA challenge and mint an auth token.
-app.post('/api/auth/2fa/verify', (req, res) => {
+app.post('/api/auth/2fa/verify', async (req, res) => {
   const challengeId = (req.body && req.body.challengeId) ? String(req.body.challengeId).trim() : '';
   const code = (req.body && req.body.code) ? String(req.body.code).trim() : '';
   if (!challengeId || !code) return res.status(400).json({ ok: false, error: 'challengeId and code required' });
@@ -1333,7 +1257,7 @@ app.post('/api/auth/2fa/verify', (req, res) => {
   const result = consume2faChallenge(challengeId, code);
   if (!result.ok) return res.status(401).json({ ok: false, error: result.error || 'verification failed' });
 
-  const row = db.prepare('SELECT * FROM users WHERE id = ?').get(result.userId);
+  const row = await pgQueryOne('SELECT * FROM users WHERE id = $1', [result.userId]);
   if (!row) return res.status(404).json({ ok: false, error: 'user not found' });
   if (!JWT_SECRET) return res.status(500).json({ ok: false, error: 'server missing BB_JWT_SECRET' });
 
@@ -1343,7 +1267,6 @@ app.post('/api/auth/2fa/verify', (req, res) => {
   return res.json({ ok: true, token, user });
 });
 
-// Resend SMS 2FA code with a cooldown.
 app.post('/api/auth/2fa/resend', async (req, res) => {
   const challengeId = (req.body && req.body.challengeId) ? String(req.body.challengeId).trim() : '';
   if (!challengeId) return res.status(400).json({ ok: false, error: 'challengeId required' });
@@ -1374,11 +1297,11 @@ app.post('/api/auth/2fa/resend', async (req, res) => {
 });
 
 // Board / Posts
-app.get('/api/board', authMiddleware, (req, res) => {
-  const rows = db.prepare('SELECT * FROM posts ORDER BY datetime(created_at) DESC').all();
+app.get('/api/board', authMiddleware, async (req, res) => {
+  const rows = await pgQueryAll('SELECT * FROM posts ORDER BY created_at DESC', []);
   const out = rows.map((r) => {
-    const author = safeJsonParse(r.author_json, null);
-    const comments = safeJsonParse(r.comments_json, []);
+    const author = r.author_json && typeof r.author_json === 'object' ? r.author_json : null;
+    const comments = Array.isArray(r.comments_json) ? r.comments_json : (r.comments_json && typeof r.comments_json === 'object' ? r.comments_json : []);
     return {
       id: r.id,
       author,
@@ -1386,25 +1309,28 @@ app.get('/api/board', authMiddleware, (req, res) => {
       body: r.body || '',
       text: r.body || '',
       image: r.image || undefined,
-      likes: r.likes || 0,
-      shares: r.shares || 0,
+      likes: Number(r.likes) || 0,
+      shares: Number(r.shares) || 0,
       comments,
-      createdAt: r.created_at,
+      createdAt: toIso(r.created_at),
     };
   });
   res.json(out);
 });
 
-app.post('/api/board', authMiddleware, (req, res) => {
+app.post('/api/board', authMiddleware, async (req, res) => {
   const title = (req.body && req.body.title) ? String(req.body.title) : '';
   const body = (req.body && (req.body.body || req.body.text)) ? String(req.body.body || req.body.text) : '';
   const image = (req.body && req.body.image) ? String(req.body.image) : null;
 
   const id = nanoId();
-  const t = nowISO();
+  const t = new Date();
   const author = req.user ? { id: req.user.id, name: req.user.name } : null;
-  db.prepare('INSERT INTO posts (id, author_json, title, body, image, likes, shares, comments_json, created_at, updated_at) VALUES (?,?,?,?,?,?,?,?,?,?)')
-    .run(id, JSON.stringify(author), title, body, image, 0, 0, JSON.stringify([]), t, t);
+
+  await pool.query(
+    'INSERT INTO posts (id, author_json, title, body, image, likes, shares, comments_json, created_at, updated_at) VALUES ($1,$2::jsonb,$3,$4,$5,$6,$7,$8::jsonb,$9,$10)',
+    [id, jsonb(author), title, body, image, 0, 0, jsonb([]), t, t]
+  );
 
   res.status(201).json({
     id,
@@ -1416,35 +1342,35 @@ app.post('/api/board', authMiddleware, (req, res) => {
     likes: 0,
     shares: 0,
     comments: [],
-    createdAt: t,
+    createdAt: t.toISOString(),
   });
 });
 
-app.post('/api/board/like', authMiddleware, (req, res) => {
+app.post('/api/board/like', authMiddleware, async (req, res) => {
   const postId = (req.body && req.body.postId) ? String(req.body.postId) : '';
   if (!postId) return res.status(400).json({ ok: false, error: 'postId required' });
-  db.prepare('UPDATE posts SET likes = likes + 1, updated_at = ? WHERE id = ?').run(nowISO(), postId);
-  const row = db.prepare('SELECT likes, shares FROM posts WHERE id = ?').get(postId);
+  await pool.query('UPDATE posts SET likes = likes + 1, updated_at = $1 WHERE id = $2', [new Date(), postId]);
+  const row = await pgQueryOne('SELECT likes, shares FROM posts WHERE id = $1', [postId]);
   return res.json({ id: postId, likes: Number(row?.likes) || 0, shares: Number(row?.shares) || 0 });
 });
 
-app.post('/api/board/share', authMiddleware, (req, res) => {
+app.post('/api/board/share', authMiddleware, async (req, res) => {
   const postId = (req.body && req.body.postId) ? String(req.body.postId) : '';
   if (!postId) return res.status(400).json({ ok: false, error: 'postId required' });
-  db.prepare('UPDATE posts SET shares = shares + 1, updated_at = ? WHERE id = ?').run(nowISO(), postId);
-  const row = db.prepare('SELECT likes, shares FROM posts WHERE id = ?').get(postId);
+  await pool.query('UPDATE posts SET shares = shares + 1, updated_at = $1 WHERE id = $2', [new Date(), postId]);
+  const row = await pgQueryOne('SELECT likes, shares FROM posts WHERE id = $1', [postId]);
   return res.json({ id: postId, likes: Number(row?.likes) || 0, shares: Number(row?.shares) || 0 });
 });
 
-app.post('/api/board/comments', authMiddleware, (req, res) => {
+app.post('/api/board/comments', authMiddleware, async (req, res) => {
   const postId = (req.body && req.body.postId) ? String(req.body.postId) : '';
   const raw = (req.body && req.body.comment) ? req.body.comment : null;
   if (!postId || raw == null) return res.status(400).json({ ok: false, error: 'postId and comment required' });
 
-  const row = db.prepare('SELECT comments_json FROM posts WHERE id = ?').get(postId);
+  const row = await pgQueryOne('SELECT comments_json FROM posts WHERE id = $1', [postId]);
   if (!row) return res.status(404).json({ ok: false, error: 'post not found' });
 
-  const comments = safeJsonParse(row.comments_json, []);
+  const comments = Array.isArray(row.comments_json) ? row.comments_json : [];
 
   const author = { id: req.user.id, name: req.user.name };
   const createdAt = nowISO();
@@ -1485,22 +1411,21 @@ app.post('/api/board/comments', authMiddleware, (req, res) => {
     parent.replies.push(created);
   }
 
-  db.prepare('UPDATE posts SET comments_json = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(comments), nowISO(), postId);
+  await pool.query('UPDATE posts SET comments_json = $1::jsonb, updated_at = $2 WHERE id = $3', [jsonb(comments), new Date(), postId]);
   slog.debug('api', 'Comment created', { postId, parentId: parentId || undefined, commentId: created?.id });
   return res.status(201).json(created);
 });
 
-// React to a comment (toggle per-user reactions)
-app.post('/api/board/comments/react', authMiddleware, (req, res) => {
+app.post('/api/board/comments/react', authMiddleware, async (req, res) => {
   const postId = (req.body && req.body.postId) ? String(req.body.postId) : '';
   const commentId = (req.body && req.body.commentId) ? String(req.body.commentId) : '';
   const emoji = (req.body && req.body.emoji) ? String(req.body.emoji) : '';
   if (!postId || !commentId || !emoji) return res.status(400).json({ ok: false, error: 'postId, commentId, emoji required' });
 
-  const row = db.prepare('SELECT comments_json FROM posts WHERE id = ?').get(postId);
+  const row = await pgQueryOne('SELECT comments_json FROM posts WHERE id = $1', [postId]);
   if (!row) return res.status(404).json({ ok: false, error: 'post not found' });
 
-  const comments = safeJsonParse(row.comments_json, []);
+  const comments = Array.isArray(row.comments_json) ? row.comments_json : [];
   const uid = req.user?.id ? String(req.user.id) : 'anonymous';
 
   const applyReaction = (c) => {
@@ -1531,48 +1456,50 @@ app.post('/api/board/comments/react', authMiddleware, (req, res) => {
   }
   if (!updated) return res.status(404).json({ ok: false, error: 'comment not found' });
 
-  db.prepare('UPDATE posts SET comments_json = ?, updated_at = ? WHERE id = ?').run(JSON.stringify(comments), nowISO(), postId);
+  await pool.query('UPDATE posts SET comments_json = $1::jsonb, updated_at = $2 WHERE id = $3', [jsonb(comments), new Date(), postId]);
   slog.debug('api', 'Comment reacted', { postId, commentId, emoji });
   return res.json(updated);
 });
 
 // Messages / Chats
-app.get('/api/messages', authMiddleware, (req, res) => {
-  const rows = db.prepare('SELECT * FROM messages ORDER BY datetime(created_at) ASC').all();
+app.get('/api/messages', authMiddleware, async (req, res) => {
+  const rows = await pgQueryAll('SELECT * FROM messages ORDER BY created_at ASC', []);
   const out = rows.map((r) => ({
     id: r.id,
     threadId: r.thread_id || undefined,
     body: r.body,
-    sender: safeJsonParse(r.sender_json, null),
-    to: safeJsonParse(r.to_json, []),
-    createdAt: r.created_at,
+    sender: (r.sender_json && typeof r.sender_json === 'object') ? r.sender_json : null,
+    to: Array.isArray(r.to_json) ? r.to_json : [],
+    createdAt: toIso(r.created_at),
   }));
   res.json(out);
 });
 
-app.post('/api/messages', authMiddleware, (req, res) => {
+app.post('/api/messages', authMiddleware, async (req, res) => {
   const threadId = (req.body && (req.body.threadId || req.body.thread_id)) ? String(req.body.threadId || req.body.thread_id) : null;
   const body = (req.body && req.body.body) ? String(req.body.body) : '';
   const to = (req.body && Array.isArray(req.body.to)) ? req.body.to : [];
   if (!body) return res.status(400).json({ ok: false, error: 'body required' });
 
   const id = nanoId();
-  const t = nowISO();
+  const t = new Date();
   const sender = req.user ? { id: req.user.id, name: req.user.name } : null;
 
-  db.prepare('INSERT INTO messages (id, thread_id, body, sender_json, to_json, created_at) VALUES (?,?,?,?,?,?)')
-    .run(id, threadId, body, JSON.stringify(sender), JSON.stringify(to), t);
+  await pool.query(
+    'INSERT INTO messages (id, thread_id, body, sender_json, to_json, created_at) VALUES ($1,$2,$3,$4::jsonb,$5::jsonb,$6)',
+    [id, threadId, body, jsonb(sender), jsonb(to), t]
+  );
 
-  res.status(201).json({ id, threadId: threadId || undefined, body, sender, to, createdAt: t });
+  res.status(201).json({ id, threadId: threadId || undefined, body, sender, to, createdAt: t.toISOString() });
 });
 
 // Urgent memos
-app.get('/api/urgent-memos', authMiddleware, (req, res) => {
-  const rows = db.prepare('SELECT * FROM urgent_memos ORDER BY datetime(created_at) DESC').all();
+app.get('/api/urgent-memos', authMiddleware, async (req, res) => {
+  const rows = await pgQueryAll('SELECT * FROM urgent_memos ORDER BY created_at DESC', []);
   res.json(rows.map((r) => {
-    const memo = safeJsonParse(r.memo_json, null);
+    const memo = (r.memo_json && typeof r.memo_json === 'object') ? r.memo_json : null;
     const base = (memo && typeof memo === 'object') ? memo : {};
-    const createdAt = r.created_at;
+    const createdAt = toIso(r.created_at);
     const title = r.title || base.title || base.subject || 'Urgent';
     const body = r.body || base.body || base.note || '';
     return {
@@ -1582,64 +1509,78 @@ app.get('/api/urgent-memos', authMiddleware, (req, res) => {
       body,
       ack: Boolean(r.ack),
       status: r.status || base.status || undefined,
-      respondedAt: r.responded_at || base.respondedAt || undefined,
+      respondedAt: toIso(r.responded_at) || base.respondedAt || undefined,
       date: base.date || createdAt,
       createdAt,
     };
   }));
 });
 
-app.post('/api/urgent-memos', authMiddleware, (req, res) => {
+app.post('/api/urgent-memos', authMiddleware, async (req, res) => {
   const payload = (req.body && typeof req.body === 'object') ? req.body : {};
   const id = payload.id ? String(payload.id) : nanoId();
-  const t = nowISO();
+  const t = new Date();
   const title = payload.title ? String(payload.title) : (payload.subject ? String(payload.subject) : 'Urgent');
   const body = payload.body ? String(payload.body) : (payload.note ? String(payload.note) : '');
   const status = payload.status ? String(payload.status) : (payload.type === 'time_update' ? 'pending' : (payload.type ? 'sent' : null));
-  const memoObj = { ...payload, id, title, body, createdAt: t, date: t, status: status || payload.status };
+  const memoObj = { ...payload, id, title, body, createdAt: t.toISOString(), date: t.toISOString(), status: status || payload.status };
 
-  db.prepare('INSERT OR REPLACE INTO urgent_memos (id, title, body, memo_json, status, responded_at, ack, created_at) VALUES (?,?,?,?,?,?,?,?)')
-    .run(id, title, body, JSON.stringify(memoObj), status, null, 0, t);
+  await pool.query(
+    `INSERT INTO urgent_memos (id, title, body, memo_json, status, responded_at, ack, created_at, updated_at)
+     VALUES ($1,$2,$3,$4::jsonb,$5,$6,$7,$8,$9)
+     ON CONFLICT (id) DO UPDATE SET
+       title=excluded.title,
+       body=excluded.body,
+       memo_json=excluded.memo_json,
+       status=excluded.status,
+       responded_at=excluded.responded_at,
+       ack=excluded.ack,
+       created_at=excluded.created_at,
+       updated_at=excluded.updated_at`,
+    [id, title, body, jsonb(memoObj), status, null, 0, t, t]
+  );
+
   slog.info('api', 'Urgent memo created', { memoId: id, type: memoObj.type, status: status || undefined });
   res.status(201).json(memoObj);
 });
 
-app.post('/api/urgent-memos/respond', authMiddleware, (req, res) => {
+app.post('/api/urgent-memos/respond', authMiddleware, async (req, res) => {
   const memoId = (req.body && (req.body.memoId || req.body.id)) ? String(req.body.memoId || req.body.id) : '';
   const action = (req.body && (req.body.action || req.body.status)) ? String(req.body.action || req.body.status) : '';
   if (!memoId || !action) return res.status(400).json({ ok: false, error: 'memoId and action required' });
 
-  const row = db.prepare('SELECT * FROM urgent_memos WHERE id = ?').get(memoId);
+  const row = await pgQueryOne('SELECT * FROM urgent_memos WHERE id = $1', [memoId]);
   if (!row) return res.status(404).json({ ok: false, error: 'memo not found' });
 
-  const t = nowISO();
-  const memo = safeJsonParse(row.memo_json, null);
-  const base = (memo && typeof memo === 'object') ? memo : {};
-  const next = { ...base, id: memoId, status: action, respondedAt: t };
+  const t = new Date();
+  const base = (row.memo_json && typeof row.memo_json === 'object') ? row.memo_json : {};
+  const next = { ...base, id: memoId, status: action, respondedAt: t.toISOString() };
 
-  db.prepare('UPDATE urgent_memos SET status = ?, responded_at = ?, memo_json = ? WHERE id = ?')
-    .run(action, t, JSON.stringify(next), memoId);
+  await pool.query(
+    'UPDATE urgent_memos SET status = $1, responded_at = $2, memo_json = $3::jsonb, updated_at = $4 WHERE id = $5',
+    [action, t, jsonb(next), t, memoId]
+  );
+
   slog.info('api', 'Urgent memo responded', { memoId, action });
   return res.json({ ok: true, memo: next });
 });
 
-app.post('/api/urgent-memos/read', authMiddleware, (req, res) => {
+app.post('/api/urgent-memos/read', authMiddleware, async (req, res) => {
   const ids = Array.isArray(req.body && req.body.memoIds) ? req.body.memoIds.map(String) : [];
   if (!ids.length) return res.json({ ok: true });
-  const t = nowISO();
-  const stmt = db.prepare('UPDATE urgent_memos SET ack = 1 WHERE id = ?');
-  const tx = db.transaction((arr) => { arr.forEach((id) => stmt.run(id)); });
-  tx(ids);
-  res.json({ ok: true, updatedAt: t });
+  await pool.query('UPDATE urgent_memos SET ack = 1 WHERE id = ANY($1::text[])', [ids]);
+  res.json({ ok: true, updatedAt: nowISO() });
 });
 
-// Arrival pings (stores basic history)
-app.post('/api/arrival/ping', authMiddleware, (req, res) => {
+// Arrival pings
+app.post('/api/arrival/ping', authMiddleware, async (req, res) => {
   const payload = req.body || {};
   const id = nanoId();
-  const createdAt = nowISO();
-  db.prepare('INSERT INTO arrival_pings (id, user_id, role, child_id, lat, lng, event_id, when_iso, created_at) VALUES (?,?,?,?,?,?,?,?,?)')
-    .run(
+  const createdAt = new Date();
+
+  await pool.query(
+    'INSERT INTO arrival_pings (id, user_id, role, child_id, lat, lng, event_id, when_iso, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9)',
+    [
       id,
       payload.userId ? String(payload.userId) : (req.user ? String(req.user.id) : null),
       payload.role ? String(payload.role) : (req.user ? String(req.user.role) : null),
@@ -1648,12 +1589,10 @@ app.post('/api/arrival/ping', authMiddleware, (req, res) => {
       Number.isFinite(Number(payload.lng)) ? Number(payload.lng) : null,
       payload.eventId ? String(payload.eventId) : null,
       payload.when ? String(payload.when) : null,
-      createdAt
-    );
+      createdAt,
+    ]
+  );
 
-  // Generate an admin-facing arrival alert (deduped) when a parent/therapist arrives.
-  // Client already enforces schedule window and drop-zone check; the server stores a single alert
-  // per user/child/shift within a short window to avoid spamming.
   try {
     const r = String(payload.role || (req.user ? req.user.role : '') || '').trim().toLowerCase();
     if (r === 'parent' || r === 'therapist') {
@@ -1662,59 +1601,41 @@ app.post('/api/arrival/ping', authMiddleware, (req, res) => {
       const shiftId = payload.shiftId != null ? String(payload.shiftId) : null;
       const withinMins = 10;
 
-      const recent = db.prepare(`
-        SELECT id FROM urgent_memos
-        WHERE type = 'arrival_alert'
-          AND proposer_id = ?
-          AND (child_id IS ? OR child_id = ?)
-          AND (json_extract(meta_json, '$.shiftId') IS ? OR json_extract(meta_json, '$.shiftId') = ?)
-          AND datetime(created_at) > datetime('now', ?)
-        LIMIT 1
-      `).get(
-        actorId,
-        childId, childId,
-        shiftId, shiftId,
-        `-${withinMins} minutes`
+      const recent = await pgQueryOne(
+        `SELECT id FROM urgent_memos
+         WHERE type = 'arrival_alert'
+           AND proposer_id = $1
+           AND (($2::text IS NULL AND child_id IS NULL) OR child_id = $2)
+           AND (($3::text IS NULL AND (meta_json->>'shiftId') IS NULL) OR (meta_json->>'shiftId') = $3)
+           AND created_at > (now() - $4::interval)
+         LIMIT 1`,
+        [actorId, childId, shiftId, `${withinMins} minutes`]
       );
 
       if (!recent) {
         const alertId = nanoId();
-        const t = nowISO();
+        const t = new Date();
         const meta = {
           lat: Number.isFinite(Number(payload.lat)) ? Number(payload.lat) : null,
           lng: Number.isFinite(Number(payload.lng)) ? Number(payload.lng) : null,
           distanceMiles: payload.distanceMiles != null ? Number(payload.distanceMiles) : null,
           dropZoneMiles: payload.dropZoneMiles != null ? Number(payload.dropZoneMiles) : null,
           eventId: payload.eventId ? String(payload.eventId) : null,
-          shiftId: shiftId,
+          shiftId,
           when: payload.when ? String(payload.when) : null,
         };
         const title = r === 'therapist' ? 'Therapist Arrival' : 'Parent Arrival';
-        const note = ''; // UI can derive display copy
-        db.prepare(`
-          INSERT INTO urgent_memos (
+
+        await pool.query(
+          `INSERT INTO urgent_memos (
             id, type, status, proposer_id, actor_role, child_id, title, body, note, meta_json, ack, created_at, updated_at
-          ) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?)
-        `).run(
-          alertId,
-          'arrival_alert',
-          'pending',
-          actorId,
-          r,
-          childId,
-          title,
-          '',
-          note,
-          JSON.stringify(meta),
-          0,
-          t,
-          t
+          ) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10::jsonb,$11,$12,$13)`,
+          [alertId, 'arrival_alert', 'pending', actorId, r, childId, title, '', '', jsonb(meta), 0, t, t]
         );
 
-        // Push notify admins
         try {
-          const adminIds = getAdminUserIds();
-          const tokens = getPushTokensForUsers(adminIds, { kind: 'updates' });
+          const adminIds = await getAdminUserIds();
+          const tokens = await getPushTokensForUsers(adminIds, { kind: 'updates' });
           setTimeout(() => {
             sendExpoPush(tokens, {
               title,
@@ -1728,15 +1649,15 @@ app.post('/api/arrival/ping', authMiddleware, (req, res) => {
       }
     }
   } catch (_) {
-    // ignore alert generation failures
+    // ignore
   }
 
   res.json({ ok: true });
 });
 
 // Time change proposals
-app.get('/api/children/time-change-proposals', authMiddleware, (req, res) => {
-  const rows = db.prepare('SELECT * FROM time_change_proposals ORDER BY datetime(created_at) DESC').all();
+app.get('/api/children/time-change-proposals', authMiddleware, async (req, res) => {
+  const rows = await pgQueryAll('SELECT * FROM time_change_proposals ORDER BY created_at DESC', []);
   res.json(rows.map((r) => ({
     id: r.id,
     childId: r.child_id,
@@ -1745,35 +1666,41 @@ app.get('/api/children/time-change-proposals', authMiddleware, (req, res) => {
     note: r.note,
     proposerId: r.proposer_id,
     action: r.action,
-    createdAt: r.created_at,
+    createdAt: toIso(r.created_at),
   })));
 });
 
-app.post('/api/children/propose-time-change', authMiddleware, (req, res) => {
+app.post('/api/children/propose-time-change', authMiddleware, async (req, res) => {
   const id = nanoId();
   const p = req.body || {};
-  const createdAt = nowISO();
-  db.prepare('INSERT INTO time_change_proposals (id, child_id, type, proposed_iso, note, proposer_id, action, created_at) VALUES (?,?,?,?,?,?,?,?)')
-    .run(
+  const createdAt = new Date();
+
+  await pool.query(
+    'INSERT INTO time_change_proposals (id, child_id, type, proposed_iso, note, proposer_id, action, created_at) VALUES ($1,$2,$3,$4,$5,$6,$7,$8)',
+    [
       id,
       p.childId != null ? String(p.childId) : null,
       p.type ? String(p.type) : 'pickup',
-      p.proposedISO ? String(p.proposedISO) : createdAt,
+      p.proposedISO ? String(p.proposedISO) : createdAt.toISOString(),
       p.note ? String(p.note) : '',
       p.proposerId != null ? String(p.proposerId) : (req.user ? String(req.user.id) : null),
       null,
-      createdAt
-    );
-  res.status(201).json({ id, ...p, proposerId: p.proposerId != null ? String(p.proposerId) : (req.user ? String(req.user.id) : null), createdAt });
+      createdAt,
+    ]
+  );
+
+  res.status(201).json({ id, ...p, proposerId: p.proposerId != null ? String(p.proposerId) : (req.user ? String(req.user.id) : null), createdAt: createdAt.toISOString() });
 });
 
-app.post('/api/children/respond-time-change', authMiddleware, (req, res) => {
+app.post('/api/children/respond-time-change', authMiddleware, async (req, res) => {
   const proposalId = (req.body && req.body.proposalId) ? String(req.body.proposalId) : '';
   const action = (req.body && req.body.action) ? String(req.body.action) : '';
   if (!proposalId || !action) return res.status(400).json({ ok: false, error: 'proposalId and action required' });
-  db.prepare('UPDATE time_change_proposals SET action = ? WHERE id = ?').run(action, proposalId);
-  const row = db.prepare('SELECT * FROM time_change_proposals WHERE id = ?').get(proposalId);
+
+  await pool.query('UPDATE time_change_proposals SET action = $1 WHERE id = $2', [action, proposalId]);
+  const row = await pgQueryOne('SELECT * FROM time_change_proposals WHERE id = $1', [proposalId]);
   if (!row) return res.status(404).json({ ok: false, error: 'not found' });
+
   res.json({
     ok: true,
     item: {
@@ -1784,13 +1711,13 @@ app.post('/api/children/respond-time-change', authMiddleware, (req, res) => {
       note: row.note,
       proposerId: row.proposer_id,
       action: row.action,
-      createdAt: row.created_at,
+      createdAt: toIso(row.created_at),
     },
   });
 });
 
 // Push tokens
-app.post('/api/push/register', authMiddleware, (req, res) => {
+app.post('/api/push/register', authMiddleware, async (req, res) => {
   const token = (req.body && req.body.token) ? String(req.body.token) : '';
   const userId = (req.body && req.body.userId) ? String(req.body.userId) : (req.user ? String(req.user.id) : '');
   const platform = (req.body && req.body.platform) ? String(req.body.platform) : '';
@@ -1799,29 +1726,30 @@ app.post('/api/push/register', authMiddleware, (req, res) => {
 
   if (!token) return res.status(400).json({ ok: false, error: 'token required' });
 
-  const t = nowISO();
-  db.prepare(`
-    INSERT INTO push_tokens (token, user_id, platform, enabled, preferences_json, updated_at)
-    VALUES (?, ?, ?, ?, ?, ?)
-    ON CONFLICT(token) DO UPDATE SET
-      user_id=excluded.user_id,
-      platform=excluded.platform,
-      enabled=excluded.enabled,
-      preferences_json=excluded.preferences_json,
-      updated_at=excluded.updated_at
-  `).run(token, userId, platform, enabled, JSON.stringify(preferences), t);
+  const t = new Date();
+  await pool.query(
+    `INSERT INTO push_tokens (token, user_id, platform, enabled, preferences_json, updated_at)
+     VALUES ($1,$2,$3,$4,$5::jsonb,$6)
+     ON CONFLICT (token) DO UPDATE SET
+       user_id=excluded.user_id,
+       platform=excluded.platform,
+       enabled=excluded.enabled,
+       preferences_json=excluded.preferences_json,
+       updated_at=excluded.updated_at`,
+    [token, userId, platform, enabled, jsonb(preferences), t]
+  );
 
   res.json({ ok: true, stored: true });
 });
 
-app.post('/api/push/unregister', authMiddleware, (req, res) => {
+app.post('/api/push/unregister', authMiddleware, async (req, res) => {
   const token = (req.body && req.body.token) ? String(req.body.token) : '';
   if (!token) return res.status(400).json({ ok: false, error: 'token required' });
-  db.prepare('DELETE FROM push_tokens WHERE token = ?').run(token);
+  await pool.query('DELETE FROM push_tokens WHERE token = $1', [token]);
   res.json({ ok: true, removed: true });
 });
 
-// Minimal compatibility endpoints for features not yet backed
+// Minimal compatibility endpoints
 app.post('/api/media/sign', authMiddleware, (req, res) => {
   const key = (req.body && req.body.key) ? String(req.body.key) : `uploads/${Date.now()}`;
   res.json({ url: `http://localhost:9000/${key}`, fields: {}, key });
@@ -1832,8 +1760,6 @@ app.get('/api/link/preview', authMiddleware, (req, res) => {
   res.json({ ok: true, url, title: url, description: '', image: '' });
 });
 
-// Media upload (local disk). The mobile app uses this when attaching an image to a post.
-// Expects multipart/form-data with a `file` field.
 app.post('/api/media/upload', authMiddleware, upload.single('file'), (req, res) => {
   const f = req.file;
   if (!f) return res.status(400).json({ ok: false, error: 'file required' });
@@ -1851,11 +1777,43 @@ app.post('/api/media/upload', authMiddleware, upload.single('file'), (req, res) 
   });
 });
 
-app.listen(PORT, '0.0.0.0', () => {
-  console.log(`[api] BuddyBoard API listening on :${PORT}`);
-  console.log(`[api] DB: ${DB_PATH}`);
+async function main() {
+  await initDb();
+  await seedAdminUser();
+
+  // Best-effort: keep ABA relationship tables in sync at startup.
+  try {
+    const client = await pool.connect();
+    try {
+      await client.query('BEGIN');
+      await rebuildAbaRelationshipsFromDirectoryPg(client);
+      await client.query('COMMIT');
+    } catch (e) {
+      try { await client.query('ROLLBACK'); } catch (e2) {}
+    } finally {
+      client.release();
+    }
+  } catch (_) {
+    // ignore
+  }
+
+  app.listen(PORT, '0.0.0.0', () => {
+    // eslint-disable-next-line no-console
+    console.log(`[api] BuddyBoard API listening on :${PORT}`);
+    // eslint-disable-next-line no-console
+    console.log(`[api] Postgres: ${DATABASE_URL.replace(/:\/\/.*@/, '://***@')}`);
+    // eslint-disable-next-line no-console
+    console.log(`[api] Data dir: ${DATA_DIR}`);
+  });
+}
+
+main().catch((e) => {
+  // eslint-disable-next-line no-console
+  console.error('[api] Failed to start:', e);
+  process.exit(1);
 });
 
 process.on('uncaughtException', (e) => {
+  // eslint-disable-next-line no-console
   console.error('[api] Uncaught', e);
 });

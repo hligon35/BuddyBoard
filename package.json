@@ -19,7 +19,9 @@
     "api:mock": "cross-env PORT=3006 node ./scripts/api-mock.js",
     "smoke": "node ./scripts/smoke-e2e.js",
     "smoke:mock": "cross-env BB_BASE_URL=http://127.0.0.1:3006 node ./scripts/smoke-e2e.js",
-    "smoke:server": "cross-env BB_BASE_URL=http://127.0.0.1:3005 node ./scripts/smoke-e2e.js"
+    "smoke:server": "cross-env BB_BASE_URL=http://127.0.0.1:3005 node ./scripts/smoke-e2e.js",
+    "db:dups": "node ./scripts/find-duplicate-users.js",
+    "db:migrate:pg": "node ./scripts/migrate-sqlite-to-postgres.js"
   },
   "dependencies": {
     "@react-native-async-storage/async-storage": "^2.2.0",
@@ -56,6 +58,7 @@
     "multer": "^1.4.5-lts.2",
     "nativewind": "^4.2.1",
     "nodemailer": "^6.10.1",
+    "pg": "^8.13.1",
     "react": "19.1.0",
     "react-dom": "19.1.0",
     "react-native": "0.81.5",

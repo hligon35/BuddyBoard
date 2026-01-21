@@ -3,6 +3,15 @@ import { BASE_URL, EMULATOR_HOST } from './config';
 import { Platform } from 'react-native';
 import { logger } from './utils/logger';
 
+function normalizeEmailInput(email) {
+  try {
+    if (email == null) return '';
+    return String(email).trim().toLowerCase();
+  } catch (e) {
+    return '';
+  }
+}
+
 function isPhysicalDevice() {
   try {
     // Lazy require to avoid hard dependency in non-Expo runtimes.
@@ -233,7 +242,7 @@ export function setAuthToken(token) {
 
 // Official axios-backed methods
 export async function login(email, password) {
-  const res = await client.post('/api/auth/login', { email, password });
+  const res = await client.post('/api/auth/login', { email: normalizeEmailInput(email), password });
   return res.data;
 }
 
@@ -243,7 +252,9 @@ export async function loginWithGoogle(idToken) {
 }
 
 export async function signup(payload) {
-  const res = await client.post('/api/auth/signup', payload);
+  const next = { ...(payload || {}) };
+  if (Object.prototype.hasOwnProperty.call(next, 'email')) next.email = normalizeEmailInput(next.email);
+  const res = await client.post('/api/auth/signup', next);
   return res.data;
 }
 
@@ -375,6 +386,53 @@ export async function getTimeChangeProposals() {
   } catch (err) {
     // If the backend doesn't implement this route yet, treat as empty list
     if (err && err.response && err.response.status === 404) return [];
+    throw err;
+  }
+}
+
+// Directory (children/parents/therapists). Admin-only in the API.
+export async function getDirectory() {
+  try {
+    const res = await client.get('/api/directory');
+    return res.data;
+  } catch (err) {
+    // Allow older backends (or non-admin users) to function without directory sync.
+    const status = err && err.response && err.response.status;
+    if (status === 404 || status === 403) return null;
+    throw err;
+  }
+}
+
+export async function mergeDirectory(payload) {
+  try {
+    const res = await client.post('/api/directory/merge', payload);
+    return res.data;
+  } catch (err) {
+    const status = err && err.response && err.response.status;
+    if (status === 404 || status === 403) return { ok: false, skipped: true };
+    throw err;
+  }
+}
+
+// Org settings (arrival/business). Readable by any authed user; writable by admins.
+export async function getOrgSettings() {
+  try {
+    const res = await client.get('/api/org-settings');
+    return res.data;
+  } catch (err) {
+    const status = err && err.response && err.response.status;
+    if (status === 404) return null;
+    throw err;
+  }
+}
+
+export async function updateOrgSettings(payload) {
+  try {
+    const res = await client.put('/api/org-settings', payload);
+    return res.data;
+  } catch (err) {
+    const status = err && err.response && err.response.status;
+    if (status === 404 || status === 403) return { ok: false, skipped: true };
     throw err;
   }
 }
