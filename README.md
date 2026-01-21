@@ -222,6 +222,16 @@ npm run update:ios:production:arm -- -m "Hotfix"
 
 Under the hood this runs `npx expo export --no-bytecode` and then `eas update --skip-bundler --input-dir dist`.
 
+If you need to publish Android or both platforms from ARM64, use:
+
+```sh
+# Publish an Android OTA update (ARM64-safe)
+npm run update:android:production:arm -- -m "Hotfix"
+
+# Publish both iOS + Android (ARM64-safe)
+npm run update:production:arm -- -m "Hotfix"
+```
+
 Crash reporting (Sentry) for internal builds
 -------------------------------------------
 For near-real-time debugging while testing internal iOS builds, the app supports Sentry crash/error reporting.
