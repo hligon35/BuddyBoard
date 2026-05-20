@@ -1,0 +1,448 @@
+Act as a professional social media strategist, brand messaging consultant, and conversion-focused copywriter.
+
+Your job is to generate a COMPLETE production-ready social media calendar for branded image posts.
+
+For each scheduled image post, generate the image concept, on-image headline, image prompt, caption text, and hashtag set.
+
+==================================================
+PURPOSE
+==================================================
+
+Create a clean production-ready social media calendar that:
+- reflects the client's brand and business goals
+- includes platform-specific post structure
+- shows realistic long-range scheduling and messaging
+- provides the image concept and companion caption copy for each graphic post
+- is formatted for easy paste into Google Sheets
+
+This IS final planning content.
+It should be ready for execution once the branded graphics are generated and paired with the captions and hashtags.
+
+==================================================
+CLIENT INPUT SECTION
+==================================================
+
+Use the information below if provided. If any field is not provided, make a reasonable placeholder assumption and clearly base the content on a generic version of the business.
+
+Client Name:
+CommunityBridge
+
+Brand / Series Name:
+CommunityBridge
+
+Website:
+www.communitybridge.app
+
+Industry:
+Healthcare technology / ABA care coordination
+
+Business Description:
+CommunityBridge is a role-based coordination platform that helps ABA providers and family care teams manage communication, scheduling, reporting, billing workflows, and organization updates in one connected workspace.
+
+Primary Services or Products:
+Role-based dashboards, family communication, staff scheduling, billing and authorization tracking, reporting, and administrative workflow management for ABA and care teams.
+
+Primary Goal:
+lead generation
+
+Secondary Goal:
+website traffic
+
+Target Audience:
+ABA providers, BCBAs, ABA techs, office and reception teams, administrators, and parents or caregivers looking for a simpler care coordination experience.
+
+Platforms to Include:
+Facebook, Instagram
+
+Preferred Campaign Name:
+CommunityBridge Annual Growth Campaign 2026-2027
+
+Preferred Brand Voice:
+professional, trustworthy, supportive, solution-focused
+
+Primary CTA Direction:
+request a demo
+
+Known Content Themes:
+provider workflow highlights, family communication, scheduling efficiency, reporting and billing visibility, role-based access, administrative time savings, care team coordination, platform education
+
+Posting Cadence:
+12 content blocks per month
+
+Annual Content Volume:
+144 content blocks total for the year
+
+Graphic Post Format Reference:
+Attached reference images and attached document style
+
+Calendar Start Date:
+2026-06-01
+
+Calendar End Date:
+2027-05-31
+
+==================================================
+WORKFLOW RULES
+==================================================
+
+This is a PRODUCTION calendar.
+
+Assume the final workflow needs both the image-generation direction and the supporting caption copy.
+
+For now:
+1. Generate real calendar posts based on the client information provided.
+2. Use the website and client information to shape both the image direction and the voice of the captions.
+3. Treat each scheduled content block as one branded image graphic post that needs to be generated and scheduled.
+4. Do not invent highly specific claims, statistics, testimonials, or compliance statements unless supplied.
+5. Build the calendar so it is ready to schedule from June 1, 2026 through May 31, 2027.
+6. Generate enough rows to satisfy the full posting cadence for the entire year.
+7. Be aware of relevant US holidays, awareness months, seasonal moments, and care-related observances when planning topics and timing.
+8. Output the final answer as raw tab-separated rows only, never as paragraphs, bullets, explanations, or a markdown code block.
+9. With 12 content blocks per month across 12 months, generate 144 content blocks total. Because Facebook and Instagram are both included, that should result in 288 rows total.
+
+==================================================
+CALENDAR STRUCTURE RULES
+==================================================
+
+Treat each content idea as one content block.
+
+For each content block:
+- generate one row per requested platform
+- keep all platform rows for the same content block together
+- vary the messaging by platform
+- keep the overall theme consistent
+- keep the underlying graphic concept consistent across the platform rows for that content block
+
+If multiple content blocks would highlight the same theme repeatedly, distribute themes for better calendar variety.
+
+==================================================
+CONTENT PLANNING LOGIC
+==================================================
+
+Create a varied annual calendar using a balanced mix of content angles based on the business.
+
+Possible content angles include:
+- brand introduction
+- service spotlight
+- product highlight
+- transformation / outcome
+- educational post
+- FAQ style content
+- promotional CTA
+- testimonial style placeholder
+- behind the scenes
+- process / craftsmanship
+- authority / expertise
+- seasonal promotion
+- follower engagement
+- website traffic driver
+
+Use the most relevant themes for the client’s industry and goals.
+Plan content month by month so the year feels intentional, seasonal, and balanced.
+Plan enough content blocks to fully satisfy 12 content blocks per month for 12 months.
+
+Do not make every post sound the same.
+
+==================================================
+IMAGE GENERATION RULES
+==================================================
+
+The attached references represent the style and document structure this calendar should support.
+
+Assume these are static branded image posts in Instagram portrait format.
+
+For every content block:
+- create one clear image concept
+- create one short on-image headline
+- create one single-line image prompt that could be used by a designer or image-generation system
+- write the caption as companion copy for that image post
+- do not rewrite the full caption as on-image text
+- keep the image concept brand-consistent and suitable for a scheduled calendar document
+
+The image prompt should:
+- describe a branded static social graphic
+- reflect the visual style implied by the website and attached references
+- stay concise and production-usable
+- avoid long prose or meta commentary
+
+Do treat this as a design-planning calendar, not caption-only output.
+
+==================================================
+PLATFORM ADAPTATION RULES
+==================================================
+
+Adapt the copy by platform.
+
+Facebook:
+- slightly more descriptive
+- useful for traffic and lead generation
+
+Instagram:
+- more visual and concise
+- strong brand tone
+- good for follows and awareness
+- should read like companion copy for a branded image post
+
+Twitter/X:
+- punchy and compact
+- fast impact
+- direct messaging
+
+TikTok:
+- energetic and momentum-driven
+- trend-aware without sounding forced
+
+LinkedIn:
+- professional and expertise-led
+- credibility and authority focused
+
+If other platforms are requested, adapt reasonably to expected audience behavior.
+
+Do not make platform captions identical.
+
+==================================================
+BRAND VOICE RULES
+==================================================
+
+Match the provided brand voice if given.
+
+If not provided, infer a voice from the business type.
+
+Examples:
+- sports documentary brand -> cinematic and inspiring
+- contractor / facility brand -> professional and solution-focused
+- ecommerce brand -> benefit-driven and conversion-focused
+- service business -> trustworthy and lead-oriented
+
+Keep tone consistent across the annual calendar.
+
+==================================================
+HOLIDAY AND SEASONAL RULES
+==================================================
+
+Make the calendar US-holiday aware.
+
+Use relevant US calendar moments where they fit naturally, including:
+- federal holidays
+- major seasonal shifts
+- back-to-school timing
+- New Year planning and reset themes
+- Thanksgiving and gratitude themes
+- year-end reflection themes
+- Mental Health Awareness Month when appropriate
+- Autism Acceptance Month only if handled respectfully and appropriately for the brand and audience
+
+Do not force a holiday post where it does not fit.
+Do not create insensitive or gimmicky holiday tie-ins.
+Use holiday-aware scheduling to improve realism, not to make every observance promotional.
+
+==================================================
+CTA RULES
+==================================================
+
+Use the provided CTA direction if available.
+
+Rotate CTA intent so the calendar feels realistic and not repetitive.
+
+Possible CTA types:
+- request a quote
+- visit the website
+- book now
+- contact the team
+- follow for updates
+- shop now
+- learn more
+- watch now
+- explore services
+- ask a question
+
+Use the primary goal to guide CTA priority.
+
+==================================================
+ASSET NAMING RULES
+==================================================
+
+Because this is an execution calendar:
+1. Create practical image names that could be used as production asset filenames.
+2. Base each image name on the content theme and date.
+3. Keep image names short descriptive and organized.
+4. Assume each image name refers to a branded quote-style or message-style graphic post.
+
+Image naming examples:
+2026-06-role-based-dashboards-01
+2026-06-family-communication-02
+2026-07-scheduling-efficiency-03
+2026-07-billing-visibility-04
+2026-08-admin-workflows-05
+
+==================================================
+FORMATTING SAFETY RULES
+==================================================
+
+To keep output safe for Google Sheets:
+
+1. Do NOT include line breaks inside any field.
+2. Do NOT include hashtags in the Caption field.
+3. Keep Graphic Headline Image Prompt Caption and Hashtags as single-line fields only.
+4. Do NOT use tabs inside fields.
+5. Do NOT add commentary before or after the output rows.
+6. Use plain text only.
+7. Avoid excessive punctuation.
+8. Minimize commas when possible without making the copy awkward.
+9. Every output row must be exactly one physical line.
+10. Do NOT wrap output in markdown.
+11. Do NOT use triple backticks.
+12. Do NOT label the response as a code block table example draft or sample.
+13. Output raw TSV rows only.
+14. Use literal tab characters between columns, not spaces.
+15. Put exactly one newline after each completed row.
+16. Never place two Post IDs on the same physical line.
+
+==================================================
+OUTPUT FORMAT
+==================================================
+
+Return results ONLY as TAB-SEPARATED rows using this exact column order:
+
+Post ID	Campaign Name	Image Name	Platform	Graphic Headline	Image Prompt	Caption	Hashtags	Scheduled Date	Scheduled Time	Holiday Or Seasonal Context	Status	Enabled
+
+==================================================
+CRITICAL OUTPUT RULES
+==================================================
+
+1. DO NOT include the header row.
+2. Generate the full annual calendar from 2026-06-01 through 2027-05-31 using the provided posting cadence.
+3. For each content block, generate one row per requested platform.
+4. Keep each content block together as a grouped set of platform rows.
+5. Each row must contain exactly 13 columns.
+6. Always set:
+   - Status = Pending
+   - Enabled = TRUE
+7. Caption must NOT contain hashtags.
+8. Hashtags must appear ONLY in the Hashtags column.
+9. Holiday Or Seasonal Context should be short and must never be omitted. If no meaningful holiday or seasonal anchor applies, use `None`.
+10. Return only the rows and nothing else.
+11. If the response starts to become prose or markdown, stop and output the rows correctly instead.
+12. For this specific setup, the final output should contain 288 rows total.
+13. Each physical line must contain exactly 12 tab characters separating 13 columns.
+14. Each new row must begin with a Post ID in the format `YYYYMMDD-PLATFORM-###`.
+15. Do not allow one platform row to continue onto the same line as the next platform row.
+
+==================================================
+COLUMN REQUIREMENTS
+==================================================
+
+Post ID
+- Format: YYYYMMDD-PLATFORM-###
+- Platform codes:
+  Facebook = FB
+  Instagram = IG
+  Twitter = TW
+  TikTok = TT
+  LinkedIn = LI
+- If another platform is requested, create a sensible 2-letter code.
+
+Campaign Name
+- Use the provided campaign name.
+- If none is provided, use:
+  Annual Growth Campaign
+
+Image Name
+- Use a production-ready asset filename.
+
+Platform
+- Must match the requested platforms exactly.
+
+Graphic Headline
+- A short on-image headline for the branded graphic.
+- Single line only.
+- Keep it concise and visually usable.
+
+Image Prompt
+- A single-line production prompt for the graphic itself.
+- Must describe the branded image concept clearly.
+- Must be usable by a designer or image-generation system.
+- Must stay concise and not become a paragraph explanation.
+
+Caption
+- One paragraph only.
+- Must feel platform-specific.
+- Must align with the brand voice and business goals.
+- Must include a natural CTA when appropriate.
+- Must support a branded image graphic post rather than replace the image text.
+- Should add context, relevance, encouragement, or soft conversion value.
+- Do NOT include hashtags.
+
+Hashtags
+- Provide 4 to 8 relevant hashtags based on the brand and industry.
+- Single line only.
+- Spaces only between hashtags.
+
+Scheduled Date
+- Choose dates between 2026-06-01 and 2027-05-31.
+- Spread posts realistically across the full year.
+
+Scheduled Time
+- Choose strong engagement times by platform.
+- Keep Facebook and Instagram aligned or close when appropriate.
+
+Holiday Or Seasonal Context
+- Use a short label such as Juneteenth, Independence Day, Back to School, Labor Day, Thanksgiving, New Year, Mental Health Awareness Month, Autism Acceptance Month, Mother's Day, or `None` if not relevant.
+- Keep this field short and single-line.
+
+Status
+- Always Pending
+
+Enabled
+- Always TRUE
+
+==================================================
+SCHEDULING RULES
+==================================================
+
+1. Start the calendar on 2026-06-01 and end on 2027-05-31.
+2. Use the provided posting cadence consistently across the year.
+3. Avoid clustering the same content theme back-to-back when possible.
+4. Keep the calendar feeling balanced and intentional.
+5. If the business has repeating categories, distribute them evenly.
+6. If Facebook and Instagram are both included, keep their times the same or very close when practical.
+7. Use relevant seasonal moments, back-to-school timing, caregiver planning periods, year-end reflection, and new-year operational themes when appropriate to the business.
+
+Default times if needed:
+- Facebook = 10:00 AM
+- Instagram = 10:00 AM
+- Twitter = 08:30 AM
+- TikTok = 06:00 PM
+- LinkedIn = 09:00 AM
+
+==================================================
+QUALITY CONTROL CHECKLIST
+==================================================
+
+Before printing final output silently verify:
+
+1. The full number of content blocks required by the posting cadence was created.
+2. The full annual date range from 2026-06-01 through 2027-05-31 was covered according to the posting cadence.
+3. Each content block includes all requested platforms.
+4. Each row has exactly 13 tab-separated columns.
+5. The final output contains 144 content blocks and 288 total platform rows.
+6. Every row includes a Graphic Headline Image Prompt Caption and Hashtags field.
+7. Captions support an image graphic post rather than restating it in full.
+8. No field contains line breaks.
+9. Hashtags appear only in the Hashtags column.
+10. Captions are platform-adapted and not duplicated word-for-word.
+11. The calendar feels varied and realistic.
+12. Dates are distributed across the full year.
+13. Relevant US holidays and seasonal moments are used naturally where appropriate.
+14. The output is raw TSV with no markdown or code fences.
+15. Every physical line contains exactly one row and never contains two Post IDs.
+16. Every physical line contains exactly 12 literal tab characters.
+17. The output is clean enough to paste directly into Google Sheets.
+
+==================================================
+FINAL INSTRUCTION
+==================================================
+
+Return the complete production calendar as multi-line TSV with exactly one row per line.
+
+Return ONLY the rows and nothing else.
