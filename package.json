@@ -29,6 +29,7 @@
     "build:ios:internal:interactive": "eas build -p ios --profile internal",
     "build:ios:testflight-internal": "eas build -p ios --profile testflight-internal --non-interactive",
     "build:ios:testflight-internal:interactive": "eas build -p ios --profile testflight-internal",
+    "build:ios:testflight-internal:auto-submit": "eas build -p ios --profile testflight-internal --auto-submit --non-interactive",
     "build:ios:preview": "eas build -p ios --profile preview --non-interactive",
     "build:ios:production": "eas build -p ios --profile production --non-interactive",
     "submit:ios:testflight-internal": "eas submit -p ios --profile testflight-internal --latest --non-interactive",
