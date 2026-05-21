@@ -10,7 +10,7 @@ import { USER_ROLES, isBcbaRole, isOfficeAdminRole, normalizeUserRole } from '..
 import { avatarSourceFor } from '../utils/idVisibility';
 import { maskEmailDisplay, maskPhoneDisplay } from '../utils/inputFormat';
 import { THERAPY_ROLE_LABELS, getAssignmentRoleLabel, getDisplayRoleLabel } from '../utils/roleTerminology';
-import { childHasParent, findLinkedParentId } from '../utils/directoryLinking';
+import { childHasParent, getEffectiveLinkedParentId } from '../utils/directoryLinking';
 
 function getRelevantChildren(parentId, children) {
   const all = Array.isArray(children) ? children : [];
@@ -203,7 +203,7 @@ export default function CareTeamScreen() {
   const { children = [], parents = [], therapists = [], fetchAndSync } = useData();
   const tenant = useTenant() || {};
   const isParent = normalizeUserRole(user?.role) === USER_ROLES.PARENT;
-  const linkedParentId = findLinkedParentId(user, parents) || user?.id || null;
+  const linkedParentId = getEffectiveLinkedParentId(user, parents);
 
   useFocusEffect(
     React.useCallback(() => {
@@ -218,7 +218,7 @@ export default function CareTeamScreen() {
     const matchedChildren = linkedChildren.filter((child) => child?.id === requestedChildId);
     if (matchedChildren.length) return matchedChildren;
     return isParent ? linkedChildren.slice(0, 1) : linkedChildren;
-  }, [children, linkedParentId, route?.params?.childId]);
+  }, [children, isParent, linkedParentId, route?.params?.childId]);
   const members = useMemo(() => dedupeMembers(relevantChildren, therapists, { parentScoped: isParent }), [isParent, relevantChildren, therapists]);
   const campusContacts = useMemo(() => (isParent ? [] : buildCampusContacts(relevantChildren, tenant)), [isParent, relevantChildren, tenant]);
 

@@ -9,7 +9,7 @@ import { buildVisibleThreads } from '../utils/chatThreads';
 import { findVisibleThreadForParticipant } from '../utils/chatThreads';
 import { USER_ROLES, isAdminRole, isBcbaRole, normalizeUserRole } from '../core/tenant/models';
 import { THERAPY_ROLE_LABELS, getDisplayRoleLabel } from '../utils/roleTerminology';
-import { childHasParent, findLinkedParentId } from '../utils/directoryLinking';
+import { childHasParent, getEffectiveLinkedParentId } from '../utils/directoryLinking';
 
 function normalizeName(s) {
   return (s || '').toString().trim();
@@ -149,7 +149,7 @@ export default function NewThreadScreen({ navigation }) {
     // Parent connections: family parents + child therapists.
     if (isParent) {
       const rawParents = Array.isArray(parents) ? parents : [];
-      const myParentId = findLinkedParentId(user, rawParents);
+      const myParentId = getEffectiveLinkedParentId(user, rawParents);
 
       const me = myParentId
         ? (normalizedParents.find((p) => p.id === myParentId) || null)

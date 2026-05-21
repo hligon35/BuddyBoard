@@ -12,7 +12,7 @@ import { useData } from '../DataContext';
 import Api from '../Api';
 import { USER_ROLES, isBcbaRole, isOfficeAdminRole, normalizeUserRole } from '../core/tenant/models';
 import { THERAPY_ROLE_LABELS } from '../utils/roleTerminology';
-import { childHasParent, findLinkedParentId } from '../utils/directoryLinking';
+import { childHasParent, getEffectiveLinkedParentId } from '../utils/directoryLinking';
 import { isAggregateOnlyPhoneProfile, isPhoneViewport as resolvePhoneViewport, shouldUsePhoneSafeSchedule } from '../utils/mobileRoleAccess';
 const { isSpecialAccessUser } = require('../utils/authState');
 const { filterChildrenForTherapistScope, isChildLinkedToTherapist } = require('../features/sessionTracking/utils/dashboardSessionTarget');
@@ -143,7 +143,7 @@ export default function ScheduleCalendarScreen() {
   const [cancellationSession, setCancellationSession] = useState(null);
   const [cancellationReason, setCancellationReason] = useState('');
   const [submittingCancellation, setSubmittingCancellation] = useState(false);
-  const linkedParentId = isParent ? (findLinkedParentId(user, parents) || user?.id || null) : null;
+  const linkedParentId = isParent ? getEffectiveLinkedParentId(user, parents) : null;
   const isWideLayout = width >= 980 || useAdminDropdownShellLayout;
 
   const filteredChildren = useMemo(() => {

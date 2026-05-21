@@ -162,6 +162,12 @@ function cloneSeedValue(value) {
   return JSON.parse(JSON.stringify(value));
 }
 
+function shouldUseReviewerSeedFallback(user, seedStatus) {
+  if (!isDemoReviewerUser(user?.email)) return false;
+  const normalizedSeedStatus = String(seedStatus || '').trim().toLowerCase();
+  return normalizedSeedStatus !== 'cleared';
+}
+
 // Note: removed legacy demo children and therapist pools so the
 // directory is driven only by the dev seed toggle (seeded data)
 // or persisted AsyncStorage values. When the dev seed is off and
@@ -423,6 +429,12 @@ export function DataProvider({ children: reactChildren }) {
         } else {
           setDeletedThreads({});
         }
+
+        if (shouldUseReviewerSeedFallback(user, seedStatusRaw)) {
+          applyLocalStateSnapshot(buildScreenshotSeedState());
+          setDirectoryError('');
+          setDirectoryLoading(false);
+        }
       } catch (e) {
         console.warn('hydrate failed', e.message);
       } finally {
@@ -600,6 +612,7 @@ export function DataProvider({ children: reactChildren }) {
       try {
         const isAdmin = Boolean(user && isAdminRole(user.role));
         const useScopedReviewerDirectory = isDemoReviewerUser(user?.email);
+        const allowReviewerSeedFallback = shouldUseReviewerSeedFallback(user, activeSeedPreset);
         let dir = (isAdmin && !useScopedReviewerDirectory) ? await Api.getDirectory() : await Api.getDirectoryMe();
         if (dir && dir.ok) {
           let remoteChildren = Array.isArray(dir.children) ? dir.children : [];
@@ -627,13 +640,23 @@ export function DataProvider({ children: reactChildren }) {
             }
           }
 
-          setParents(remoteParents);
-          setTherapists(remoteTherapists);
-          setChildren(attachTherapistsToChildren(remoteChildren, remoteTherapists, dir.aba));
+          const shouldKeepReviewerSeed = useScopedReviewerDirectory
+            && allowReviewerSeedFallback
+            && !remoteChildren.length
+            && !remoteParents.length
+            && !remoteTherapists.length;
+
+          if (!shouldKeepReviewerSeed) {
+            setParents(remoteParents);
+            setTherapists(remoteTherapists);
+            setChildren(attachTherapistsToChildren(remoteChildren, remoteTherapists, dir.aba));
+          }
         }
       } catch (e) {
         console.warn('getDirectory failed', e?.message || e);
-        setDirectoryError(String(e?.message || e || 'Could not load assigned children.'));
+        if (!shouldUseReviewerSeedFallback(user, activeSeedPreset)) {
+          setDirectoryError(String(e?.message || e || 'Could not load assigned children.'));
+        }
       } finally {
         setDirectoryLoading(false);
       }

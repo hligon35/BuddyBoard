@@ -45,6 +45,24 @@ export function findLinkedParentId(user, parents) {
   return null;
 }
 
+export function getEffectiveLinkedParentId(user, parents) {
+  const linkedId = findLinkedParentId(user, parents);
+  if (linkedId) return linkedId;
+
+  const reviewScopedLinkedId = findLinkedParentId({
+    id: user?.reviewScopeUserId,
+    email: user?.reviewScopeEmail || user?.email,
+    name: user?.reviewPersonaName || user?.name,
+  }, parents);
+  if (reviewScopedLinkedId) return reviewScopedLinkedId;
+
+  const reviewScopeId = user?.reviewScopeUserId != null ? String(user.reviewScopeUserId) : '';
+  if (reviewScopeId) return reviewScopeId;
+
+  const uid = user?.id != null ? String(user.id) : '';
+  return uid || null;
+}
+
 export function findLinkedTherapistId(user, therapists) {
   const uid = user?.id != null ? String(user.id) : '';
   if (uid) {

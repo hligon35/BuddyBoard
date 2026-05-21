@@ -13,7 +13,7 @@ import { useTenant } from '../core/tenant/TenantContext';
 import { USER_ROLES, normalizeUserRole } from '../core/tenant/models';
 import { avatarSourceFor } from '../utils/idVisibility';
 import { THERAPY_ROLE_LABELS } from '../utils/roleTerminology';
-import { childHasParent } from '../utils/directoryLinking';
+import { childHasParent, getEffectiveLinkedParentId } from '../utils/directoryLinking';
 import useIsTabletLayout from '../hooks/useIsTabletLayout';
 import { isPhoneViewport as resolvePhoneViewport, shouldHideTapToolsOnPhone } from '../utils/mobileRoleAccess';
 const { logPress } = require('../utils/logger');
@@ -109,17 +109,18 @@ function isOpenItemsStatus(item) {
 
 export default function RoleDashboardScreen({ navigation }) {
   const { user } = useAuth();
-  const { children = [], urgentMemos = [], directoryLoading = false, directoryError = '', fetchAndSync, activeSeedPreset = '', seededItemsNeededByChild = {}, respondToUrgentMemo } = useData();
+  const { children = [], parents = [], urgentMemos = [], directoryLoading = false, directoryError = '', fetchAndSync, activeSeedPreset = '', seededItemsNeededByChild = {}, respondToUrgentMemo, resetScreenshotSeed } = useData();
   const tenant = useTenant();
   const isTabletLayout = useIsTabletLayout();
   const { width, height } = useWindowDimensions();
   const role = normalizeUserRole(user?.role || USER_ROLES.PARENT);
   const effectiveUser = useMemo(() => getEffectiveChatIdentity(user), [user]);
   const allowSpecialAccessFallback = isSpecialAccessUser(user?.email);
+  const linkedParentId = useMemo(() => (role === USER_ROLES.PARENT ? getEffectiveLinkedParentId(user, parents) : null), [parents, role, user]);
   const isTherapist = role === USER_ROLES.THERAPIST;
   const isPhoneWorkspace = Platform.OS !== 'web' && resolvePhoneViewport(width, height);
   const dashboardScopeUserId = role === USER_ROLES.PARENT
-    ? (user?.reviewScopeUserId || user?.id || effectiveUser?.id)
+    ? (linkedParentId || user?.reviewScopeUserId || user?.id || effectiveUser?.id)
     : (effectiveUser?.id || user?.id);
   const labels = tenant?.labels || {};
   const dashboardPreset = tenant?.dashboardPreset || {};
@@ -128,7 +129,8 @@ export default function RoleDashboardScreen({ navigation }) {
     () => findRelevantChildren(role, dashboardScopeUserId, children, { allowSpecialAccessFallback }),
     [children, role, dashboardScopeUserId, allowSpecialAccessFallback]
   );
-  const showDashboardPlaceholder = !directoryLoading && !directoryError && !relevantChildren.length;
+  const showDashboardLoading = directoryLoading;
+  const showDashboardEmpty = !directoryLoading && !directoryError && !relevantChildren.length;
   const [selectedChildId, setSelectedChildId] = useState(null);
   const [itemsNeededOverlayOpen, setItemsNeededOverlayOpen] = useState(false);
   const [readItemsNeededIds, setReadItemsNeededIds] = useState({});
@@ -548,7 +550,7 @@ export default function RoleDashboardScreen({ navigation }) {
                     </TouchableOpacity>
                   </View>
                 </>
-              ) : showDashboardPlaceholder ? (
+              ) : showDashboardLoading ? (
                 <>
                   {renderPlaceholderFamilyCards(4)}
                   <View style={[styles.sessionLaunchArea, styles.sessionLaunchAreaPlaceholder]}>
@@ -566,7 +568,7 @@ export default function RoleDashboardScreen({ navigation }) {
             </>
           ) : (
             <>
-              {showDashboardPlaceholder ? renderPlaceholderFamilyCards(4) : relevantChildren.length > 1 ? (
+              {showDashboardLoading ? renderPlaceholderFamilyCards(4) : relevantChildren.length > 1 ? (
                 <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={styles.familyCarouselTrack}>
                   {relevantChildren.map((child, index) => {
                     const isSelected = child?.id === selectedChild?.id;
@@ -583,6 +585,19 @@ export default function RoleDashboardScreen({ navigation }) {
                     );
                   })}
                 </ScrollView>
+              ) : showDashboardEmpty ? (
+                <View style={styles.statusPanel}>
+                  <MaterialIcons name="groups-2" size={18} color="#64748b" />
+                  <Text style={styles.statusText}>No linked learners were found for this account yet.</Text>
+                  <TouchableOpacity style={styles.retryButton} onPress={retryDirectoryLoad} activeOpacity={0.88}>
+                    <Text style={styles.retryButtonText}>Retry</Text>
+                  </TouchableOpacity>
+                  {allowSpecialAccessFallback ? (
+                    <TouchableOpacity style={styles.retryButton} onPress={resetScreenshotSeed} activeOpacity={0.88}>
+                      <Text style={styles.retryButtonText}>Reload Demo View</Text>
+                    </TouchableOpacity>
+                  ) : null}
+                </View>
               ) : null}
             </>
           )}
@@ -590,8 +605,8 @@ export default function RoleDashboardScreen({ navigation }) {
 
         <TenantSwitcher />
 
-        {!isTherapist ? <View style={[styles.grid, isTherapist ? styles.gridTherapist : null]}>
-          {showDashboardPlaceholder ? dashboardCards.map((card) => renderPlaceholderDashboardCard(card.key)) : dashboardCards.map((card) => {
+        {!isTherapist && showDashboardEmpty ? null : !isTherapist ? <View style={[styles.grid, isTherapist ? styles.gridTherapist : null]}>
+          {showDashboardLoading ? dashboardCards.map((card) => renderPlaceholderDashboardCard(card.key)) : dashboardCards.map((card) => {
             const showCardValue = isTherapist || card.key === 'mood-score';
             const cardContent = (
               <>

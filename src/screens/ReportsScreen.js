@@ -7,7 +7,7 @@ import { useAuth } from '../AuthContext';
 import { useData } from '../DataContext';
 import { USER_ROLES, isBcbaRole, normalizeUserRole } from '../core/tenant/models';
 import { useBehaviorSystemReports } from '../features/reporting/hooks/useBehaviorSystemReports';
-import { childHasParent, findLinkedParentId } from '../utils/directoryLinking';
+import { childHasParent, getEffectiveLinkedParentId } from '../utils/directoryLinking';
 import { getWorkspaceLabel } from '../utils/roleTerminology';
 import { getPhoneAccessProfile, isAggregateOnlyPhoneProfile, isPhoneViewport as resolvePhoneViewport, shouldUsePhoneSafeReports } from '../utils/mobileRoleAccess';
 import * as Api from '../Api';
@@ -21,7 +21,7 @@ function findReportChildren(user, children, parents) {
   const effectiveUser = getEffectiveChatIdentity(user);
   if (role === USER_ROLES.THERAPIST) return filterChildrenForTherapistScope(items, effectiveUser?.id, { allowSpecialAccessFallback: isSpecialAccessUser(user?.email) });
   if (role === USER_ROLES.PARENT) {
-    const linkedParentId = findLinkedParentId(user, parents) || user?.id;
+    const linkedParentId = getEffectiveLinkedParentId(user, parents);
     return items.filter((child) => childHasParent(child, linkedParentId));
   }
   return items;

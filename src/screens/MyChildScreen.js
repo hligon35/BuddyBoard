@@ -13,7 +13,7 @@ import LatestSummaryCard from '../features/sessionInsights/components/LatestSumm
 import TrendMiniChart from '../features/sessionInsights/components/TrendMiniChart';
 import BehaviorTrendList from '../features/sessionInsights/components/BehaviorTrendList';
 import useChildProgressInsights from '../features/sessionInsights/hooks/useChildProgressInsights';
-import { childHasParent, findLinkedParentId } from '../utils/directoryLinking';
+import { childHasParent, getEffectiveLinkedParentId } from '../utils/directoryLinking';
 import { avatarSourceFor } from '../utils/idVisibility';
 import { maskEmailDisplay, maskPhoneDisplay } from '../utils/inputFormat';
 import { THERAPY_ROLE_LABELS, getAssignmentRoleLabel } from '../utils/roleTerminology';
@@ -35,7 +35,7 @@ export default function MyChildScreen() {
 
   const role = (user?.role || '').toString().toLowerCase();
   const isParent = role.includes('parent');
-  const linkedParentId = isParent ? (findLinkedParentId(user, parents) || user?.id || null) : null;
+  const linkedParentId = isParent ? getEffectiveLinkedParentId(user, parents) : null;
 
   // Only show linked children for parents; keep existing behavior for other roles.
   const baseChildList = (Array.isArray(children) && children.length) ? children : [];

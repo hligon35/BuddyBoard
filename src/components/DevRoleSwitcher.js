@@ -33,6 +33,15 @@ export default function DevRoleSwitcher() {
       };
     }
 
+    if (isReviewerAccount) {
+      setIsVisible(true);
+      setVisibilityReady(true);
+      AsyncStorage.setItem(DEV_SWITCHER_VISIBILITY_KEY, 'visible').catch(() => {});
+      return () => {
+        cancelled = true;
+      };
+    }
+
     AsyncStorage.getItem(DEV_SWITCHER_VISIBILITY_KEY)
       .then((stored) => {
         if (cancelled) return;
@@ -49,9 +58,20 @@ export default function DevRoleSwitcher() {
     return () => {
       cancelled = true;
     };
-  }, [isAllowed]);
+  }, [isAllowed, isReviewerAccount]);
 
   const toggleVisibility = async () => {
+    if (isReviewerAccount) {
+      setIsVisible(true);
+      try {
+        await AsyncStorage.setItem(DEV_SWITCHER_VISIBILITY_KEY, 'visible');
+      } catch (_) {
+        // ignore persistence failures and keep the in-memory toggle
+      }
+      Alert.alert('App Review Demo Mode', 'The Demo button stays visible for the dedicated review account.');
+      return;
+    }
+
     const nextVisible = !isVisible;
     setIsVisible(nextVisible);
     if (!nextVisible) setOpen(false);

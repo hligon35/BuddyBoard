@@ -7,7 +7,7 @@ import { useAuth } from '../AuthContext';
 import { useData } from '../DataContext';
 import { useTenant } from '../core/tenant/TenantContext';
 import { isAdminRole, isBcbaRole, normalizeUserRole, USER_ROLES } from '../core/tenant/models';
-import { childHasParent, findLinkedParentId } from '../utils/directoryLinking';
+import { childHasParent, getEffectiveLinkedParentId } from '../utils/directoryLinking';
 import * as Api from '../Api';
 
 function Block({ title, children, style }) {
@@ -81,7 +81,7 @@ export default function InsuranceBillingScreen() {
 
   const linkedParentId = useMemo(() => {
     if (!isParent) return null;
-    return findLinkedParentId(user, parents) || user?.id || null;
+    return getEffectiveLinkedParentId(user, parents);
   }, [isParent, parents, user]);
 
   const linkedChild = useMemo(() => {
