@@ -8,7 +8,6 @@ import { useHeaderHeight } from '@react-navigation/elements';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { canViewThread, getConversationParticipant, getUserParticipantTokens, isMessageFromUser } from '../utils/chatThreads';
 import { MaterialIcons } from '@expo/vector-icons';
-import { HelpButton } from '../components/TopButtons';
 import useIsTabletLayout from '../hooks/useIsTabletLayout';
 
 const PHONE_BOTTOM_NAV_HEIGHT = 72;
@@ -129,7 +128,7 @@ export default function ChatThreadScreen({ route, navigation }) {
           <MaterialIcons name="chevron-left" size={24} color="#111827" />
         </TouchableOpacity>
       ),
-      headerRight: Platform.OS === 'web' ? () => null : () => <HelpButton />,
+      headerRight: Platform.OS === 'web' ? () => null : undefined,
     });
     if (route.params?.conversationTitle !== derivedConversationTitle) {
       navigation.setParams({ conversationTitle: derivedConversationTitle });
@@ -168,7 +167,7 @@ export default function ChatThreadScreen({ route, navigation }) {
   const outerWrapperProps = Platform.OS === 'web' ? {} : { onPress: Keyboard.dismiss, accessible: false };
   const phoneBottomNavInset = !isTabletLayout ? PHONE_BOTTOM_NAV_HEIGHT : 0;
   const listBottomInset = COMPOSER_BASE_HEIGHT + Math.max(insets.bottom, 2);
-  const composerBottomPadding = Math.max(insets.bottom, 2);
+  const composerBottomPadding = 6;
   const keyboardVerticalOffset = Platform.OS === 'ios'
     ? (isTabletLayout ? 0 : headerHeight + Math.max(insets.top, 0))
     : 0;

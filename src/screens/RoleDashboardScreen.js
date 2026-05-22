@@ -417,6 +417,14 @@ export default function RoleDashboardScreen({ navigation }) {
       imageSource: insuranceBillingIcon,
       onPress: () => navigation.navigate('InsuranceBilling'),
     },
+    help: {
+      key: 'help',
+      title: 'Help',
+      value: isTherapist ? 'Support & guides' : 'Help & support',
+      hint: 'Open tutorials, support details, and role guidance.',
+      icon: 'help-outline',
+      onPress: () => navigation.navigate('Settings', { screen: 'Help' }),
+    },
     resources: {
       key: 'resources',
       title: labels.resources || 'Parent Resources',
@@ -440,15 +448,16 @@ export default function RoleDashboardScreen({ navigation }) {
   const activePreset = isTherapist ? dashboardPreset.staff : dashboardPreset.family;
   const presetKeys = Array.isArray(activePreset) && activePreset.length
     ? activePreset
-    : ['next-session', 'mood-score', 'progress-report', 'items-needed', 'care-team', 'billing', 'resources'];
+    : ['next-session', 'mood-score', 'progress-report', 'items-needed', 'care-team', 'billing', 'resources', 'help'];
   const orderedPresetKeys = isTherapist
     ? ['session-tracker', 'summary-review', 'next-session', 'reports', ...presetKeys.filter((key) => !['session-tracker', 'summary-review', 'reports', 'next-session', 'items-needed'].includes(key))]
     : presetKeys;
+  const orderedPresetKeysWithHelp = orderedPresetKeys.includes('help') ? orderedPresetKeys : [...orderedPresetKeys, 'help'];
   const featureFlags = tenant?.featureFlags || {};
   const cardFlagGates = {
     billing: () => featureFlags.programBilling !== false,
   };
-  const dashboardCards = orderedPresetKeys
+  const dashboardCards = orderedPresetKeysWithHelp
     .map((key) => cardDefinitions[key])
     .filter((card) => {
       if (!card) return false;
@@ -499,6 +508,13 @@ export default function RoleDashboardScreen({ navigation }) {
       <ScreenWrapper bannerShowBack={false} hideBanner={isTabletLayout} style={styles.container}>
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <MobileRoleWelcomeShiftCard user={user} role={role} children={relevantChildren} />
+          <TouchableOpacity style={styles.card} onPress={() => navigation.navigate('Settings', { screen: 'Help' })} activeOpacity={0.88}>
+            <View style={styles.cardIconRow}>
+              <MaterialIcons name="help-outline" size={24} color="#2563eb" />
+            </View>
+            <Text style={styles.cardTitle}>Help</Text>
+            <Text style={styles.cardValue}>Support & guides</Text>
+          </TouchableOpacity>
         </ScrollView>
       </ScreenWrapper>
     );

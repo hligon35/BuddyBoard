@@ -53,19 +53,21 @@ export default function SettingsScreen({ navigation }) {
     if (!showMobileSettingsLogout) {
       navigation.setOptions({
         headerLeft: undefined,
+        headerRight: undefined,
       });
       return;
     }
 
     navigation.setOptions({
-      headerLeft: () => (
+      headerLeft: undefined,
+      headerRight: () => (
         <TouchableOpacity
           onPress={() => logout?.()}
           accessibilityRole="button"
           accessibilityLabel="Logout"
           hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
           style={{
-            marginLeft: 8,
+            marginRight: 8,
             width: 36,
             height: 36,
             borderRadius: 18,

@@ -1,6 +1,7 @@
 import React, { useMemo, useState } from 'react';
 import { ScrollView, StyleSheet, Text, View, useWindowDimensions } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
+import { useNavigation } from '@react-navigation/native';
 import AnnouncementFeed from '../components/AnnouncementFeed';
 import MobileRoleWelcomeShiftCard from '../components/MobileRoleWelcomeShiftCard';
 import { ScreenWrapper } from '../components/ScreenWrapper';
@@ -63,22 +64,26 @@ function Tile({ label, value, hint, accent = '#2563eb', compact = false }) {
 
 function TrendCard({ title, items, accent = '#2563eb', horizontalInset = 26 }) {
   const [chartWidth, setChartWidth] = useState(0);
-  const yAxisTicks = [15, 10, 5, 0];
-  const chartMax = Math.max(15, ...(items || []).map((item) => Number(item?.value || 0)));
   const hasItems = Array.isArray(items) && items.length > 0;
-  const chartHeight = 150;
-  const topPadding = 12;
-  const plotHeight = 92;
-  const yAxisWidth = 24;
+  const numericValues = (items || []).map((item) => Number(item?.value || 0)).filter((value) => Number.isFinite(value));
+  const chartMin = 0;
+  const chartMax = Math.max(1, ...numericValues);
+  const yAxisTicks = [chartMax, chartMax / 2, chartMin];
+  const chartHeight = 168;
+  const topPadding = 22;
+  const bottomPadding = 34;
+  const plotHeight = chartHeight - topPadding - bottomPadding;
+  const yAxisWidth = 30;
   const effectiveChartWidth = Math.max(chartWidth, 240);
   const plotWidth = Math.max(0, effectiveChartWidth - yAxisWidth - (horizontalInset * 2));
+  const valueSlotWidth = Math.max(30, Math.min(64, (plotWidth / Math.max(items?.length || 1, 1)) + 10));
   const step = (items?.length || 1) > 1 ? plotWidth / ((items.length || 1) - 1) : 0;
   const points = (items || []).map((item, index) => ({
     key: item.label,
     label: item.label,
     value: Number(item?.value || 0),
     x: yAxisWidth + horizontalInset + (step * index),
-    y: topPadding + (1 - ((Number(item?.value || 0) || 0) / chartMax)) * plotHeight,
+    y: topPadding + (1 - (((Number(item?.value || 0) || 0) - chartMin) / Math.max(chartMax - chartMin, 1))) * plotHeight,
   }));
   return (
     <View style={styles.card}>
@@ -86,11 +91,11 @@ function TrendCard({ title, items, accent = '#2563eb', horizontalInset = 26 }) {
       <View style={styles.lineChartWrap} onLayout={(event) => setChartWidth(Math.max(0, event?.nativeEvent?.layout?.width || 0))}>
         <View style={[styles.lineChartSurface, { width: effectiveChartWidth, height: chartHeight }]}> 
           {yAxisTicks.map((tick, index) => (
-            <View key={`grid-${tick}`} style={[styles.lineChartGrid, { left: yAxisWidth, top: topPadding + (plotHeight / (yAxisTicks.length - 1)) * index }]} />
+            <View key={`grid-${tick}`} style={[styles.lineChartGrid, { left: yAxisWidth, top: topPadding + (plotHeight / Math.max(yAxisTicks.length - 1, 1)) * index }]} />
           ))}
           {yAxisTicks.map((tick, index) => (
-            <View key={`label-${tick}`} style={[styles.yAxisLabelWrap, { top: topPadding + (plotHeight / (yAxisTicks.length - 1)) * index - 8 }]}>
-              <Text style={styles.yAxisLabel}>{tick}</Text>
+            <View key={`label-${tick}`} style={[styles.yAxisLabelWrap, { top: topPadding + (plotHeight / Math.max(yAxisTicks.length - 1, 1)) * index - 8 }]}>
+              <Text style={styles.yAxisLabel}>{Number.isInteger(tick) ? tick : tick.toFixed(1)}</Text>
             </View>
           ))}
           {hasItems ? points.slice(0, -1).map((point, index) => {
@@ -116,14 +121,14 @@ function TrendCard({ title, items, accent = '#2563eb', horizontalInset = 26 }) {
             );
           }) : null}
           {hasItems ? points.map((point) => (
-            <View key={point.key} style={[styles.linePointColumn, { left: point.x - 26, top: 0 }]}> 
-              <View style={[styles.linePointValueWrap, { top: Math.max(0, point.y - 8) }]}>
+            <View key={point.key} style={[styles.linePointColumn, { left: point.x - (valueSlotWidth / 2), top: 0, width: valueSlotWidth, height: chartHeight }]}> 
+              <View style={[styles.linePointValueWrap, { top: Math.max(0, point.y - 24), width: valueSlotWidth }]}>
                 <Text style={styles.linePointValue}>{point.value}</Text>
               </View>
-              <View style={[styles.linePoint, { top: point.y - 11, borderColor: accent }]}>
+              <View style={[styles.linePoint, { top: point.y - 6, borderColor: accent }]}>
                 <View style={[styles.linePointInner, { backgroundColor: accent }]} />
               </View>
-              <Text style={styles.linePointLabel}>{point.label}</Text>
+              <Text numberOfLines={1} style={styles.linePointLabel}>{point.label}</Text>
             </View>
           )) : null}
         </View>
@@ -133,6 +138,7 @@ function TrendCard({ title, items, accent = '#2563eb', horizontalInset = 26 }) {
 }
 
 export default function AdminControlsScreen() {
+  const navigation = useNavigation();
   const { width, height } = useWindowDimensions();
   const { user } = useAuth();
   const { children = [], therapists = [], urgentMemos = [], activeSeedPreset = '', seededDashboardMetrics = {} } = useData();
@@ -148,6 +154,13 @@ export default function AdminControlsScreen() {
       <ScreenWrapper style={styles.container}>
         <ScrollView contentContainerStyle={styles.content} showsVerticalScrollIndicator={false}>
           <MobileRoleWelcomeShiftCard user={user} role={user?.role} children={children} />
+          <View style={styles.card}>
+            <Text style={styles.cardTitle}>Help</Text>
+            <Text style={styles.alertBody}>Open tutorials, support information, and role guidance.</Text>
+            <View style={{ marginTop: 12 }}>
+              <Text onPress={() => navigation.navigate('Settings', { screen: 'Help' })} style={styles.helpLink}>Open Help</Text>
+            </View>
+          </View>
         </ScrollView>
       </ScreenWrapper>
     );
@@ -234,6 +247,13 @@ export default function AdminControlsScreen() {
           <View style={[styles.dashboardColumn, showChartGrid ? styles.dashboardColumnWide : null]}>
             {isBcba ? <TrendCard title="Behavior incidents" items={summary.behaviorTrend} accent="#dc2626" horizontalInset={36} /> : null}
             <View style={styles.card}>
+              <Text style={styles.cardTitle}>Help</Text>
+              <Text style={styles.alertBody}>Open tutorials, support information, and role guidance.</Text>
+              <View style={{ marginTop: 12 }}>
+                <Text onPress={() => navigation.navigate('Settings', { screen: 'Help' })} style={styles.helpLink}>Open Help</Text>
+              </View>
+            </View>
+            <View style={styles.card}>
               <Text style={styles.cardTitle}>Alerts</Text>
               {alerts.map((item) => (
                 <View key={item.id} style={styles.alertRow}>
@@ -273,16 +293,17 @@ const styles = StyleSheet.create({
   dashboardColumnWide: { width: '48.8%' },
   lineChartWrap: { overflow: 'hidden', width: '100%' },
   lineChartSurface: { position: 'relative', width: '100%' },
-  yAxisLabelWrap: { position: 'absolute', left: 0, width: 24, alignItems: 'flex-end' },
+  yAxisLabelWrap: { position: 'absolute', left: 0, width: 30, alignItems: 'flex-end' },
   yAxisLabel: { color: '#64748b', fontSize: 11, fontWeight: '700' },
   lineChartGrid: { position: 'absolute', right: 0, height: 1, borderTopWidth: 1, borderTopColor: '#e2e8f0', borderStyle: 'dashed' },
   lineSegment: { position: 'absolute', height: 3, borderRadius: 999 },
-  linePointColumn: { position: 'absolute', width: 52, height: 150, alignItems: 'center' },
-  linePointValueWrap: { position: 'absolute', alignItems: 'center', width: 52 },
+  linePointColumn: { position: 'absolute', alignItems: 'center' },
+  linePointValueWrap: { position: 'absolute', alignItems: 'center', paddingHorizontal: 6, paddingVertical: 2, borderRadius: 999, backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e2e8f0' },
   linePointValue: { color: '#64748b', fontSize: 11, fontWeight: '700' },
   linePoint: { position: 'absolute', width: 12, height: 12, borderRadius: 999, borderWidth: 2, backgroundColor: '#ffffff', alignItems: 'center', justifyContent: 'center' },
   linePointInner: { width: 4, height: 4, borderRadius: 999 },
   linePointLabel: { marginTop: 'auto', fontSize: 11, fontWeight: '700', color: '#334155', textAlign: 'center' },
+  helpLink: { color: '#1d4ed8', fontWeight: '800' },
   alertRow: { flexDirection: 'row', alignItems: 'flex-start', paddingVertical: 10, borderTopWidth: 1, borderTopColor: '#f1f5f9' },
   alertTextWrap: { flex: 1, marginLeft: 10 },
   alertTitle: { fontWeight: '800', color: '#0f172a' },

@@ -10,7 +10,6 @@ import Api from '../Api';
 import { isBcbaRole, isOfficeAdminRole } from '../core/tenant/models';
 import { THERAPY_ROLE_LABELS } from '../utils/roleTerminology';
 import AppIconButton from '../components/AppIconButton';
-import { HelpButton } from '../components/TopButtons';
 import { getUserParticipantTokens } from '../utils/chatThreads';
 
 const IMAGE_PICKER_MEDIA_TYPES = ImagePicker.MediaTypeOptions?.Images ?? ImagePicker.MediaType?.Images;
@@ -139,7 +138,7 @@ export default function AdminChatMonitorScreen() {
 
   useLayoutEffect(() => {
     navigation.setOptions({
-      headerLeft: () => <HelpButton />,
+      headerLeft: undefined,
       headerRight: () => (
         <TouchableOpacity
           onPress={openNewStaffChat}

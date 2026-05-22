@@ -281,7 +281,6 @@ export default function MyChildScreen() {
   const parentQuickActions = useMemo(() => ([
     { key: 'summary', label: 'Latest Summary' },
     { key: 'recent-sessions', label: 'Recent Sessions' },
-    { key: 'pending-notifications', label: 'Pending Notifications' },
     { key: 'care-plan', label: 'Care Plan' },
     { key: 'insights', label: 'Insights' },
   ]), []);
@@ -402,24 +401,6 @@ export default function MyChildScreen() {
               <Text style={styles.parentSummaryHistoryText} numberOfLines={3}>{item?.highLevelProgress || item?.focusAreas || 'Parent-safe ABA update available.'}</Text>
             </View>
           ))}
-        </View>
-      ) : null}
-
-      {isParent ? (
-        <View style={styles.section}>
-          <Text style={styles.sectionTitle}>Meeting with BCBA</Text>
-          {((child.upcoming || []).filter((u) => u.type === 'parent-aba')).length ? (
-            (child.upcoming || []).filter((u) => u.type === 'parent-aba').map((u) => (
-              <View key={u.id} style={{ marginBottom: 8 }}>
-                <Text style={styles.sectionText}>• {u.when} — {u.title}</Text>
-                {u.organizer ? (
-                  <Text style={[styles.sectionText, { marginTop: 4 }]}>Organizer: {u.organizer.name} • {maskPhoneDisplay(u.organizer.phone)} • {maskEmailDisplay(u.organizer.email)}</Text>
-                ) : null}
-              </View>
-            ))
-          ) : (
-            <Text style={styles.sectionText}>No meeting scheduled yet.</Text>
-          )}
         </View>
       ) : null}
     </>
@@ -549,6 +530,26 @@ export default function MyChildScreen() {
 
   const carePlanContent = (
     <View style={styles.section}>
+      {isParent ? (
+        <>
+          <Text style={styles.sectionTitle}>Progress Meeting</Text>
+          {((child.upcoming || []).filter((u) => u.type === 'parent-aba')).length ? (
+            (child.upcoming || []).filter((u) => u.type === 'parent-aba').map((u) => (
+              <View key={u.id} style={{ marginBottom: 8 }}>
+                <Text style={styles.sectionText}>• {u.when} — {u.title}</Text>
+                {u.organizer ? (
+                  <Text style={[styles.sectionText, { marginTop: 4 }]}>Organizer: {u.organizer.name} • {maskPhoneDisplay(u.organizer.phone)} • {maskEmailDisplay(u.organizer.email)}</Text>
+                ) : null}
+              </View>
+            ))
+          ) : (
+            <Text style={styles.sectionText}>No meeting scheduled yet.</Text>
+          )}
+
+          <View style={{ height: 10 }} />
+        </>
+      ) : null}
+
       <Text style={styles.sectionTitle}>Program</Text>
       <Text style={styles.sectionText}>
         {child?.curriculum || child?.programCurriculum || 'No curriculum details available yet.'}
@@ -717,28 +718,48 @@ export default function MyChildScreen() {
         <View>
           <View style={styles.scheduleHeaderRow}>
             {isParent ? (
-              <ScrollView
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                contentContainerStyle={styles.quickLinksTrack}
-              >
-                {parentQuickActions.map((item, index) => {
-                  const isActive = selectedParentSection === item.key;
-                  return (
-                    <TouchableOpacity
-                      key={item.key}
-                      style={[
-                        styles.reportsLinkButton,
-                        index > 0 ? styles.secondaryLinkButton : null,
-                        isActive ? styles.reportsLinkButtonActive : null,
-                      ]}
-                      onPress={() => toggleParentSection(item.key)}
-                    >
-                      <Text style={[styles.reportsLinkButtonText, isActive ? styles.reportsLinkButtonTextActive : null]}>{item.label}</Text>
-                    </TouchableOpacity>
-                  );
-                })}
-              </ScrollView>
+              <>
+                <View style={styles.parentQuickLinksWrap}>
+                  <ScrollView
+                    horizontal
+                    showsHorizontalScrollIndicator={false}
+                    contentContainerStyle={styles.quickLinksTrack}
+                  >
+                    {parentQuickActions.map((item, index) => {
+                      const isActive = selectedParentSection === item.key;
+                      return (
+                        <TouchableOpacity
+                          key={item.key}
+                          style={[
+                            styles.reportsLinkButton,
+                            index > 0 ? styles.secondaryLinkButton : null,
+                            isActive ? styles.reportsLinkButtonActive : null,
+                          ]}
+                          onPress={() => toggleParentSection(item.key)}
+                        >
+                          <Text style={[styles.reportsLinkButtonText, isActive ? styles.reportsLinkButtonTextActive : null]}>{item.label}</Text>
+                        </TouchableOpacity>
+                      );
+                    })}
+                  </ScrollView>
+                </View>
+                <View style={styles.headerActionsRow}>
+                  <TouchableOpacity
+                    accessibilityLabel="Pending notifications"
+                    style={[
+                      styles.headerIconButton,
+                      selectedParentSection === 'pending-notifications' ? styles.headerIconButtonActive : null,
+                    ]}
+                    onPress={() => toggleParentSection('pending-notifications')}
+                  >
+                    <MaterialIcons
+                      name="notifications"
+                      size={18}
+                      color={selectedParentSection === 'pending-notifications' ? '#ffffff' : '#1d4ed8'}
+                    />
+                  </TouchableOpacity>
+                </View>
+              </>
             ) : (
               <>
                 <Text style={styles.scheduleGroupTitle}>Daily Review</Text>
@@ -858,7 +879,22 @@ const styles = StyleSheet.create({
   careTeamTitle: { textAlign: 'center', fontWeight: '800', fontSize: 16, color: '#111827' },
   scheduleWrap: { marginTop: 12, backgroundColor: '#f8fafc', borderWidth: 1, borderColor: '#e5e7eb', borderRadius: 12, padding: 12 },
   scheduleHeaderRow: { flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' },
+  parentQuickLinksWrap: { flex: 1, marginRight: 8 },
   headerActionsRow: { flexDirection: 'row', alignItems: 'center' },
+  headerIconButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#dbeafe',
+    borderWidth: 1,
+    borderColor: '#bfdbfe',
+  },
+  headerIconButtonActive: {
+    backgroundColor: '#2563eb',
+    borderColor: '#2563eb',
+  },
   quickLinksTrack: { paddingRight: 8 },
   scheduleGroupTitle: { textAlign: 'center', fontWeight: '800', fontSize: 16, color: '#111827' },
   reportsLinkButton: { paddingVertical: 8, paddingHorizontal: 12, borderRadius: 999, backgroundColor: '#dbeafe' },

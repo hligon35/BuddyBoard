@@ -1,7 +1,7 @@
 import React, { useMemo } from 'react';
 import { Alert, Image, Linking, ScrollView, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { useFocusEffect, useRoute } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { ScreenWrapper } from '../components/ScreenWrapper';
 import { useAuth } from '../AuthContext';
 import { useData } from '../DataContext';
@@ -9,6 +9,7 @@ import { useTenant } from '../core/tenant/TenantContext';
 import { USER_ROLES, isBcbaRole, isOfficeAdminRole, normalizeUserRole } from '../core/tenant/models';
 import { avatarSourceFor } from '../utils/idVisibility';
 import { maskEmailDisplay, maskPhoneDisplay } from '../utils/inputFormat';
+import { findVisibleThreadForParticipant } from '../utils/chatThreads';
 import { THERAPY_ROLE_LABELS, getAssignmentRoleLabel, getDisplayRoleLabel } from '../utils/roleTerminology';
 import { childHasParent, getEffectiveLinkedParentId } from '../utils/directoryLinking';
 
@@ -135,9 +136,10 @@ function buildCampusContacts(children, tenant) {
   return Array.from(contacts.values());
 }
 
-function ContactCard({ member, showContactInfo = true, showChildrenLabel = true }) {
+function ContactCard({ member, showContactInfo = true, showChildrenLabel = true, onOpenThread }) {
   const phone = member.phone;
   const email = member.email;
+  const canStartChat = Boolean(member?.raw?.id || member?.raw?.uid || member?.raw?.email || email);
   const onCall = () => {
     if (!phone) return;
     Linking.openURL(`tel:${phone}`).catch(() => {
@@ -165,6 +167,26 @@ function ContactCard({ member, showContactInfo = true, showChildrenLabel = true 
           {showContactInfo && member.address ? (
             <Text style={styles.subtle}>{member.address}</Text>
           ) : null}
+        </View>
+        <View style={styles.headerActions}>
+          <TouchableOpacity
+            style={[styles.headerIconButton, !email && styles.headerIconButtonDisabled]}
+            onPress={onEmail}
+            disabled={!email}
+            accessibilityRole="button"
+            accessibilityLabel={`Email ${member.name}`}
+          >
+            <MaterialIcons name="email" size={18} color={email ? '#1d4ed8' : '#9ca3af'} />
+          </TouchableOpacity>
+          <TouchableOpacity
+            style={[styles.headerIconButton, !canStartChat && styles.headerIconButtonDisabled]}
+            onPress={() => onOpenThread?.(member)}
+            disabled={!canStartChat}
+            accessibilityRole="button"
+            accessibilityLabel={`Chat with ${member.name}`}
+          >
+            <MaterialIcons name="chat" size={18} color={canStartChat ? '#1d4ed8' : '#9ca3af'} />
+          </TouchableOpacity>
         </View>
       </View>
       {showContactInfo ? <View style={styles.actions}>
@@ -199,8 +221,9 @@ function ContactCard({ member, showContactInfo = true, showChildrenLabel = true 
 
 export default function CareTeamScreen() {
   const route = useRoute();
+  const navigation = useNavigation();
   const { user } = useAuth();
-  const { children = [], parents = [], therapists = [], fetchAndSync } = useData();
+  const { children = [], parents = [], therapists = [], messages = [], fetchAndSync } = useData();
   const tenant = useTenant() || {};
   const isParent = normalizeUserRole(user?.role) === USER_ROLES.PARENT;
   const linkedParentId = getEffectiveLinkedParentId(user, parents);
@@ -221,6 +244,39 @@ export default function CareTeamScreen() {
   }, [children, isParent, linkedParentId, route?.params?.childId]);
   const members = useMemo(() => dedupeMembers(relevantChildren, therapists, { parentScoped: isParent }), [isParent, relevantChildren, therapists]);
   const campusContacts = useMemo(() => (isParent ? [] : buildCampusContacts(relevantChildren, tenant)), [isParent, relevantChildren, tenant]);
+  const handleOpenThread = React.useCallback((member) => {
+    const recipient = {
+      id: member?.raw?.id || member?.id,
+      uid: member?.raw?.uid,
+      name: String(member?.name || '').trim(),
+      email: String(member?.email || member?.raw?.email || '').trim(),
+      avatar: member?.avatar || member?.raw?.avatar || null,
+    };
+    if (!recipient.id && !recipient.uid && !recipient.email && !recipient.name) return;
+
+    try {
+      const threadMatch = findVisibleThreadForParticipant(messages, {}, user, [], recipient);
+      if (threadMatch?.activeThreadId) {
+        navigation.navigate('ChatThread', {
+          threadId: threadMatch.id,
+          threadIds: threadMatch.threadIds,
+          activeThreadId: threadMatch.activeThreadId,
+          conversationTitle: threadMatch.title || recipient.name || recipient.email || 'Conversation',
+          to: [recipient],
+        });
+        return;
+      }
+
+      navigation.navigate('ChatThread', {
+        threadId: `t-${Date.now()}`,
+        isNew: true,
+        conversationTitle: recipient.name || recipient.email || 'Conversation',
+        to: [recipient],
+      });
+    } catch (error) {
+      Alert.alert('Unable to open chat', 'The chat thread could not be opened right now.');
+    }
+  }, [messages, navigation, user]);
 
   return (
     <ScreenWrapper bannerTitle="My Care Team" style={styles.container}>
@@ -238,9 +294,9 @@ export default function CareTeamScreen() {
         ) : (
           <>
             {members.length ? <Text style={styles.sectionTitle}>Staff</Text> : null}
-            {members.map((m) => <ContactCard key={m.id} member={m} showContactInfo={!isParent} showChildrenLabel={!isParent} />)}
+            {members.map((m) => <ContactCard key={m.id} member={m} showContactInfo={!isParent} showChildrenLabel={!isParent} onOpenThread={handleOpenThread} />)}
             {campusContacts.length ? <Text style={styles.sectionTitle}>Campus Contact</Text> : null}
-            {campusContacts.map((contact) => <ContactCard key={contact.id} member={contact} />)}
+            {campusContacts.map((contact) => <ContactCard key={contact.id} member={contact} onOpenThread={handleOpenThread} />)}
           </>
         )}
       </ScrollView>
@@ -276,6 +332,26 @@ const styles = StyleSheet.create({
   },
   headerText: {
     flex: 1,
+  },
+  headerActions: {
+    marginLeft: 12,
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  headerIconButton: {
+    width: 34,
+    height: 34,
+    borderRadius: 17,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#eff6ff',
+    borderWidth: 1,
+    borderColor: '#dbeafe',
+  },
+  headerIconButtonDisabled: {
+    backgroundColor: '#f3f4f6',
+    borderColor: '#e5e7eb',
   },
   name: {
     fontSize: 17,

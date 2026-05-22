@@ -6,7 +6,6 @@ import Swipeable from 'react-native-gesture-handler/Swipeable';
 import { MaterialIcons } from '@expo/vector-icons';
 import AppIconButton from '../components/AppIconButton';
 import { logPress } from '../utils/logger';
-import { HelpButton } from '../components/TopButtons';
 import { buildVisibleThreads } from '../utils/chatThreads';
 import { canAccessAdminWorkspace, isStaffRole } from '../core/tenant/models';
 
@@ -132,7 +131,7 @@ export default function ChatsScreen({ navigation }) {
   // Ensure the native stack header buttons are reset (Fast Refresh can preserve prior setOptions).
   useLayoutEffect(() => {
     navigation.setOptions({
-      headerLeft: Platform.OS === 'web' ? undefined : () => <HelpButton />,
+      headerLeft: Platform.OS === 'web' ? undefined : undefined,
       headerRight: Platform.OS === 'web' ? () => null : () => (
         <TouchableOpacity
           onPress={startNewMessage}
