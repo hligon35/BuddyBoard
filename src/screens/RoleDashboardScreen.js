@@ -452,7 +452,16 @@ export default function RoleDashboardScreen({ navigation }) {
   const orderedPresetKeys = isTherapist
     ? ['session-tracker', 'summary-review', 'next-session', 'reports', ...presetKeys.filter((key) => !['session-tracker', 'summary-review', 'reports', 'next-session', 'items-needed'].includes(key))]
     : presetKeys;
-  const orderedPresetKeysWithHelp = orderedPresetKeys.includes('help') ? orderedPresetKeys : [...orderedPresetKeys, 'help'];
+  const orderedPresetKeysWithHelp = (() => {
+    const keys = orderedPresetKeys.includes('help') ? orderedPresetKeys : [...orderedPresetKeys, 'help'];
+    if (keys.length % 3 !== 2) return keys;
+    if (keys[keys.length - 1] !== 'help') return keys;
+    const shiftedKeys = [...keys];
+    const priorKey = shiftedKeys[shiftedKeys.length - 2];
+    shiftedKeys[shiftedKeys.length - 2] = 'help';
+    shiftedKeys[shiftedKeys.length - 1] = priorKey;
+    return shiftedKeys;
+  })();
   const featureFlags = tenant?.featureFlags || {};
   const cardFlagGates = {
     billing: () => featureFlags.programBilling !== false,

@@ -65,7 +65,7 @@ import LearnerClinicalProfileScreen from './src/features/aba/screens/LearnerClin
 import ChildProgressInsightsScreen from './src/features/sessionInsights/screens/ChildProgressInsightsScreen';
 import TherapistDocumentationDashboardScreen from './src/features/sessionInsights/screens/TherapistDocumentationDashboardScreen';
 import OrganizationInsightsDashboardScreen from './src/features/sessionInsights/screens/OrganizationInsightsDashboardScreen';
-import { HelpButton, BackButton } from './src/components/TopButtons';
+import { BackButton } from './src/components/TopButtons';
 import LoginScreen from './screens/LoginScreen';
 import TwoFactorScreen from './screens/TwoFactorScreen';
 import CreatePasswordScreen from './screens/CreatePasswordScreen';
@@ -135,7 +135,7 @@ function MyClassStack() {
           headerBackVisible: showBack,
           headerBackTitleVisible: false,
           headerLeft: () => (showBack ? <BackButton onPress={() => navigation.goBack()} /> : null),
-          headerRight: () => <HelpButton />,
+          headerRight: () => null,
         };
       }}
     >
@@ -160,7 +160,7 @@ function ControlsStack() {
           headerBackVisible: showBack,
           headerBackTitleVisible: false,
           headerLeft: () => (showBack ? <BackButton onPress={() => navigation.goBack()} /> : null),
-          headerRight: () => <HelpButton />,
+          headerRight: () => null,
         };
       }}
     >
@@ -222,7 +222,7 @@ function CommunityStack() {
           headerBackVisible: showBack,
           headerBackTitleVisible: false,
           headerLeft: () => (showBack ? <BackButton onPress={() => navigation.goBack()} /> : null),
-          headerRight: () => <HelpButton />,
+          headerRight: () => null,
         };
       }}
     >
@@ -263,7 +263,7 @@ function MyChildStack() {
           headerBackVisible: showBack,
           headerBackTitleVisible: false,
           headerLeft: () => (showBack ? <BackButton onPress={() => navigation.goBack()} /> : null),
-          headerRight: () => <HelpButton />,
+          headerRight: () => null,
         };
       }}
     >
@@ -302,7 +302,6 @@ function ChatsStack() {
                   <MaterialIcons name="add" size={22} color="#1d4ed8" />
                 </TouchableOpacity>
               ) : null}
-              <HelpButton />
             </View>
           ),
         };
@@ -331,7 +330,7 @@ function SettingsStack() {
           headerBackVisible: showBack,
           headerBackTitleVisible: false,
           headerLeft: () => (showBack ? <BackButton onPress={() => navigation.goBack()} /> : null),
-          headerRight: () => <HelpButton />,
+          headerRight: () => null,
         };
       }}
     >

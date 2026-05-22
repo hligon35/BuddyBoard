@@ -89,6 +89,33 @@ export default function MyChildScreen() {
   const [artifactText, setArtifactText] = useState('');
   const childInsights = useChildProgressInsights(child?.id || '', { limit: 20 });
 
+  React.useLayoutEffect(() => {
+    if (!isParent || Platform.OS === 'web') {
+      navigation.setOptions({ headerRight: () => null });
+      return;
+    }
+
+    navigation.setOptions({
+      headerRight: () => (
+        <TouchableOpacity
+          accessibilityLabel="Pending notifications"
+          style={[
+            styles.headerIconButton,
+            { marginRight: 8 },
+            selectedParentSection === 'pending-notifications' ? styles.headerIconButtonActive : null,
+          ]}
+          onPress={() => toggleParentSection('pending-notifications')}
+        >
+          <MaterialIcons
+            name="notifications"
+            size={18}
+            color={selectedParentSection === 'pending-notifications' ? '#ffffff' : '#1d4ed8'}
+          />
+        </TouchableOpacity>
+      ),
+    });
+  }, [isParent, navigation, selectedParentSection]);
+
   function getProposalTypeLabel(type) {
     const normalized = String(type || '').trim().toLowerCase();
     if (normalized === 'pickup') return 'Pickup';
@@ -742,22 +769,6 @@ export default function MyChildScreen() {
                       );
                     })}
                   </ScrollView>
-                </View>
-                <View style={styles.headerActionsRow}>
-                  <TouchableOpacity
-                    accessibilityLabel="Pending notifications"
-                    style={[
-                      styles.headerIconButton,
-                      selectedParentSection === 'pending-notifications' ? styles.headerIconButtonActive : null,
-                    ]}
-                    onPress={() => toggleParentSection('pending-notifications')}
-                  >
-                    <MaterialIcons
-                      name="notifications"
-                      size={18}
-                      color={selectedParentSection === 'pending-notifications' ? '#ffffff' : '#1d4ed8'}
-                    />
-                  </TouchableOpacity>
                 </View>
               </>
             ) : (
