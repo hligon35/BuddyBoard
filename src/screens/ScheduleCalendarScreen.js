@@ -1,7 +1,7 @@
 import React, { useContext, useEffect, useMemo, useState } from 'react';
 import { Alert, Modal, Platform, Pressable, ScrollView, StyleSheet, Text, TextInput, TouchableOpacity, View, useWindowDimensions } from 'react-native';
 import { MaterialIcons } from '@expo/vector-icons';
-import { useFocusEffect, useRoute } from '@react-navigation/native';
+import { useFocusEffect, useNavigation, useRoute } from '@react-navigation/native';
 import { ScreenWrapper } from '../components/ScreenWrapper';
 import { MobileAdminShellContext } from '../components/TabletNavigationShell';
 import AppDropdown from '../components/AppDropdown';
@@ -104,6 +104,7 @@ export default function ScheduleCalendarScreen() {
   const { user } = useAuth();
   const { children = [], parents = [], therapists = [], setChildren, fetchAndSync } = useData();
   const { width, height } = useWindowDimensions();
+  const navigation = useNavigation();
   const route = useRoute();
   const mobileAdminShell = useContext(MobileAdminShellContext);
 
@@ -616,6 +617,29 @@ export default function ScheduleCalendarScreen() {
       </TouchableOpacity>
     </View>
   ) : null;
+  const handleParentBackPress = React.useCallback(() => {
+    if (navigation?.canGoBack?.()) {
+      navigation.goBack();
+      return;
+    }
+
+    const parentNavigation = navigation?.getParent?.();
+    if (parentNavigation?.canGoBack?.()) {
+      parentNavigation.goBack();
+      return;
+    }
+
+    navigation?.navigate?.('Home');
+  }, [navigation]);
+  const parentHeaderBackButton = isParent ? (
+    <AppIconButton
+      accessibilityLabel="Go back"
+      name="chevron-left"
+      iconSize={22}
+      onPress={handleParentBackPress}
+      size={38}
+    />
+  ) : null;
   const scheduleHeaderActions = isPhoneWorkspace ? null : headerActions;
   const useMobileHeaderFilters = !isTherapist && !isParent && width < 900 && !useAdminDropdownShellLayout;
   const mobileHeaderFilters = useMobileHeaderFilters ? <View style={styles.mobileHeaderFilterRow}>{headerFocusMode}</View> : null;
@@ -623,7 +647,7 @@ export default function ScheduleCalendarScreen() {
   return (
     <ScreenWrapper
       style={styles.screen}
-      bannerLeft={useMobileHeaderFilters ? null : headerFocusMode}
+      bannerLeft={isParent ? parentHeaderBackButton : (useMobileHeaderFilters ? null : headerFocusMode)}
       bannerRight={scheduleHeaderActions}
       mobileHeaderBelow={mobileHeaderFilters}
       mobileHeaderBelowScrollEnabled={!mobileFilterCarouselLocked}
@@ -904,8 +928,8 @@ const styles = StyleSheet.create({
   headerAssignmentButtonText: { color: '#1d4ed8', fontWeight: '800', marginLeft: 6 },
   headerActionButton: { height: 40, borderRadius: 20, backgroundColor: '#2563eb', paddingHorizontal: 14, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' },
   headerActionButtonText: { color: '#ffffff', fontWeight: '800', marginLeft: 6 },
-  parentCancelButton: { minHeight: 36, borderRadius: 18, backgroundColor: '#fee2e2', paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center', marginTop: 46, marginBottom: 10 },
-  parentCancelButtonCompact: { minHeight: 36, borderRadius: 18, backgroundColor: '#fee2e2', paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', marginTop: 46 },
+  parentCancelButton: { minHeight: 36, borderRadius: 18, backgroundColor: '#fee2e2', paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center', marginTop: 12, marginBottom: 10 },
+  parentCancelButtonCompact: { minHeight: 36, borderRadius: 18, backgroundColor: '#fee2e2', paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center', marginTop: 12 },
   parentCancelButtonText: { color: '#b91c1c', fontWeight: '800' },
   restoreSessionButton: { minHeight: 36, borderRadius: 18, backgroundColor: '#dcfce7', paddingHorizontal: 14, alignItems: 'center', justifyContent: 'center', marginBottom: 10 },
   restoreSessionButtonCompact: { minHeight: 36, borderRadius: 18, backgroundColor: '#dcfce7', paddingHorizontal: 12, alignItems: 'center', justifyContent: 'center' },

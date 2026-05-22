@@ -592,7 +592,6 @@ export default function MyChildScreen() {
   const insightsContent = (
     <>
       <View style={styles.insightsHero}>
-        <Text style={styles.insightsEyebrow}>Progress Insights</Text>
         <Text style={styles.insightsTitle}>{child?.name || 'Child progress'}</Text>
         <Text style={styles.sectionText}>Approved session summaries are translated into simple progress, behavior, and participation trends for families and care teams.</Text>
       </View>
@@ -628,10 +627,6 @@ export default function MyChildScreen() {
           <TrendMiniChart title="Progress trend" items={childInsights.data?.trends?.progressLevel || []} color="#7c3aed" />
 
           <BehaviorTrendList items={childInsights.data?.latestSummary?.interferingBehaviors || []} />
-          <LatestSummaryCard
-            summary={childInsights.data?.latestSummary}
-            subtitle={childInsights.data?.latestSummary?.approvedAt ? `Approved ${new Date(childInsights.data.latestSummary.approvedAt).toLocaleString()}` : ''}
-          />
         </>
       ) : null}
     </>

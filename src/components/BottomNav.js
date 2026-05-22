@@ -3,7 +3,7 @@ import { View, Text, TouchableOpacity, StyleSheet, Animated, Platform, Image } f
 import { useAuth } from '../AuthContext';
 import { useData } from '../DataContext';
 import { logPress } from '../utils/logger';
-import { isAdminRole, isStaffRole, normalizeUserRole } from '../core/tenant/models';
+import { isAdminRole, isOfficeAdminRole, isStaffRole, normalizeUserRole } from '../core/tenant/models';
 import { useTenant } from '../core/tenant/TenantContext';
 import useIsTabletLayout from '../hooks/useIsTabletLayout';
 
@@ -55,7 +55,7 @@ export default function BottomNav({ navigationRef, currentRoute }) {
   const tenant = useTenant();
   const labels = tenant?.labels || {};
   const role = normalizeUserRole(user?.role);
-  const useCompactRoleTabs = isStaffRole(role) || isAdminRole(role);
+  const useCompactRoleTabs = isStaffRole(role) || isOfficeAdminRole(role) || isAdminRole(role);
   const compactDashboardTabKey = role === 'therapist' ? 'Home' : 'Controls';
 
   // For parents, show any pending urgent alerts they created on the MyChild tab

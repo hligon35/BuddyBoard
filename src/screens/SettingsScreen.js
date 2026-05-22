@@ -646,8 +646,8 @@ export default function SettingsScreen({ navigation }) {
             source={avatarSourceFor(user)}
             style={{ width: 84, height: 84, borderRadius: 42, marginRight: 16 }}
           />
-          <View style={{ flex: 1, justifyContent: 'center' }}>
-            <Text style={{ fontSize: 18, fontWeight: '700' }}>{user?.name || (showSignedOutProfileFallback ? 'Guest User' : '')}</Text>
+          <View style={{ flex: 1, minWidth: 0, justifyContent: 'center', paddingRight: 52 }}>
+            <Text style={{ fontSize: 18, fontWeight: '700', flexShrink: 1, flexWrap: 'wrap' }}>{user?.name || (showSignedOutProfileFallback ? 'Guest User' : '')}</Text>
             <Text style={{ fontSize: 14, color: '#6b7280', marginTop: 4 }}>{user?.email || (showSignedOutProfileFallback ? 'Not signed in' : '')}</Text>
             <Text style={{ fontSize: 14, color: '#374151', marginTop: 8 }}>{user?.phone || (showSignedOutProfileFallback ? 'Phone: —' : '')}</Text>
             <Text style={{ fontSize: 14, color: '#374151', marginTop: 4 }}>{user?.address || (showSignedOutProfileFallback ? 'Address: —' : '')}</Text>
