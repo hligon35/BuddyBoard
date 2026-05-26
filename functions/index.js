@@ -722,6 +722,26 @@ function getOrganizationIntakeMailer() {
   };
 }
 
+function buildOrganizationIntakeErrorResponse(error) {
+  const code = safeString(error?.code).trim();
+  if (code === 'BB_RECAPTCHA_NOT_CONFIGURED') {
+    return {
+      status: 500,
+      error: 'Organization intake is not configured yet. Missing reCAPTCHA server credentials.',
+    };
+  }
+  if (code === 'BB_ORG_INTAKE_EMAIL_NOT_CONFIGURED' || code === 'BB_ORG_INTAKE_EMAIL_DEP_MISSING') {
+    return {
+      status: 500,
+      error: 'Organization intake email is not configured yet. Set the SMTP mailer configuration before submitting test organizations.',
+    };
+  }
+  return {
+    status: 500,
+    error: 'Unable to submit organization intake.',
+  };
+}
+
 async function sendOrganizationIntakeEmail({ to, submission, approveUrl, rejectUrl }) {
   const { from, transporter } = getOrganizationIntakeMailer();
   const subject = `Organization intake: ${submission.organization.directoryName || submission.organization.name}`;
@@ -886,6 +906,9 @@ exports.submitOrganizationIntake = regional.https.onRequest(async (req, res) => 
       return res.status(400).json({ ok: false, error: 'reCAPTCHA verification failed. Please try again.' });
     }
 
+    // Fail before creating partial records when the intake mailer is not configured.
+    getOrganizationIntakeMailer();
+
     const submissionRef = admin.firestore().collection('organizationIntakeSubmissions').doc();
     const { token, tokenHash } = buildSubmissionToken(submissionRef.id);
     const now = admin.firestore.Timestamp.now();
@@ -955,7 +978,8 @@ exports.submitOrganizationIntake = regional.https.onRequest(async (req, res) => 
     });
   } catch (error) {
     console.error('submitOrganizationIntake failed', error);
-    return res.status(500).json({ ok: false, error: 'Unable to submit organization intake.' });
+    const response = buildOrganizationIntakeErrorResponse(error);
+    return res.status(response.status).json({ ok: false, error: response.error, code: safeString(error?.code).trim() || undefined });
   }
 });
 

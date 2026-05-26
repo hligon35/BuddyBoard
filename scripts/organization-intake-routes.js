@@ -482,6 +482,26 @@ function buildEmailShell({ eyebrow, title, intro, accent, bodyHtml, footerHtml }
       <div style="max-width:760px;margin:0 auto;">
         <div style="margin-bottom:18px;padding:0 6px;">
           <div style="display:inline-flex;align-items:center;padding:6px 12px;border-radius:999px;background:rgba(37,99,235,0.08);color:#2563eb;font-size:12px;font-weight:700;letter-spacing:0.02em;">${htmlEscape(eyebrow || 'CommunityBridge')}</div>
+
+function buildOrganizationIntakeErrorResponse(error) {
+  const code = safeString(error?.code).trim();
+  if (code === 'BB_RECAPTCHA_NOT_CONFIGURED') {
+    return {
+      status: 500,
+      error: 'Organization intake is not configured yet. Missing reCAPTCHA server credentials.',
+    };
+  }
+  if (code === 'BB_ORG_INTAKE_EMAIL_NOT_CONFIGURED' || code === 'BB_ORG_INTAKE_EMAIL_DEP_MISSING') {
+    return {
+      status: 500,
+      error: 'Organization intake email is not configured yet. Set the SMTP mailer configuration before submitting test organizations.',
+    };
+  }
+  return {
+    status: 500,
+    error: 'Unable to submit organization intake.',
+  };
+}
         </div>
         <div style="background:#ffffff;border:1px solid rgba(15,23,42,0.1);border-radius:24px;box-shadow:0 18px 44px rgba(15,23,42,0.06);overflow:hidden;">
           <div style="padding:28px 28px 18px;background:linear-gradient(180deg, rgba(37,99,235,0.08) 0%, rgba(37,99,235,0.02) 100%);border-bottom:1px solid rgba(15,23,42,0.08);">
@@ -897,6 +917,9 @@ function registerOrganizationIntakeRoutes(app, options = {}) {
         return res.status(400).json({ ok: false, error: 'reCAPTCHA verification failed. Please try again.' });
       }
 
+      // Fail before creating partial records when the intake mailer is not configured.
+      getOrganizationIntakeMailer();
+
       const submissionRef = admin.firestore().collection('organizationIntakeSubmissions').doc();
       const { token, tokenHash } = buildSubmissionToken(submissionRef.id);
       const now = admin.firestore.Timestamp.now();
@@ -971,7 +994,8 @@ function registerOrganizationIntakeRoutes(app, options = {}) {
       return res.status(200).json({ ok: true, submissionId: submissionRef.id, confirmationEmailStatus });
     } catch (error) {
       console.error('submitOrganizationIntake failed', error);
-      return res.status(500).json({ ok: false, error: 'Unable to submit organization intake.' });
+      const response = buildOrganizationIntakeErrorResponse(error);
+      return res.status(response.status).json({ ok: false, error: response.error, code: safeString(error?.code).trim() || undefined });
     }
   });
 
