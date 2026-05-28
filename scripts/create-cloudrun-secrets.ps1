@@ -12,7 +12,7 @@
 #   gcloud run services update communitybridge `
 #     --region us-central1 --project communitybridge-26apr `
 #     --env-vars-file tmp/cloudrun-nonsecrets.env.yaml `
-#     --update-secrets "CB_DATABASE_URL=cb-database-url:latest,BB_DATABASE_URL=bb-database-url:latest,CB_JWT_SECRET=cb-jwt-secret:latest,BB_JWT_SECRET=bb-jwt-secret:latest,CB_SMTP_URL=cb-smtp-url:latest,BB_SMTP_URL=bb-smtp-url:latest,CB_TWILIO_AUTH_TOKEN=cb-twilio-token:latest,BB_TWILIO_AUTH_TOKEN=bb-twilio-token:latest,CB_ADMIN_PASSWORD=cb-admin-password:latest,BB_ADMIN_PASSWORD=bb-admin-password:latest"
+#     --update-secrets "CB_DATABASE_URL=cb-database-url:latest,BB_DATABASE_URL=bb-database-url:latest,CB_JWT_SECRET=cb-jwt-secret:latest,BB_JWT_SECRET=bb-jwt-secret:latest,CB_FIREBASE_SERVICE_ACCOUNT_JSON=cb-firebase-admin-sa-json:latest,BB_FIREBASE_SERVICE_ACCOUNT_JSON=bb-firebase-admin-sa-json:latest,CB_RECAPTCHA_SECRET_KEY=cb-recaptcha-secret-key:latest,BB_RECAPTCHA_SECRET_KEY=bb-recaptcha-secret-key:latest,CB_SMTP_URL=cb-smtp-url:latest,BB_SMTP_URL=bb-smtp-url:latest,CB_TWILIO_AUTH_TOKEN=cb-twilio-token:latest,BB_TWILIO_AUTH_TOKEN=bb-twilio-token:latest,CB_ADMIN_PASSWORD=cb-admin-password:latest,BB_ADMIN_PASSWORD=bb-admin-password:latest"
 
 param(
   [string]$Project = "communitybridge-26apr",
@@ -31,6 +31,8 @@ $SecretMap = [ordered]@{
   "bb-jwt-secret"     = "BB_JWT_SECRET"
   "cb-firebase-admin-sa-json" = "CB_FIREBASE_SERVICE_ACCOUNT_JSON"
   "bb-firebase-admin-sa-json" = "BB_FIREBASE_SERVICE_ACCOUNT_JSON"
+  "cb-recaptcha-secret-key" = "CB_RECAPTCHA_SECRET_KEY"
+  "bb-recaptcha-secret-key" = "BB_RECAPTCHA_SECRET_KEY"
   "cb-smtp-url"     = "CB_SMTP_URL"
   "bb-smtp-url"     = "BB_SMTP_URL"
   "cb-twilio-token" = "CB_TWILIO_AUTH_TOKEN"
@@ -74,11 +76,11 @@ foreach ($secretName in $SecretMap.Keys) {
   if ($FromFile) {
     $value = Get-EnvValueFromFile -Path $FromFile -Key $envKey
     if ([string]::IsNullOrEmpty($value)) {
-      Write-Warning "    $envKey not found in $FromFile — skipping."
+      Write-Warning ("    {0} not found in {1} - skipping." -f $envKey, $FromFile)
       continue
     }
   } else {
-    $secure = Read-Host -Prompt "    Enter value for $envKey (input hidden)" -AsSecureString
+    $secure = Read-Host -Prompt ("    Enter value for {0} [input hidden]" -f $envKey) -AsSecureString
     $bstr = [System.Runtime.InteropServices.Marshal]::SecureStringToBSTR($secure)
     try {
       $value = [System.Runtime.InteropServices.Marshal]::PtrToStringBSTR($bstr)
@@ -126,4 +128,4 @@ Write-Host "==> Done. Next step:"
 Write-Host "gcloud run services update $Service ``"
 Write-Host "  --region $Region --project $Project ``"
 Write-Host "  --env-vars-file tmp/cloudrun-nonsecrets.env.yaml ``"
-Write-Host "  --update-secrets `"CB_DATABASE_URL=cb-database-url:latest,BB_DATABASE_URL=bb-database-url:latest,CB_JWT_SECRET=cb-jwt-secret:latest,BB_JWT_SECRET=bb-jwt-secret:latest,CB_FIREBASE_SERVICE_ACCOUNT_JSON=cb-firebase-admin-sa-json:latest,BB_FIREBASE_SERVICE_ACCOUNT_JSON=bb-firebase-admin-sa-json:latest,CB_SMTP_URL=cb-smtp-url:latest,BB_SMTP_URL=bb-smtp-url:latest,CB_TWILIO_AUTH_TOKEN=cb-twilio-token:latest,BB_TWILIO_AUTH_TOKEN=bb-twilio-token:latest,CB_ADMIN_PASSWORD=cb-admin-password:latest,BB_ADMIN_PASSWORD=bb-admin-password:latest`""
+Write-Host "  --update-secrets `"CB_DATABASE_URL=cb-database-url:latest,BB_DATABASE_URL=bb-database-url:latest,CB_JWT_SECRET=cb-jwt-secret:latest,BB_JWT_SECRET=bb-jwt-secret:latest,CB_FIREBASE_SERVICE_ACCOUNT_JSON=cb-firebase-admin-sa-json:latest,BB_FIREBASE_SERVICE_ACCOUNT_JSON=bb-firebase-admin-sa-json:latest,CB_RECAPTCHA_SECRET_KEY=cb-recaptcha-secret-key:latest,BB_RECAPTCHA_SECRET_KEY=bb-recaptcha-secret-key:latest,CB_SMTP_URL=cb-smtp-url:latest,BB_SMTP_URL=bb-smtp-url:latest,CB_TWILIO_AUTH_TOKEN=cb-twilio-token:latest,BB_TWILIO_AUTH_TOKEN=bb-twilio-token:latest,CB_ADMIN_PASSWORD=cb-admin-password:latest,BB_ADMIN_PASSWORD=bb-admin-password:latest`""
